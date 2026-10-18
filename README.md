@@ -15,7 +15,7 @@ helpers tools written in TypeScript or Python import.
 |---|---|
 | `docs/` | the canonical documents: the host (`mcp-host.md`), the toolbook (`toolbook.md`) and the boundary every other unit matches (`api.md`) |
 | `host/` | the tool host, `mcp-host` |
-| `sdk/` | the tool SDK: `sdk/contract/`, the `bmo-tool` crate holding the call protocol and the manifest schema |
+| `sdk/` | the tool SDK: `sdk/contract/`, the `bmo-tool` crate holding the call protocol and the manifest schema, which Rust tools link; `sdk/ts-kit/` and `sdk/py-kit/`, the helpers a TypeScript or Python tool imports |
 | `tests/` | the checks that span the repository |
 
 ## Build and test

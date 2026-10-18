@@ -1,0 +1,16 @@
+{
+  "name": "@bmo/tool-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.0",
+    "typescript": "^7.0.2"
+  }
+}

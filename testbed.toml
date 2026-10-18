@@ -4,7 +4,11 @@ testbed = 0
 name = "pocket"
 
 [test]
-languages = ["cargo"]
+# The Cargo workspace's crates, and the TypeScript tool kit's tests, which run from its own folder and hold the
+# Python kit to the same cases.
+languages = ["cargo", "bun"]
+files = ["sdk/ts-kit/tests/**/*.test.ts"]
+setup = ["cd sdk/ts-kit && bun install --frozen-lockfile"]
 
 [check]
 quick = ["layout", "dependencies"]
