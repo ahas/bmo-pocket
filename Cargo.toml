@@ -3,6 +3,8 @@
 # repository in `tests/`.
 [workspace]
 members = ["host", "sdk/contract"]
+# The word chain is a repository of its own, built here until its repository stands.
+exclude = ["handoff"]
 resolver = "3"
 
 [workspace.package]

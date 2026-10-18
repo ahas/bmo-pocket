@@ -1,0 +1,96 @@
+# What a game of the word chain is played by (docs/word-chain.md). The Korean words a room says to a game, and
+# the language's own rules the game judges by, stand here as data the code reads by key.
+
+# The words a room says to a standing game, each said alone or followed by a player's name. Anything
+# else is talk and goes on as talk.
+[words]
+join = ["참가", "참여", "ㅊㄱ", "나도", "저도"]
+begin = ["시작", "ㄱㄱ", "출발"]
+give_up = ["기권", "포기", "ㅈㅈ"]
+stop = ["끝말잇기 그만", "끝말잇기 끝", "끝말잇기 종료", "게임 그만", "게임 끝", "게임 종료"]
+# What may come before the word the person who asked offers to open on, besides the begin words.
+offer = ["제시어", "제시어는"]
+
+[times]
+# How long a game waits for people to join before it starts on its own.
+recruit_seconds = 60
+# How long a move with no limit is waited for before the game closes for want of play, and how long a
+# game waits for a usable opening word from the person who asked.
+idle_seconds = 600
+# How long the robot takes over its move, so a room reads its word after the last one.
+robot_ms = 1500
+# The range the seconds a player has for one move are held to.
+least_turn_seconds = 10
+most_turn_seconds = 120
+
+[rounds]
+# How many words a round's opening word must leave to answer with, so no round opens on a word nothing
+# follows.
+answers = 20
+# How many candidates the robot weighs before it moves.
+robot_reach = 60
+# The syllables a round's word is drawn from: plain openings every player knows words for.
+syllables = ["가", "나", "다", "마", "바", "사", "아", "자", "하", "고", "노", "도", "수", "주", "기", "시", "지", "부", "무", "소"]
+
+[points]
+# Points for a word, ten a syllable.
+per_syllable = 10
+# Points for the move that left the next player nothing to answer with (the hanbang).
+hanbang = 30
+# Points for the last player standing.
+survivor = 50
+
+[names]
+# How many players a game's name lists before it counts the rest.
+listed = 3
+
+# The initial-sound rule (dueum beopchik): at the head of a word an initial consonant before one of the vowels
+# named is read as another, so a word ending in the first form may be answered by one starting with the second,
+# and never the other way. Consonants and vowels are named by their indices in the Unicode Hangul syllable block:
+# initial 2 is nieun, 5 rieul and 11 ieung; vowels 0 a, 1 ae, 2 ya, 6 yeo, 7 ye, 8 o, 11 oe, 12 yo, 13 u, 17 yu,
+# 18 eu and 20 i.
+[[initial_sound]]
+# Rieul read as nieun before a, ae, o, oe, u and eu.
+from = 5
+to = 2
+vowels = [0, 1, 8, 11, 13, 18]
+
+[[initial_sound]]
+# Rieul dropped to ieung before ya, yeo, ye, yo, yu and i.
+from = 5
+to = 11
+vowels = [2, 6, 7, 12, 17, 20]
+
+[[initial_sound]]
+# Nieun dropped to ieung before yeo, yo, yu and i.
+from = 2
+to = 11
+vowels = [6, 12, 17, 20]
+
+# What the word book is installed from (docs/word-chain.md, 「The word book」): KKuTu's word list and the
+# National Institute of Korean Language's dictionaries, each at the commit its reader was written against,
+# with the licence it is under, which the book records about itself.
+[install.kkutu]
+repository = "https://github.com/JJoriping/KKuTu"
+commit = "a2c240bc31fe2dea31d26fb1cf7625b4645556a6"
+licence = "GPL-3.0-or-later (KKuTu repository, db.sql)"
+
+[install.nikl]
+repository = "https://github.com/spellcheck-ko/korean-dict-nikl"
+commit = "42c0d01889f34536e9cf94fe57f62bd2055b1bde"
+licence = "CC BY-SA 2.0 KR (국립국어원 표준국어대사전, 한국어기초사전)"
+# How many parts the standard dictionary is split into at that commit, one every five thousand entries, and
+# the last part's name; how many parts the basic dictionary is split into.
+stdict_parts = 87
+stdict_last = "436578"
+krdict_parts = 11
+# The standard dictionary's words a meaning is read for: its nouns, by the part of speech it names them with.
+noun = "명사"
+# Senses of these kinds are not the standard language a game is played in.
+off_standard = ["방언", "북한어", "옛말"]
+# Senses in these fields name one person, place or book, never the common noun a game plays.
+proper_fields = ["인명", "지명", "책명"]
+# The field a sense names where it has none.
+no_field = "없음"
+# How long a meaning may run before it is cut.
+meaning_chars = 100

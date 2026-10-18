@@ -20,6 +20,10 @@ const PACKAGE_TABLES: [&str; 4] =
 /// file, has an extension of its own and is not held to this.
 const CODE_EXTENSIONS: [&str; 3] = ["rs", "ts", "py"];
 
+/// The folder holding another repository built here until its own stands, which that repository's own checks
+/// hold.
+const HANDOFF: &str = "handoff/";
+
 /// The Hangul blocks of Unicode: Jamo, compatibility Jamo, Jamo extended A and B, syllables, and the halfwidth
 /// forms.
 const HANGUL: [(u32, u32); 6] = [
@@ -329,7 +333,7 @@ fn no_code_or_test_file_holds_hangul() {
   let root = root();
   let held: Vec<String> = tracked_files()
     .into_iter()
-    .filter(|path| is_code_file(path))
+    .filter(|path| is_code_file(path) && !path.starts_with(HANDOFF))
     .filter_map(|path| {
       let text = std::fs::read_to_string(root.join(&path)).ok()?;
       let lines = hangul_lines(&text);
