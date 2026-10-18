@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use bmo_tool::manifest::{MANIFEST, SHARED};
+use bmo_tool::manifest::MANIFEST;
 use mcp_host::placed::{Catalogue, PLACED, Placed, concerns, moves};
 use notify::EventKind;
 use notify::event::{AccessKind, CreateKind, DataChange, MetadataKind, ModifyKind, RemoveKind, RenameMode};
@@ -103,20 +103,28 @@ fn each_placed_folder_is_read_and_one_that_does_not_read_or_takes_a_placed_name_
   place(dir, "beta", &manifest("beta", "alpha_one"));
   place(dir, "gamma", &manifest("other", "gamma_one"));
   place(dir, "_sdk", &manifest("_sdk", "nothing"));
+  // A shared helper is found through the registry alone: one under the tools root is left out, and a folder of
+  // helpers there is no tool.
   place(
-    &dir.join(SHARED),
+    dir,
     "web",
     "[tool]\nname = \"web\"\nprotocol = 1\nrun = [\"web\"]\ntimeout = 5\n\n[helper]\ndescription = \"A web session.\"\n",
   );
+  place(&dir.join("_shared"), "counter", &manifest("counter", "counter_one"));
   std::fs::create_dir_all(dir.join("unplaced")).unwrap();
 
   let (catalogue, faults) = Catalogue::read(dir);
   let folders: Vec<&str> = catalogue.tools.iter().map(|tool| tool.folder.as_str()).collect();
 
   assert_eq!(folders, ["alpha"]);
-  assert!(catalogue.helpers.contains_key("web"));
+  assert!(catalogue.helpers.is_empty());
   assert_eq!(catalogue.namespaces(), BTreeSet::from(["worker".to_owned()]));
-  assert_eq!(faults.len(), 2, "{faults:?}");
+  assert_eq!(faults.len(), 3, "{faults:?}");
+  assert!(
+    faults
+      .iter()
+      .any(|fault| fault == "tools/web: a shared helper is found through the registry alone")
+  );
   assert!(
     faults
       .iter()

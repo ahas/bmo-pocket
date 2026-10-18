@@ -222,13 +222,14 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 
 | Verb | What it does |
 |---|---|
-| `put <tool> [--allow <name>]… [--service <repo>] [--placed]` | Places a tool and registers it, or upgrades the tool registered under its name: `<tool>` is a bare name, put from the source template `--source` or `BMO_POCKET_SOURCE` names with `{name}` in it (a bare name is refused where none is configured), a local folder, or a git address (one holding `://`, or `git@`, or ending in `.git`), cloned |
-| `take <name>` | Takes the tool registered under the name out of the registry |
-| `list [--json]` | Every registered tool: its name, where it was put from, its version and its entries |
+| `put <tool> [--allow <name>]… [--service <repo>] [--placed] [--source <template>]` | Places a tool and registers it, or upgrades the tool registered under its name: `<tool>` is a local folder, a git address (one holding `://`, or `git@`, or ending in `.git`), cloned, or a bare name, made into the repository name `bmo-<name>` and put from the source template `--source` or `BMO_POCKET_SOURCE` names, `{repo}` in it standing for that repository name (a bare name is refused where none is configured) |
+| `take <name> [--service <repo>]` | Takes the tool registered under the name out of the registry; a service's own tool only with `--service` naming that service |
+| `list [--json]` | Every registered tool: its name, its version, where it was put from, the service it is registered for and its entries |
 
-- **What `put` checks before anything is placed:** the manifest reads (「The manifest」); its name and each of its
-  entries' full names are held by no other registered tool; and every capability and grant its entries ask for is
-  named by an `--allow`. It prints each one asked for, and refuses naming those not allowed.
+- **What `put` checks before anything is placed:** the manifest reads (「The manifest」); its name is no other
+  kind's registration, and each of its entries' full names is held by no other registered tool; and every
+  capability and grant it asks for is named by an `--allow`. It prints each one asked for, and refuses naming those
+  not allowed.
 - **What `put` places:** it runs the manifest's `build` with `BMO_TOOL_OUT` naming a new version folder and
   `BMO_CARGO_TARGET` a build folder of its own, and copies the manifest and its schema files beside what the build
   put there; with no `build`, or with `--placed` for a folder a service's deployment already built, it copies the

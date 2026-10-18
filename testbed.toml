@@ -35,7 +35,7 @@ command = "cargo fmt --all --check"
 # The tool host's own deploy tree, and the data root it shares with the services whose tools it serves. The
 # host's user unit stands under deploy/ and is the repository's one service.
 [build]
-binaries = ["mcp-host"]
+binaries = ["mcp-host", "bmo-pocket"]
 
 [deploy]
 root = "~/.local/share/bmo-pocket"

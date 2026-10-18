@@ -234,6 +234,8 @@ pub async fn ask(
   let result = once(host, tool, session, &handed, bound).await;
 
   drop(callback);
+  // A version a take or an upgrade retired while this call ran is taken away once nothing else holds it.
+  host.placed.sweep();
   result
 }
 
@@ -301,11 +303,12 @@ async fn once(
   serde_json::from_slice(&done.stdout).map_err(|why| format!("its answer does not read: {why}"))
 }
 
-// A record's server of one placed tool.
+// A record's server of one placed tool, holding the version it started from for as long as it runs.
 struct Server {
   peer: Peer<RoleClient>,
   running: std::sync::Mutex<Option<RunningService<RoleClient, ()>>>,
   _callback: CallBackSocket,
+  _tool: Arc<PlacedTool>,
 }
 
 impl Server {
@@ -318,10 +321,11 @@ impl Server {
   }
 }
 
-// A record's running shared helper.
+// A record's running shared helper, holding the version it started from for as long as it runs.
 struct Helper {
   child: Child,
   socket: PathBuf,
+  _tool: Arc<PlacedTool>,
 }
 
 impl Helper {
@@ -475,7 +479,11 @@ impl Placements {
   }
 }
 
-async fn start_helper(host: &Arc<Host>, helper: &PlacedTool, session: &Session) -> Result<Helper, String> {
+async fn start_helper(
+  host: &Arc<Host>,
+  helper: &Arc<PlacedTool>,
+  session: &Session,
+) -> Result<Helper, String> {
   std::fs::create_dir_all(&host.placed.sockets).map_err(|why| why.to_string())?;
 
   let socket = host.placed.sockets.join(fresh("helper"));
@@ -497,17 +505,23 @@ async fn start_helper(host: &Arc<Host>, helper: &PlacedTool, session: &Session) 
     let _ = stdin.write_all(&input).await;
   }
 
-  if let Err(why) = listening(&mut child, Duration::from_secs(helper.manifest.tool.timeout)).await {
-    Helper { child, socket }.end().await;
+  let mut started = Helper {
+    child,
+    socket,
+    _tool: helper.clone(),
+  };
+
+  if let Err(why) = listening(&mut started.child, Duration::from_secs(helper.manifest.tool.timeout)).await {
+    started.end().await;
     return Err(why);
   }
 
-  Ok(Helper { child, socket })
+  Ok(started)
 }
 
 async fn start_server(
   host: &Arc<Host>,
-  tool: &PlacedTool,
+  tool: &Arc<PlacedTool>,
   session: &Session,
   shared: BTreeMap<String, PathBuf>,
 ) -> Result<Server, String> {
@@ -538,6 +552,7 @@ async fn start_server(
     peer: running.peer().clone(),
     running: std::sync::Mutex::new(Some(running)),
     _callback: callback,
+    _tool: tool.clone(),
   })
 }
 

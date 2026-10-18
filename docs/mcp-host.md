@@ -122,9 +122,10 @@ flowchart TD
 ### The catalogue
 
 - **Read from every placed folder the host is given:** the folders under the tools root `--tools` names — each
-  tool folder's `.placed/` — and the placed folder of every tool the registry holds (`docs/registry.md`). A folder
-  under the tools root whose name starts with `_` is no tool. A placed manifest with a `[helper]` table is a shared
-  helper (「Shared helpers」).
+  tool folder's `.placed/` — and the placed version of every tool the registry holds (`docs/registry.md`). A folder
+  under the tools root whose name starts with `_` is no tool. A registered manifest with a `[helper]` table is a
+  shared helper (「Shared helpers」); one under the tools root is left out, since helpers are found through the
+  registry alone.
 - **Only a placed folder is read.** It is what a deployment or `bmo-pocket put` places; the source a placement is
   built from is never read by the host.
 - **Read again when it changes:** the host watches the tools root and the registry with the `notify` crate, and
@@ -145,8 +146,9 @@ flowchart TD
   - its name is not its folder's, or it has neither an entry nor resources, or a helper's has entries;
   - an entry has no description, or asks for no capability without being for the system alone;
   - an entry's schema file is missing, or is not a JSON Schema;
-  - an entry's full name is one another tool already holds; of two tools, the one read first, in name order,
-    keeps it.
+  - an entry's full name is one another tool already holds; of two tools, the one read first keeps it, the tools
+    root's in name order before the registry's in name order;
+  - a registered tool's version folder is gone.
 - **Each reading is said in the log,** with how many tools and helpers it placed.
 
 ### The manifest
@@ -292,9 +294,15 @@ flowchart TD
 - **Placed tools:** a tool placed while the host runs is listed by the toolbook, described, and called through
   `call` and `act` under the schema, capability and grant checks; its call-back socket reaches another entry only
   as the session could; a call past its timeout fails; taken away, it is gone from the list and refused as unknown,
-  the host's process the same one throughout, and a call in flight as it went answers. A shared helper serves one
-  record's calls and no other's and ends with the record; a server tool is spoken to over MCP and keeps one
-  process across a record's calls. A manifest that does not read is said in the log and leaves the rest served.
+  the host's process the same one throughout. A shared helper, registered, serves one record's calls and no
+  other's and ends with the record; a server tool is spoken to over MCP and keeps one process across a record's
+  calls. A manifest that does not read is said in the log and leaves the rest served.
+- **The registry:** a tool put from a folder, a git address or a bare name through the source template is placed
+  as a version, pointed at and served from the next reading; each refusal names what failed and places nothing; a
+  put and a service's registration never replace each other; an upgrade moves the pointer and a take removes it; a
+  call in flight goes on in the version it started in through an upgrade and a take, which is taken away once
+  nothing holds it; and a running session's `initialize` and `tools/list` answers stay byte for byte while its
+  toolbook's `list` changes (`docs/registry.md`).
 - **The control socket:** an entry for the system alone is shown to no session and called through `/calls`;
   `/claims` names the entry whose manifest claims an address's host and whose executable claims the address, and
   none for one no entry claims.

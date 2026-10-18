@@ -3,9 +3,11 @@
 
 pub mod error;
 pub mod handler;
+pub mod install;
 pub mod lock;
 pub mod placed;
 pub mod records;
+pub mod registry;
 pub mod residency;
 pub mod running;
 pub mod server;

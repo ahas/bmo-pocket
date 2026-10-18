@@ -21,6 +21,7 @@ use mcp_host::handler::Host;
 use mcp_host::lock::{Accounts, Lock};
 use mcp_host::placed::Placed;
 use mcp_host::records::Records;
+use mcp_host::registry::Registry;
 use mcp_host::running::sockets_beside;
 use mcp_host::server;
 use serde::Deserialize;
@@ -88,6 +89,9 @@ enum Verb {
     tool: String,
     #[command(flatten)]
     reach: Reach,
+    /// The data root whose `tool-host/registry/` names the registered tools.
+    #[arg(long, env = "BMO_DATA_DIR")]
+    data_root: Option<PathBuf>,
     /// The placed tools' folder; `tools/` beside the `bin/` this binary stands in by default.
     #[arg(long)]
     tools: Option<PathBuf>,
@@ -145,9 +149,9 @@ fn main() -> ExitCode {
       tools,
       settle_ms,
     } => {
-      let data_root = data_root.unwrap_or_else(|| home().join(".local/share/bmo/data"));
+      let data_root = data_root.unwrap_or_else(default_data_root);
       let control = control.unwrap_or_else(|| runtime_dir().join("bmo/mcp-host.sock"));
-      let placed = Arc::new(placed(tools, &control));
+      let placed = Arc::new(placed(tools, &data_root, &control));
       let host = match reach.host(placed) {
         Ok(host) => Arc::new(host),
         Err(why) => return refused(why),
@@ -169,9 +173,11 @@ fn main() -> ExitCode {
       namespace,
       tool,
       reach,
+      data_root,
       tools,
     } => {
-      let placed = placed(tools, &runtime_dir().join("bmo/mcp-host.sock"));
+      let data_root = data_root.unwrap_or_else(default_data_root);
+      let placed = placed(tools, &data_root, &runtime_dir().join("bmo/mcp-host.sock"));
 
       placed.reread();
 
@@ -187,18 +193,22 @@ fn home() -> PathBuf {
   std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from)
 }
 
+fn default_data_root() -> PathBuf {
+  home().join(".local/share/bmo/data")
+}
+
 // The user's runtime directory, where the sockets of this machine's services stand.
 fn runtime_dir() -> PathBuf {
   std::env::var_os("XDG_RUNTIME_DIR").map_or_else(std::env::temp_dir, PathBuf::from)
 }
 
-// The placed tools' catalogue: the folder named, or `tools/` beside the `bin/` this binary stands in, its
-// sockets beside the control socket.
-fn placed(tools: Option<PathBuf>, control: &Path) -> Placed {
+// The placed tools' catalogue: the folder named, or `tools/` beside the `bin/` this binary stands in, and the
+// data root's registry beside it, its sockets beside the control socket.
+fn placed(tools: Option<PathBuf>, data_root: &Path, control: &Path) -> Placed {
   let tools = tools
     .or_else(|| std::env::current_exe().ok().and_then(|exe| Some(exe.parent()?.parent()?.join("tools"))));
 
-  Placed::new(tools, sockets_beside(control))
+  Placed::new(tools, sockets_beside(control)).registered(Registry::of(data_root))
 }
 
 // The control socket, bound where only the host's own user reaches it.
@@ -268,14 +278,17 @@ async fn serve(
   let _ = io::stdout().flush();
 
   let pruning = records.clone();
+  let sweeping = host.clone();
 
   // Lapsed records dropped on every beat, and what each kept ended, so a run that ended without its
-  // record being taken back holds its browser no longer than one beat past its deadline.
+  // record being taken back holds its browser no longer than one beat past its deadline; and every retired
+  // version nothing holds any longer taken away.
   tokio::spawn(async move {
     loop {
       for (_, gone) in pruning.prune() {
         gone.kept.close().await;
       }
+      sweeping.placed.sweep();
       tokio::time::sleep(sweep_every).await;
     }
   });

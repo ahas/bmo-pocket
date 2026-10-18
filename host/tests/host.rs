@@ -1837,11 +1837,22 @@ async fn a_shared_helper_serves_one_records_calls_and_ends_with_it_and_a_server_
   let one = issue(&host, &record(scratch.data.path(), &["graph.read"], json!({ "line": "one" }))).await;
   let two = issue(&host, &record(scratch.data.path(), &["graph.read"], json!({ "line": "two" }))).await;
 
-  place(
-    &scratch.tools(),
-    "_shared/counter",
-    &[("tool.toml", COUNTER_MANIFEST), ("counter.py", COUNTER_SCRIPT)],
-  );
+  // A shared helper is registered like any tool, through the registry's command.
+  let helper = scratch.data.path().join("counter-source");
+
+  fs::create_dir_all(&helper).unwrap();
+  fs::write(helper.join("tool.toml"), COUNTER_MANIFEST).unwrap();
+  fs::write(helper.join("counter.py"), COUNTER_SCRIPT).unwrap();
+
+  let registered = Command::new(env!("CARGO_BIN_EXE_bmo-pocket"))
+    .arg("--data-root")
+    .arg(scratch.data.path())
+    .arg("put")
+    .arg(&helper)
+    .output()
+    .unwrap();
+
+  assert!(registered.status.success(), "{}", String::from_utf8_lossy(&registered.stderr));
   place(
     &scratch.tools(),
     "tally",

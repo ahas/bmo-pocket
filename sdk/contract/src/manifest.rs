@@ -15,9 +15,6 @@ pub const PROTOCOL: u32 = 1;
 /// The manifest's file name in a tool's folder.
 pub const MANIFEST: &str = "tool.toml";
 
-/// The folder of `tools/` holding the shared helpers, each a folder of its own.
-pub const SHARED: &str = "_shared";
-
 /// The folder under a tool's folder a deployment places its built tool in, the only one a reader of a
 /// placed tool reads.
 pub const PLACED: &str = ".placed";
@@ -495,24 +492,18 @@ fn schema(dir: &Path, file: &str) -> Result<Value, String> {
   Ok(read)
 }
 
-/// Every tool and shared helper folder a tree's `tools/` holds, by its folder under `tools/`: each folder whose
-/// name starts with neither `_` nor `.`, then each folder of `_shared/`, each in order of name.
+/// Every tool folder a tree's `tools/` holds, by its name: each folder whose name starts with neither `_` nor `.`,
+/// in order of name.
 pub fn tool_folders(tools: &Path) -> Vec<String> {
-  let names = |dir: &Path| -> Vec<String> {
-    let mut found: Vec<String> = std::fs::read_dir(dir)
-      .into_iter()
-      .flatten()
-      .flatten()
-      .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
-      .filter_map(|entry| entry.file_name().into_string().ok())
-      .collect();
+  let mut found: Vec<String> = std::fs::read_dir(tools)
+    .into_iter()
+    .flatten()
+    .flatten()
+    .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+    .filter_map(|entry| entry.file_name().into_string().ok())
+    .filter(|name| !name.starts_with(['_', '.']))
+    .collect();
 
-    found.sort();
-    found
-  };
-  let mut folders: Vec<String> =
-    names(tools).into_iter().filter(|name| !name.starts_with(['_', '.'])).collect();
-
-  folders.extend(names(&tools.join(SHARED)).into_iter().map(|name| format!("{SHARED}/{name}")));
-  folders
+  found.sort();
+  found
 }

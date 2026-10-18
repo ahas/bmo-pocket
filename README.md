@@ -14,8 +14,8 @@ helpers tools written in TypeScript or Python import.
 | Folder | Holds |
 |---|---|
 | `deploy/` | the host's user unit, `bmo-mcp-host.service`, which a deployment links from the deploy tree |
-| `docs/` | the canonical documents: the host (`mcp-host.md`), the toolbook (`toolbook.md`) and the boundary every other unit matches (`api.md`) |
-| `host/` | the tool host, `mcp-host`, with its tests in `host/tests/` |
+| `docs/` | the canonical documents: the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`) and the boundary every other unit matches (`api.md`) |
+| `host/` | the tool host, `mcp-host`, and the registry's command, `bmo-pocket`, with their tests in `host/tests/` |
 | `sdk/` | the tool SDK: `sdk/contract/`, the `bmo-tool` crate holding the call protocol and the manifest schema, which Rust tools link; `sdk/ts-kit/` and `sdk/py-kit/`, the helpers a TypeScript or Python tool imports |
 | `tests/` | the checks that span the repository, and `tests/host-contract/`, the host held to what an installed CLI reads of it |
 
