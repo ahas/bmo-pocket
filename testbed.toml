@@ -1,0 +1,33 @@
+# How the testbed tests, checks, builds and deploys this repository, in the testbed's declaration format.
+
+testbed = 0
+name = "pocket"
+
+[test]
+languages = ["cargo"]
+
+[check]
+quick = ["layout", "dependencies"]
+base_libraries = ["bmo-chat", "bmo-chat-client", "bmo-ui"]
+
+[[check.step]]
+id = "check"
+command = "cargo check --workspace --all-targets"
+lane = "wide"
+
+[[check.step]]
+id = "clippy"
+command = "cargo clippy --workspace --all-targets -- -D warnings"
+lane = "wide"
+
+[[check.step]]
+id = "fmt"
+command = "cargo fmt --all --check"
+
+# The tool host's own deploy tree, and the data root it shares with the services whose tools it serves. The
+# host's user unit stands under deploy/ and is the repository's one service.
+[deploy]
+root = "~/.local/share/bmo-pocket"
+link = "deploy"
+data_root = "~/.local/share/bmo/data"
+units = ["deploy/*.service"]

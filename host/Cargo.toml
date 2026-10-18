@@ -1,0 +1,6 @@
+[package]
+name = "mcp-host"
+description = "The tool host: one process serving every session's MCP tools."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true

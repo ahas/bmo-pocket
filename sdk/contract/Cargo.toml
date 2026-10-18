@@ -1,0 +1,6 @@
+[package]
+name = "bmo-tool"
+description = "The contract every tool of the tool host is written to."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
