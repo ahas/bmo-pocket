@@ -1,0 +1,21 @@
+[Unit]
+Description=Tool host: every session's MCP tools, over streamable HTTP behind its token
+# docs/mcp-host.md.
+
+[Service]
+WorkingDirectory=%h/.local/share/bmo-pocket/deploy
+# The host's own settings: BMO_MCP_HOST_PORT, BMO_ACCOUNTS_URL, BMO_ACCOUNTS_TOKEN_FILE and BMO_GRANT_LOCK,
+# where the deployment's env file names them (docs/api.md, 「The variables」).
+EnvironmentFile=-%h/.local/share/bmo/data/env/pocket.env
+# What a placed tool's call runs reaches the programs it starts by this path.
+Environment=PATH=%h/.local/bin:%h/.bun/bin:%h/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# The placed tools are named through the deploy tree's link, which the host follows onto each release it is
+# flipped to; the binary's own path is the real one of the release it started in.
+ExecStart=%h/.local/share/bmo-pocket/deploy/bin/mcp-host serve --data-root %h/.local/share/bmo/data --tools %h/.local/share/bmo-pocket/deploy/tools
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+# The repository's one service, linked and restarted by every deployment, whose health the deployment waits on.
+X-BMO-Deploy=bot

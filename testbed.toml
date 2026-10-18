@@ -4,11 +4,15 @@ testbed = 0
 name = "pocket"
 
 [test]
-# The Cargo workspace's crates, and the TypeScript tool kit's tests, which run from its own folder and hold the
-# Python kit to the same cases.
+# The Cargo workspace's crates; the TypeScript tool kit's tests, which run from its own folder and hold the
+# Python kit to the same cases; and the host's contract with an installed CLI, which runs where
+# BMO_LIVE_CLAUDE names one.
 languages = ["cargo", "bun"]
-files = ["sdk/ts-kit/tests/**/*.test.ts"]
-setup = ["cd sdk/ts-kit && bun install --frozen-lockfile"]
+files = ["sdk/ts-kit/tests/**/*.test.ts", "tests/host-contract/**/*.test.ts"]
+setup = [
+  "cd sdk/ts-kit && bun install --frozen-lockfile",
+  "cd tests/host-contract && bun install --frozen-lockfile",
+]
 
 [check]
 quick = ["layout", "dependencies"]
@@ -30,8 +34,13 @@ command = "cargo fmt --all --check"
 
 # The tool host's own deploy tree, and the data root it shares with the services whose tools it serves. The
 # host's user unit stands under deploy/ and is the repository's one service.
+[build]
+binaries = ["mcp-host"]
+
 [deploy]
 root = "~/.local/share/bmo-pocket"
 link = "deploy"
 data_root = "~/.local/share/bmo/data"
 units = ["deploy/*.service"]
+# Answers 0 once the host answers on its control socket.
+health = 'curl -sf --unix-socket "${XDG_RUNTIME_DIR:-/tmp}/bmo/mcp-host.sock" http://localhost/health'

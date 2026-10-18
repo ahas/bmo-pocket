@@ -6,25 +6,30 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// One session's record. Its field names are camel case on the wire. A field the record does not know is refused rather than dropped, so
-/// a launcher that hands something new is told rather than ignored.
+/// One session's record. Its field names are camel case on the wire. A field the record does not know is
+/// refused rather than dropped, so a launcher that hands something new is told rather than ignored.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Session {
   /// The run line the session belongs to, a name a tool may read.
   pub line: String,
-  /// The agent's role, where the session has one, whose configuration names entries its namespaces list too.
+  /// The role of the agent the session is issued for, where it has one, a name a tool may read.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub role: Option<String>,
-  /// What the session may be shown, by the names the manifests declare: its line's declaration and its role's
-  /// bundles, narrowed where a run holds less.
+  /// What the session may be shown, by the names the manifests declare, as the issuer resolved them.
   pub capabilities: BTreeSet<String>,
+  /// The full names of the entries its namespaces list by name, as the issuer resolved them; every other entry
+  /// the session holds stands in its toolbook.
+  #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+  pub shown: BTreeSet<String>,
   /// The checkout the run works in, whose graph is read on every call.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub checkout: Option<PathBuf>,
-  /// The data root and the archive the run reads.
+  /// The data root the run reads.
   pub data_root: PathBuf,
-  pub archive: PathBuf,
+  /// The archive address its tools read, where the issuer names one.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub archive: Option<PathBuf>,
   /// A resident program's place, where each call reads which run is going.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub place: Option<PathBuf>,

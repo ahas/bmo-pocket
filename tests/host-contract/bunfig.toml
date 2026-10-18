@@ -1,0 +1,3 @@
+[test]
+# The contract tests hold the built host to what a client reads of it; each makes its own scratch folders.
+root = "."

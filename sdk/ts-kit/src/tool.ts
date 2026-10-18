@@ -13,8 +13,9 @@ export interface Session {
   line: string;
   role?: string;
   capabilities: string[];
+  shown?: string[];
   dataRoot: string;
-  archive: string;
+  archive?: string;
   [field: string]: unknown;
 }
 

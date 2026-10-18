@@ -98,6 +98,9 @@ rather than ignored.
 | `BMO_ACCOUNTS_URL`, `BMO_ACCOUNTS_TOKEN_FILE`, `BMO_GRANT_LOCK` | the host | The account service it asks, the file holding its bearer token, and the grant lock's switch (「What the host calls」) |
 | `BMO_POCKET_SOURCE` | `bmo-pocket` | The source template a bare tool name is put from (「The CLI」) |
 
+- **The deployed host reads the host's variables from `env/pocket.env` under the data root,** where the deployment
+  writes them; its user unit names that file.
+
 ## The call protocol
 
 Version 1. The host starts a placed tool's run command in its placed folder, in a process group of its own, with a

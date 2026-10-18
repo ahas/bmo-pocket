@@ -22,6 +22,15 @@ fn a_record_reads_as_the_launcher_writes_it() {
     serde_json::from_value::<Session>(serde_json::to_value(&record).unwrap()).unwrap(),
     record
   );
+
+  // The entries it is shown by name are the issuer's, and a record names no archive where it has none.
+  let shown: Session = serde_json::from_value(json!({
+    "line": "worker", "capabilities": ["graph.read"], "dataRoot": "/data", "shown": ["worker/graph_get"],
+  }))
+  .unwrap();
+
+  assert!(shown.shown.contains("worker/graph_get") && shown.archive.is_none());
+  assert!(record.shown.is_empty() && record.archive.is_some());
 }
 
 #[test]
