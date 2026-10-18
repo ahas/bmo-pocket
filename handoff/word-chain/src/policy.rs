@@ -78,6 +78,8 @@ pub struct RoomWords {
   pub stop: Vec<String>,
   /// What may come before an offered opening word, besides the begin words.
   pub offer: Vec<String>,
+  /// What may close a player's name where a room names a game by it.
+  pub game: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

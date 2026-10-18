@@ -1,0 +1,35 @@
+# The rooms tests' word book and the words said in a room, each named by what it is to the game.
+
+[words]
+# The book: a train, a ticket, a leopard and a culprit, which nothing follows.
+train = "기차"
+ticket = "차표"
+leopard = "표범"
+culprit = "범인"
+# The syllables the train, the ticket and the leopard hand on.
+train_hands = "차"
+ticket_hands = "표"
+leopard_hands = "범"
+# Words said in a room: the join, begin, give-up and stop words, a begin word said loudly, the stop word naming a
+# player, and the join word naming two.
+join = "참가"
+begin = "시작"
+begin_loud = "시작!"
+give_up = "기권"
+stop = "끝말잇기 그만"
+stop_dave = "끝말잇기 그만 Dave"
+join_erin = "참가 Erin"
+join_dave = "참가 Dave"
+# Talk: a greeting, laughter, a word that is in no book, a moment asked for, and an agreement.
+hello = "안녕"
+laughter = "ㅋㅋㅋ"
+not_in_book = "표표"
+wait_a_moment = "잠깐 기다려"
+me_too = "나도 그래"
+# The begin word with an opening word after it.
+begin_leopard = "시작 표범!"
+
+[meanings]
+# What the ticket means, which is no basic word, and what the train means, a basic word.
+ticket = "차를 타기 위하여 사는 표."
+train = "기관차에 여객차나 화물차를 연결하여 궤도 위를 운행하는 차량."

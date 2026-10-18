@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "bmo": {
+      "description": "Whether the room's agent plays as the robot, and how hard; normal where not given.",
+      "enum": [
+        "off",
+        "easy",
+        "normal",
+        "hard",
+        null
+      ],
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "chat": {
+      "description": "The room, by chat id, where it is not this turn's own.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "manner": {
+      "description": "Refuse words nothing can follow, the game's one-hit words.",
+      "type": "boolean"
+    },
+    "no_loanwords": {
+      "description": "Refuse loanwords.",
+      "type": "boolean"
+    },
+    "seconds": {
+      "description": "A time limit on each move in seconds, 10 to 120, given only where the room asks for one; with none a turn waits for the player's word.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "starter": {
+      "description": "The sender id of the person who asked, who joins at once.",
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "starter_name": {
+      "description": "That person's name as the room shows it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "word": {
+      "description": "A word the asker already said to begin with: the game opens on it, and the player after them moves first. Where it cannot open a game, the service asks the asker in the room for another and opens on that.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "type": "object"
+}

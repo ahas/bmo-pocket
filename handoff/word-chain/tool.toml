@@ -1,0 +1,27 @@
+# The word chain's tool (docs/api.md, 「The tool」): a game opened in the room and the game of the person who asked
+# stopped, each carried to the service's control routes by `bmo-word-chain tool`.
+
+[tool]
+name = "word-chain"
+protocol = 1
+language = "rust"
+build = 'CARGO_TARGET_DIR="$BMO_CARGO_TARGET" cargo build --release --bin bmo-word-chain && cp "$BMO_CARGO_TARGET/release/bmo-word-chain" "$BMO_TOOL_OUT/"'
+check = "cargo test"
+run = ["bmo-word-chain", "tool"]
+timeout = 30
+
+[[entry]]
+namespace = "bmo"
+name = "word_chain_start"
+description = "Open a word-chain game in the room, beside any game already standing there: the service recruits players, judges every move from its word book and announces turns and scores itself. Refused where the asker is already in a game."
+input = "word_chain_start.json"
+hints = { open_world = true }
+capabilities = ["room.tools"]
+
+[[entry]]
+namespace = "bmo"
+name = "word_chain_stop"
+description = "Stop the word-chain game the person who asked is in; the service announces its scores so far. Other games in the room go on."
+input = "word_chain_stop.json"
+hints = { open_world = true }
+capabilities = ["room.tools"]

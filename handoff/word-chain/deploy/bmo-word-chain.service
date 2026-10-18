@@ -1,0 +1,14 @@
+[Unit]
+Description=Word chain: the games in the rooms, read off the receiver's events and said through it
+# docs/word-chain.md.
+
+[Service]
+WorkingDirectory=%h/.local/share/bmo-word-chain/deploy
+ExecStart=%h/.local/share/bmo-word-chain/deploy/bin/bmo-word-chain --data-root %h/.local/share/bmo/data serve
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+# The repository's one service, linked and restarted by every deployment, whose health the deployment waits on.
+X-BMO-Deploy=bot

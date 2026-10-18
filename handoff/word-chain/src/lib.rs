@@ -1,12 +1,20 @@
-//! The word chain as a game (docs/word-chain.md): the Hangul arithmetic, the word book a game judges by and its
-//! robot plays from, its installation, and the game itself — players, turns, judging, rounds, scores and the
-//! robot. It names no room, road or agent: whoever hosts a game says how each event reads, and keeps its time.
+//! The word chain (docs/word-chain.md): the game itself — players, turns, judging, rounds, scores and the robot —
+//! with its Hangul arithmetic and the word book it judges by; the games standing in the rooms and what each says,
+//! as codes; the service that reads the rooms' messages and says the games' lines; its control routes; and the
+//! tool that reaches them. No agent, room or road is named in code: who the robot is, where lines go and how they
+//! read are the configuration's and the other units'.
 
 pub mod book;
+pub mod config;
+pub mod control;
 pub mod game;
 pub mod hangul;
 pub mod install;
+pub mod lines;
 pub mod policy;
+pub mod rooms;
+pub mod serve;
+pub mod tool;
 
 pub use book::{ChainRules, SqliteWordBook, WordBook, WordEntry, WordMeaning, openings_after};
 pub use game::{
