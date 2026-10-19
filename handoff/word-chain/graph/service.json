@@ -1,0 +1,60 @@
+[
+  {
+    "id": "service/rooms",
+    "title": "Games in the rooms",
+    "what": "The games standing in each room, a room message read as a move while one stands, and each step said as a code with its fields for the web language pack to render. Lives in src/rooms.rs and lines.rs.",
+    "files": [
+      "src/rooms.rs",
+      "src/lines.rs",
+      "docs/word-chain.md",
+      "tests/rooms.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "game/rules",
+      "game/word-book"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "service/serve",
+    "title": "Word chain service",
+    "what": "The resident service: the receiver event stream read for room messages, lines rendered by bmo-web and said through the receiver, and the control routes that open and stop games. Lives in src/serve.rs, control.rs and config.rs.",
+    "files": [
+      "src/serve.rs",
+      "src/control.rs",
+      "src/config.rs",
+      "src/main.rs",
+      "docs/api.md",
+      "deploy/bmo-word-chain.service",
+      "testbed.toml",
+      "tests/service.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "service/rooms"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "service/tool",
+    "title": "Word chain tool",
+    "what": "The tool the tool host serves on protocol 1: word_chain_start and word_chain_stop carried to the service control routes. Lives in src/tool.rs and tool.toml.",
+    "files": [
+      "src/tool.rs",
+      "tool.toml",
+      "word_chain_start.json",
+      "word_chain_stop.json",
+      "docs/api.md",
+      "tests/service.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "service/serve"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  }
+]

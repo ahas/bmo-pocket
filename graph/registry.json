@@ -1,0 +1,37 @@
+[
+  {
+    "id": "registry/pocket-cli",
+    "title": "bmo pocket put, take and list",
+    "what": "The bmo-pocket command: a tool put from a folder, a git address or a bare name, its manifest, name clash and asked permissions checked, built or copied into a new version and pointed at; a tool taken; the registry listed. Lives in host/src/install.rs.",
+    "files": [
+      "host/src/install.rs",
+      "host/src/bin/bmo-pocket.rs",
+      "docs/registry.md",
+      "docs/api.md",
+      "host/tests/registry.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "registry/pointers",
+      "sdk/contract"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "registry/pointers",
+    "title": "Tool registry",
+    "what": "One pointer file per registered tool under the data root tool-host/registry, naming the immutable version folder under tool-host/tools the host serves, written atomically under the registry lock. Lives in host/src/registry.rs.",
+    "files": [
+      "host/src/registry.rs",
+      "docs/registry.md",
+      "host/tests/registry.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  }
+]

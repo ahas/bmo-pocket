@@ -12,6 +12,7 @@ unit renders. Its tool opens and stops a game; the tool host serves it.
 |---|---|
 | `deploy/` | the service's user unit, `bmo-word-chain.service`, which a deployment links from the deploy tree |
 | `docs/` | the canonical documents: the game in a room (`word-chain.md`) and the boundary every other unit matches (`api.md`) |
+| `graph/` | the code dependency graph: one node per feature with its files and what it reads or calls, written only by `bmo graph` |
 | `policy/` | what a game is played by: the words a room says, the times, the points, the initial-sound rule and the word book's sources |
 | `src/` | the game, the word book, the games in the rooms and their lines, the service, its control routes and the tool |
 | `tests/` | the tests, and the Korean they play with as fixtures under `tests/fixtures/` |

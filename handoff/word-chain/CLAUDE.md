@@ -20,6 +20,8 @@ unit and the tool host are reached over their documented APIs (`docs/api.md`).
   commits; the robot's name and the agent a game's lines are said as are the configuration's.
 - **Tests live in `tests/`.** No test module sits in `src/`.
 - **Documents state what is true now**: no change history, no quoted source and no file-and-line pins.
+- **`graph/` is the code dependency graph**, written only by `bmo graph` run with `BMO_SOURCE_DIR` naming this
+  checkout. A commit that moves a feature's files, symbols or edges brings its node along in the same commit.
 
 ## Checks
 

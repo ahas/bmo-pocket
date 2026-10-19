@@ -27,6 +27,8 @@ name; it reads their manifests.
 - **No directory named after its parent** (no `x/x`), **no folder named for a language**, and **only Cargo
   manifests at the root**: the root `Cargo.toml` is the workspace and the repository's own package.
 - **Documents state what is true now**: no change history, no quoted source and no file-and-line pins.
+- **`graph/` is the code dependency graph**, written only by `bmo graph` run with `BMO_SOURCE_DIR` naming this
+  checkout. A commit that moves a feature's files, symbols or edges brings its node along in the same commit.
 
 ## Checks
 
@@ -36,7 +38,9 @@ A change moves through three stages in order:
 2. Review: read the whole diff against what the change is for and the document governing it, then
    `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all --check` (108 columns,
    2-space indentation, as `rustfmt.toml` sets).
-3. Verification: the test targets the change touched, then `cargo test --workspace` once.
+3. Verification: the test targets the change touched, then the whole suite once: `cargo test --workspace`, and
+   `bun test` in `sdk/ts-kit/` and in `tests/host-contract/`. The host-contract test runs only where
+   `BMO_LIVE_CLAUDE` names an installed Claude Code CLI, and skips elsewhere.
 
 The version is the workspace's, in semver. `testbed.toml` is the testbed's declaration: how it tests, checks,
 builds and deploys the repository.

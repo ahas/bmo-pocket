@@ -1,0 +1,56 @@
+[
+  {
+    "id": "sdk/contract",
+    "title": "Tool contract (bmo-tool)",
+    "what": "The crate every tool and the host are written to: the tool.toml manifest, the call protocol on standard input and the call-back socket, the session record, answers and their ceiling. Lives in sdk/contract.",
+    "files": [
+      "sdk/contract/src/lib.rs",
+      "sdk/contract/src/manifest.rs",
+      "sdk/contract/src/protocol.rs",
+      "sdk/contract/src/session.rs",
+      "sdk/contract/src/answer.rs",
+      "sdk/contract/src/ceiling.rs",
+      "sdk/contract/src/input.rs",
+      "sdk/contract/src/kept.rs",
+      "sdk/contract/src/resources.rs",
+      "sdk/contract/src/tool.rs",
+      "sdk/contract/tests/contract/main.rs",
+      "docs/api.md"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "sdk/py-kit",
+    "title": "Python tool kit",
+    "what": "The helper a Python tool reads its call and answers it with, and asks another entry through the call-back socket, on protocol 1. Lives in sdk/py-kit.",
+    "files": [
+      "sdk/py-kit/src/bmo_tool.py",
+      "sdk/py-kit/pyproject.toml"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "sdk/ts-kit",
+    "title": "TypeScript tool kit",
+    "what": "The helper a TypeScript tool reads its call and answers it with, and asks another entry through the call-back socket, on protocol 1. Lives in sdk/ts-kit.",
+    "files": [
+      "sdk/ts-kit/src/tool.ts",
+      "sdk/ts-kit/tests/tool.test.ts",
+      "sdk/ts-kit/package.json"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  }
+]

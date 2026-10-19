@@ -1,0 +1,142 @@
+[
+  {
+    "id": "host/catalogue",
+    "title": "Placed tool catalogue",
+    "what": "The tools the host serves, read from each tools root folder and from the registry pointers, reread when either changes so a put or take shows from the next call; retired versions swept once no call holds them. Lives in host/src/placed.rs.",
+    "files": [
+      "host/src/placed.rs",
+      "host/tests/units/placed.rs",
+      "docs/mcp-host.md"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "registry/pointers",
+      "sdk/contract"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "host/grant-lock",
+    "title": "Grant lock",
+    "what": "Beneath the agent, a tool that acts runs only where the sender holds the room relation it declares, and a job for another user only where that user holds its capabilities, asked of bmo-web. Lives in host/src/lock.rs.",
+    "files": [
+      "host/src/lock.rs",
+      "host/src/unix_http.rs",
+      "docs/mcp-host.md"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "host/namespaces",
+    "title": "Namespace serving",
+    "what": "One namespace of tools as the MCP protocol serves it to a session: entries the record names in shown listed by name, the rest booked into the toolbook, each call checked by the grant lock. Lives in host/src/handler.rs and residency.rs.",
+    "files": [
+      "host/src/handler.rs",
+      "host/src/residency.rs",
+      "host/tests/units/handler.rs",
+      "host/tests/units/residency.rs",
+      "docs/toolbook.md"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "host/catalogue",
+      "host/tool-runner",
+      "host/grant-lock",
+      "host/session-records",
+      "host/problem-details"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "host/problem-details",
+    "title": "Host HTTP refusals",
+    "what": "The RFC 7807 problem details the host answers before a request reaches a tool, each with an urn:sumida:error code. Lives in host/src/error.rs.",
+    "files": [
+      "host/src/error.rs",
+      "host/tests/units/error.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "host/server",
+    "title": "Tool host",
+    "what": "The mcp-host process: every namespace and the toolbook on the loopback port behind each session bearer token, and the control socket launchers issue tokens on. Lives in host/src/server.rs and main.rs.",
+    "files": [
+      "host/src/server.rs",
+      "host/src/main.rs",
+      "host/src/lib.rs",
+      "docs/mcp-host.md",
+      "deploy/bmo-mcp-host.service",
+      "host/tests/host.rs",
+      "tests/host-contract/mcp-header.test.ts"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "host/namespaces",
+      "host/toolbook",
+      "host/session-records",
+      "host/catalogue",
+      "host/problem-details"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "host/session-records",
+    "title": "Session records",
+    "what": "The records sessions are served by, issued and revoked on the control socket, one owner-only file each named by its token hash and read back at start. Lives in host/src/records.rs.",
+    "files": [
+      "host/src/records.rs",
+      "host/tests/units/records.rs",
+      "docs/mcp-host.md"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "host/tool-runner",
+    "title": "Tool runner",
+    "what": "How a placed tool is run: a process per call handed its call on standard input, or one MCP server per record, each in a clean environment with its own call-back socket and its shared helpers. Lives in host/src/running.rs.",
+    "files": [
+      "host/src/running.rs",
+      "host/tests/units/running.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "host/catalogue",
+      "sdk/contract"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "host/toolbook",
+    "title": "Toolbook",
+    "what": "The server every line is handed beside its namespaces, listing, describing and calling the tools a session holds that its namespaces do not list, by the same dispatch a direct call takes. Lives in host/src/toolbook.rs.",
+    "files": [
+      "host/src/toolbook.rs",
+      "host/tests/units/toolbook.rs",
+      "docs/toolbook.md"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "host/namespaces"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  }
+]

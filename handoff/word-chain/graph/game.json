@@ -1,0 +1,39 @@
+[
+  {
+    "id": "game/rules",
+    "title": "Word chain game",
+    "what": "One game among a room and an optional robot: turns, judging a move by the word book, the Hangul last-syllable and initial-sound rule, rounds and scores, said as events. Lives in src/game.rs, hangul.rs and policy.rs.",
+    "files": [
+      "src/game.rs",
+      "src/hangul.rs",
+      "src/policy.rs",
+      "policy/word-chain.toml",
+      "docs/word-chain.md",
+      "tests/game.rs",
+      "tests/hangul.rs"
+    ],
+    "symbols": [],
+    "aliases": [
+      "끝말잇기"
+    ],
+    "needs": [],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "game/word-book",
+    "title": "Word book",
+    "what": "The SQLite word book a game judges by, installed out of the KKuTu word list and the NIKL dictionaries into word-chain/ko.sqlite, and a word looked up in it. Lives in src/install.rs and book.rs.",
+    "files": [
+      "src/install.rs",
+      "src/book.rs",
+      "docs/word-chain.md",
+      "tests/install.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "game/rules"
+    ],
+    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  }
+]
