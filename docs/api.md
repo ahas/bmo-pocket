@@ -267,8 +267,7 @@ What another repository's own boundary must gain for this one to stand on it, ea
   name, in the record it posts to `POST /sessions`; without it every session is shown its tools through the
   toolbook alone.
 - **bmo-web:** name the tool host among the callers of its account service in `docs/accounts.md` (「Where it
-  answers」), as the caller of `GET /accounts/model`, `POST /checks/object` and `POST /checks/message`; and render
-  the word chain's codes through `POST /words/render` beside the receiver's fixed lines.
+  answers」), as the caller of `GET /accounts/model`, `POST /checks/object` and `POST /checks/message`.
 - **bmo-explorer:** take `web/site-reach`, `web/web-layer`, `web/web-forms`, the web helper `tools/_shared/web` and
   the parity test `tool-host/mcp-host-tests/site-placed.test.ts` of the old repository, the web helper as a shared
   helper registered like any tool.
@@ -282,4 +281,6 @@ What another repository's own boundary must gain for this one to stand on it, ea
   for the queue's and the graph's tools.
 - **The shared text library, which no unit owns yet:** `markup/markup/answer-cap-cases.json` and its TypeScript
   twin; this repository holds its own copy of the cases its answer ceiling is tested on.
-- **bmo-receiver:** how a word-chain move is marked taken, so a move is not woken on as any other message is.
+
+The word chain tool is a repository of its own, `bmo-word-chain`, and what it needs of its siblings stands in that
+repository's boundary document.
