@@ -1,0 +1,22 @@
+[package]
+name = "bmo-pocket-client"
+description = "The tool host's control socket as a caller reaches it: its wire types, one call per route, and the OpenAPI document generated from them."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The session record a caller issues, which the tool contract defines.
+bmo-tool = { path = "../sdk/contract" }
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+strum.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+# A route's path segments and query, encoded.
+url.workspace = true

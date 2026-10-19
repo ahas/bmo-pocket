@@ -7,6 +7,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use bmo_pocket_client::{CatalogueEntry, ReachedBy};
 use bmo_tool::manifest::Entry as Declared;
 use bmo_tool::protocol::Asked;
 use bmo_tool::{Answer, Held, Hints, Session, narrowed};
@@ -55,8 +56,8 @@ pub struct Entry {
 }
 
 impl Entry {
-  // Its declaration in its tool's manifest.
-  fn declared(&self) -> &Declared {
+  /// Its declaration in its tool's manifest.
+  pub fn declared(&self) -> &Declared {
     &self.tool.manifest.entries[self.at]
   }
 
@@ -163,19 +164,46 @@ impl Entry {
     }
   }
 
-  /// One line of the catalogue a person reads: its full name, how it is reached and what it asks.
-  pub fn catalogued(&self) -> Value {
-    json!({
-      "name": self.full_name(),
-      "readOnly": self.read_only(),
-      "reachedBy": if self.read_only() { "call" } else { "act" },
-      "capabilities": self.capabilities(),
-      "grant": self.grant(),
-      "system": self.system(),
-      "resident": self.resident(),
-      "placed": self.tool.folder,
-      "description": self.description(),
-    })
+  /// The icon its manifest declares for it.
+  pub fn icon(&self) -> Option<String> {
+    self.declared().facts.as_ref().and_then(|facts| facts.icon.clone())
+  }
+
+  /// One entry of the catalogue: its full name, how it is reached, what it asks and its icon; its schedules are
+  /// the schedules' to add.
+  pub fn catalogued(&self) -> CatalogueEntry {
+    CatalogueEntry {
+      name: self.full_name(),
+      read_only: self.read_only(),
+      reached_by: if self.read_only() { ReachedBy::Call } else { ReachedBy::Act },
+      capabilities: self.capabilities(),
+      grant: self.grant(),
+      system: self.system(),
+      resident: self.resident(),
+      placed: self.tool.folder.clone(),
+      description: self.description(),
+      icon: self.icon(),
+      schedules: Vec::new(),
+    }
+  }
+}
+
+/// Why the host did not hand a call's answer on: the arguments do not fit, the grant lock refused, or the tool
+/// failed before answering a tool result. A session's model reads each as a failed tool result; the control socket
+/// answers each by its status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refusal {
+  Misfit(String),
+  Denied(String),
+  Failed(String),
+}
+
+impl Refusal {
+  /// The sentence it is said with.
+  pub fn said(&self) -> &str {
+    match self {
+      Self::Misfit(said) | Self::Denied(said) | Self::Failed(said) => said,
+    }
   }
 }
 
@@ -276,8 +304,8 @@ pub fn misfits(schema: &Value, arguments: &Value) -> Vec<String> {
 }
 
 /// A placed tool's answer to a call, held to the protocol's shape: one that does not read as a tool result
-/// is a failed call.
-pub fn as_result(value: Value) -> Value {
+/// is a failed call, said why.
+pub fn checked_result(value: Value) -> Result<Value, String> {
   let mut checked = value.clone();
 
   if let Some(result) = checked.as_object_mut() {
@@ -285,9 +313,15 @@ pub fn as_result(value: Value) -> Value {
   }
 
   match serde_json::from_value::<CallToolResult>(checked) {
-    Ok(_) => value,
-    Err(why) => failed(format!("its answer is not a tool result: {why}")),
+    Ok(_) => Ok(value),
+    Err(why) => Err(format!("its answer is not a tool result: {why}")),
   }
+}
+
+/// A placed tool's answer to a call as a session reads it: one that does not read as a tool result is a failed
+/// call.
+pub fn as_result(value: Value) -> Value {
+  checked_result(value).unwrap_or_else(failed)
 }
 
 impl Host {
@@ -361,21 +395,21 @@ impl Host {
     self.placed.current().namespaces()
   }
 
-  /// One call of a tool the session holds, answered as a tool result: its arguments checked against its
-  /// schema in the form held, the grant its requester must hold, then the tool, whose answer goes back
-  /// unchanged.
-  pub async fn answer(
+  /// One call of a tool the session holds: its arguments checked against its schema in the form held, the grant
+  /// its requester must hold, then the tool, whose tool result goes back unchanged; or why the host did not hand
+  /// one on.
+  pub async fn attempt(
     self: &Arc<Self>,
     entry: &Entry,
     session: &Session,
     arguments: Value,
-  ) -> Result<Value, ErrorData> {
+  ) -> Result<Value, Refusal> {
     let arguments = if arguments.is_null() { json!({}) } else { arguments };
     let schema = entry.input_schema();
     let wrong = misfits(&schema, &arguments);
 
     if !wrong.is_empty() {
-      return Ok(failed(format!(
+      return Err(Refusal::Misfit(format!(
         "{} was not called: its arguments do not fit its schema.\n{}\nIts schema: {schema}",
         entry.full_name(),
         wrong.iter().map(|one| format!("- {one}")).collect::<Vec<_>>().join("\n"),
@@ -385,19 +419,32 @@ impl Host {
     let capabilities = entry.capabilities();
     let named: Vec<&str> = capabilities.iter().map(String::as_str).collect();
 
-    if let Err(refusal) = self.lock.permits(session, entry.grant().as_deref(), &named, &arguments).await {
-      return Ok(failed(refusal));
-    }
+    self
+      .lock
+      .permits(session, entry.grant().as_deref(), &named, &arguments)
+      .await
+      .map_err(Refusal::Denied)?;
 
     let asked = Asked::Call {
       entry: entry.full_name(),
       arguments,
     };
 
-    Ok(match ask(self, &entry.tool, Some(entry.declared()), session, asked).await {
-      Ok(value) => as_result(value),
-      Err(why) => failed(format!("{} failed: {why}", entry.full_name())),
-    })
+    match ask(self, &entry.tool, Some(entry.declared()), session, asked).await {
+      Ok(value) => checked_result(value).map_err(Refusal::Failed),
+      Err(why) => Err(Refusal::Failed(format!("{} failed: {why}", entry.full_name()))),
+    }
+  }
+
+  /// One call of a tool the session holds, answered as a tool result, the host's refusal among them as a failed
+  /// one.
+  pub async fn answer(
+    self: &Arc<Self>,
+    entry: &Entry,
+    session: &Session,
+    arguments: Value,
+  ) -> Result<Value, ErrorData> {
+    Ok(self.attempt(entry, session, arguments).await.unwrap_or_else(|refusal| failed(refusal.said())))
   }
 
   /// One call of a tool the session holds, as the protocol answers it.

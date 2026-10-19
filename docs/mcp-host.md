@@ -23,6 +23,7 @@ flowchart TD
   Host -->|a call, its record on standard input| Exe[a placed tool's executable]
   Exe -->|call-back socket of the call| Host
   Host -->|grant checks| Accounts[the account service]
+  Host -->|a schedule due, under a record of its own| Exe
 ```
 
 ## Namespaces and capabilities
@@ -216,6 +217,30 @@ flowchart TD
   catalogue as the system does, entries for the system alone included (`docs/api.md`, 「The control socket」). A
   call through `/calls` is made under the record it carries, as a session's call is, and what that record's tools
   kept ends as the call answers.
+- **The control socket answers its refusals by status,** in the common error shape: a call through `/calls` that
+  the host refuses or that fails before the tool answers is a non-2xx status naming why, where a session's call is
+  answered the same refusal as a failed tool result for its model to read.
+- **Each catalogue entry carries its icon and its schedules** with where each stands, so a reader of the catalogue
+  needs no second route for either.
+
+### Schedules
+
+- **A tool declares when its entry is called,** in the entry's `[[entry.schedule]]` tables, each a cron pattern and
+  the arguments the call is handed (`docs/api.md`, 「Schedules」). The host names no schedule of its own and knows no
+  tool that has one: it reads every placed manifest's schedules as it reads the catalogue.
+- **The host keeps every schedule of the catalogue as it stands.** A beat each second — or what `--schedule-every-ms`
+  names — reads the catalogue's schedules; a schedule newly seen, or whose pattern or arguments changed, is next due
+  at its pattern's first time after that beat, and one whose entry has left the catalogue is dropped.
+- **A schedule due is called once,** at the first beat at or past its time, and is then due at its pattern's next
+  time after that beat. So a beat that comes late calls it once, never once per time it passed, and a time that
+  passed while the host was not running is not made up.
+- **One call of a schedule runs at a time:** a time that comes while its last call still runs is passed over.
+- **A scheduled call is dispatched as `/calls` dispatches one,** through the schema, capability and grant checks,
+  under a record of its own made for that call: the line `schedule`, the entry's capabilities, the host's data root
+  and a turn no person's message opened. What that record's tools kept ends as the call answers.
+- **What a schedule stands at is kept in the host's process alone:** when it is next due, when its last call was
+  made, why that call failed where it did, and whether one runs. The catalogue answers it; a failure is said in the
+  host's log as well. A restart begins every schedule afresh.
 
 ## What a namespace says of itself
 
@@ -305,6 +330,10 @@ flowchart TD
   toolbook's `list` changes (`docs/registry.md`).
 - **The control socket:** an entry for the system alone is shown to no session and called through `/calls`;
   `/claims` names the entry whose manifest claims an address's host and whose executable claims the address, and
-  none for one no entry claims.
+  none for one no entry claims; every route answers as `docs/openapi.json` states it, each refusal by status with
+  its code, and the catalogue is paged by its cursor and carries each entry's icon and schedules.
+- **Schedules:** a schedule is due at its pattern's first time after it is seen, is called once at a beat past it
+  with its arguments under a record of its own, is passed over while its last call runs, begins afresh when its
+  pattern changes and is dropped with its entry; its last failure is kept and said.
 - **The CLI's header:** an installed Claude Code CLI, named by `BMO_LIVE_CLAUDE`, connects to the host with the
   header read from `BMO_MCP_TOKEN` and fails with a wrong one; the suite names none and skips it.

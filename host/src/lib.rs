@@ -10,6 +10,6 @@ pub mod records;
 pub mod registry;
 pub mod residency;
 pub mod running;
+pub mod schedule;
 pub mod server;
 pub mod toolbook;
-pub mod unix_http;

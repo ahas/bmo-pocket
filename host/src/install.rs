@@ -286,6 +286,9 @@ pub fn put(registry: &Registry, asked: &Put, said: &mut Vec<String>) -> Result<(
 
   said.extend(capabilities.iter().map(|one| format!("{name} asks for the capability {one}")));
   said.extend(grants.iter().map(|one| format!("{name} asks for the grant {one}")));
+  said.extend(manifest.entries.iter().flat_map(|entry| {
+    entry.schedule.iter().map(|schedule| format!("{name} has the host call {} at `{}`", entry.full_name(), schedule.cron))
+  }));
 
   let missing: Vec<&String> = capabilities
     .iter()

@@ -4,21 +4,25 @@
 use std::sync::Arc;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, Request, State};
+use axum::extract::rejection::QueryRejection;
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, delete, get, post};
 use axum::{Json, Router};
+use bmo_pocket_client::{
+  CallRequest, CatalogueEntry, CatalogueQuery, ClaimRequest, Claimed, DescribedEntry, Issued,
+};
 use bmo_tool::Session;
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::error::HostError;
-use crate::handler::{Handler, Host, unknown};
+use crate::handler::{Entry, Handler, Host, Refusal};
 use crate::records::Records;
+use crate::schedule::{Schedules, now_ms};
 use crate::toolbook::{TOOLBOOK, Toolbook, described};
 
 // The token a request carries, as `Authorization: Bearer <token>`.
@@ -103,24 +107,23 @@ pub fn tools(records: Arc<Records>, host: Arc<Host>) -> Router {
     .layer(middleware::from_fn_with_state(records, authorise))
 }
 
-// What the control socket stands on: the records, and the host it asks for the catalogue.
+// What the control socket stands on: the records, the host it asks for the catalogue, and the schedules each
+// catalogue entry carries.
 #[derive(Clone)]
 struct Control {
   records: Arc<Records>,
   host: Arc<Host>,
+  schedules: Arc<Schedules>,
 }
 
-async fn issue(
-  State(Control { records, .. }): State<Control>,
-  body: Bytes,
-) -> Result<Json<serde_json::Value>, HostError> {
+async fn issue(State(Control { records, .. }): State<Control>, body: Bytes) -> Result<Json<Issued>, HostError> {
   let session: Session = serde_json::from_slice(&body).map_err(|why| {
     eprintln!("mcp-host: a session record was refused: {why}");
     HostError::MalformedRecord(why.to_string())
   })?;
   let token = records.issue(session).map_err(|why| HostError::Unwritable(why.to_string()))?;
 
-  Ok(Json(json!({ "token": token })))
+  Ok(Json(Issued { token }))
 }
 
 async fn revoke(
@@ -136,95 +139,153 @@ async fn revoke(
   Ok(StatusCode::NO_CONTENT)
 }
 
-// A namespace's listing: each placed entry's line in its order; none where no entry writes one.
+// A namespace's listing: each placed entry's line in its order; refused where no entry writes one.
 async fn listing(
   State(Control { host, .. }): State<Control>,
   Path(namespace): Path<String>,
-) -> Result<String, StatusCode> {
-  host.listing(&namespace).ok_or(StatusCode::NOT_FOUND)
+) -> Result<String, HostError> {
+  host.listing(&namespace).ok_or(HostError::NoListing(namespace))
 }
 
-// What a namespace's owners say of it beside its tools; none where nothing is said.
+// What a namespace's owners say of it beside its tools; refused where no entry is declared under it.
 async fn facts(
   State(Control { host, .. }): State<Control>,
   Path(namespace): Path<String>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-  host.facts(&namespace).map(Json).ok_or(StatusCode::NOT_FOUND)
+) -> Result<Json<Value>, HostError> {
+  host.facts(&namespace).map(Json).ok_or(HostError::UnknownNamespace(namespace))
 }
 
-// Every entry the host serves, as a person reads the catalogue.
-async fn catalogue(State(Control { host, .. }): State<Control>) -> Json<Value> {
-  Json(Value::Array(host.every().iter().map(|entry| entry.catalogued()).collect()))
+impl Control {
+  // An entry as the catalogue answers it: its schedules with where each stands.
+  fn catalogued(&self, entry: &Entry, now: i64) -> CatalogueEntry {
+    let mut said = entry.catalogued();
+
+    said.schedules = self.schedules.of(entry, now);
+    said
+  }
+}
+
+/// The page of entries a cursor and a limit name, out of every entry in order of full name: those after the
+/// cursor from the nearest on, or the nearest before it in that same order; refused for two cursors at once or a
+/// limit of none.
+pub fn page<T>(
+  mut every: Vec<T>,
+  name: impl Fn(&T) -> String,
+  asked: &CatalogueQuery,
+) -> Result<Vec<T>, String> {
+  if asked.after.is_some() && asked.before.is_some() {
+    return Err("a page takes one cursor, `after` or `before`, not both".to_owned());
+  }
+
+  if asked.limit == Some(0) {
+    return Err("`limit` is a positive integer".to_owned());
+  }
+
+  let limit = asked.limit.map_or(usize::MAX, |limit| limit as usize);
+
+  every.sort_by_key(&name);
+
+  if let Some(before) = &asked.before {
+    every.retain(|one| name(one) < *before);
+
+    let from = every.len().saturating_sub(limit);
+
+    return Ok(every.split_off(from));
+  }
+
+  if let Some(after) = &asked.after {
+    every.retain(|one| name(one) > *after);
+  }
+
+  every.truncate(limit);
+  Ok(every)
+}
+
+// A page of every entry the host serves, as a person reads the catalogue.
+async fn catalogue(
+  State(control): State<Control>,
+  asked: Result<Query<CatalogueQuery>, QueryRejection>,
+) -> Result<Json<Vec<CatalogueEntry>>, HostError> {
+  let Query(asked) = asked.map_err(|why| HostError::MalformedRequest(why.body_text()))?;
+  let now = now_ms();
+  let entries =
+    page(control.host.every(), Entry::full_name, &asked).map_err(HostError::MalformedRequest)?;
+
+  Ok(Json(entries.iter().map(|entry| control.catalogued(entry, now)).collect()))
 }
 
 // One entry described, its schemas with it.
 async fn entry(
-  State(Control { host, .. }): State<Control>,
+  State(control): State<Control>,
   Path((namespace, name)): Path<(String, String)>,
-) -> Result<Json<Value>, StatusCode> {
+) -> Result<Json<DescribedEntry>, HostError> {
   let full = format!("{namespace}/{name}");
-  let found = host
+  let found = control
+    .host
     .every()
     .into_iter()
     .find(|entry| entry.full_name() == full)
-    .ok_or(StatusCode::NOT_FOUND)?;
-  let mut said = found.catalogued();
+    .ok_or(HostError::UnknownEntry(full))?;
 
-  said["described"] = described(&found).into();
-  said["inputSchema"] = found.input_schema();
-  said["outputSchema"] = found.output_schema().unwrap_or(Value::Null);
-
-  Ok(Json(said))
+  Ok(Json(DescribedEntry {
+    entry: control.catalogued(&found, now_ms()),
+    described: described(&found),
+    input_schema: found.input_schema(),
+    output_schema: found.output_schema(),
+  }))
 }
 
-#[derive(Deserialize)]
-struct Called {
-  session: Session,
-  tool: String,
-  #[serde(default)]
-  arguments: Value,
-}
-
-// A call under the record it carries, as a session's call is dispatched, entries for the system included.
+// A call under the record it carries, as a session's call is dispatched, entries for the system included; each
+// refusal of the host's answered by its status, and the tool's own result as it answered it.
 async fn call(State(Control { host, .. }): State<Control>, body: Bytes) -> Result<Json<Value>, HostError> {
-  let called: Called =
-    serde_json::from_slice(&body).map_err(|why| HostError::MalformedRecord(why.to_string()))?;
+  let called: CallRequest =
+    serde_json::from_slice(&body).map_err(|why| HostError::MalformedRequest(why.to_string()))?;
   let Some(found) = host.find_full(&called.session, &called.tool, true) else {
-    return Ok(Json(crate::running::failed(unknown(&called.tool))));
+    return Err(HostError::UnknownEntry(called.tool));
   };
-  let answer = host
-    .answer(&found, &called.session, called.arguments)
-    .await
-    .unwrap_or_else(|why| crate::running::failed(why.message));
+  let arguments = called.arguments.map_or(Value::Null, Value::Object);
+  let answer = host.attempt(&found, &called.session, arguments).await;
 
   called.session.kept.close().await;
-  Ok(Json(answer))
-}
 
-#[derive(Deserialize)]
-struct Claimed {
-  session: Session,
-  address: String,
+  match answer {
+    Ok(result) => Ok(Json(result)),
+    Err(Refusal::Misfit(why)) => Err(HostError::ArgumentsMisfit(why)),
+    Err(Refusal::Denied(why)) => Err(HostError::GrantRefused(why)),
+    Err(Refusal::Failed(why)) => Err(HostError::ToolFailed(why)),
+  }
 }
 
 // Which entry the record it carries holds claims an address, as the call-back socket's claim is answered.
-async fn claim(State(Control { host, .. }): State<Control>, body: Bytes) -> Result<Json<Value>, HostError> {
-  let claimed: Claimed =
-    serde_json::from_slice(&body).map_err(|why| HostError::MalformedRecord(why.to_string()))?;
+async fn claim(State(Control { host, .. }): State<Control>, body: Bytes) -> Result<Json<Claimed>, HostError> {
+  let claimed: ClaimRequest =
+    serde_json::from_slice(&body).map_err(|why| HostError::MalformedRequest(why.to_string()))?;
   let answer = host.claim(&claimed.session, &claimed.address).await;
 
   claimed.session.kept.close().await;
-  Ok(Json(answer))
+  Ok(Json(Claimed {
+    entry: answer["entry"].as_str().map(str::to_owned),
+    arguments: answer.get("arguments").cloned().filter(|arguments| !arguments.is_null()),
+  }))
 }
 
 async fn health() -> Response<Body> {
   Response::new(Body::from("ok"))
 }
 
+async fn unknown_route(uri: Uri) -> HostError {
+  HostError::UnknownRoute(uri.path().to_owned())
+}
+
+async fn method_not_allowed() -> HostError {
+  HostError::MethodNotAllowed
+}
+
 /// The control socket: a record issued and its token answered, a token revoked and what its tools kept
-/// ended, a namespace's listing and what its owners say of it, the catalogue, a call made through it and which
-/// entry claims an address, and a health check.
-pub fn control(records: Arc<Records>, host: Arc<Host>) -> Router {
+/// ended, a namespace's listing and what its owners say of it, a page of the catalogue and one entry of it, a
+/// call made through it and which entry claims an address, and a health check; any other path or method
+/// refused in the common error shape.
+pub fn control(records: Arc<Records>, host: Arc<Host>, schedules: Arc<Schedules>) -> Router {
   Router::new()
     .route("/sessions", post(issue))
     .route("/sessions/{token}", delete(revoke))
@@ -235,5 +296,11 @@ pub fn control(records: Arc<Records>, host: Arc<Host>) -> Router {
     .route("/calls", post(call))
     .route("/claims", post(claim))
     .route("/health", get(health))
-    .with_state(Control { records, host })
+    .fallback(unknown_route)
+    .method_not_allowed_fallback(method_not_allowed)
+    .with_state(Control {
+      records,
+      host,
+      schedules,
+    })
 }

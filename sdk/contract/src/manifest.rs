@@ -118,6 +118,22 @@ pub struct FactsPart {
   pub lists: BTreeMap<String, serde_json::Map<String, Value>>,
 }
 
+/// A time the host calls an entry by itself: a cron pattern, and the arguments each call is handed.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SchedulePart {
+  pub cron: String,
+  #[serde(default)]
+  pub arguments: serde_json::Map<String, Value>,
+}
+
+impl SchedulePart {
+  /// The pattern read, as the `croner` library reads a cron pattern; or why it does not read.
+  pub fn pattern(&self) -> Result<croner::Cron, String> {
+    self.cron.parse::<croner::Cron>().map_err(|why| why.to_string())
+  }
+}
+
 /// The hosts whose pages an entry claims.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -164,6 +180,9 @@ pub struct Entry {
   pub facts: Option<FactsPart>,
   #[serde(default)]
   pub claims: Option<ClaimsPart>,
+  /// The times the host calls it by itself.
+  #[serde(default)]
+  pub schedule: Vec<SchedulePart>,
   /// The input schema, read from its file.
   #[serde(skip)]
   pub input_schema: Value,
@@ -366,6 +385,12 @@ impl Manifest {
 
       if entry.unbounded && entry.timeout.is_some() {
         return Err(format!("{at}: it is unbounded and has a timeout"));
+      }
+
+      if let Some((schedule, why)) =
+        entry.schedule.iter().find_map(|schedule| Some((schedule, schedule.pattern().err()?)))
+      {
+        return Err(format!("{at}: its schedule `{}` does not read: {why}", schedule.cron));
       }
 
       for file in std::iter::once(&entry.input).chain(&entry.output) {

@@ -1,10 +1,9 @@
-//! What the host answers over HTTP before a request reaches a tool: RFC 7807 problem details with a
-//! machine-readable code (docs/api.md, 「A refusal over HTTP」), each case the host names with its own.
+//! What the host refuses and fails with over HTTP, on either face: a non-2xx status and the common error body of
+//! `code` and `error` (docs/api.md, 「Error codes」), each case the host names with its own code.
 
 use axum::Json;
-use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use serde_json::json;
+use bmo_pocket_client::{ErrorCode, WireError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -16,59 +15,66 @@ pub enum HostError {
   #[error("the token names no session")]
   UnknownToken,
   /// The path names a namespace no tool is shown under.
-  #[error("no namespace `{0}`")]
+  #[error("no entry is declared under the namespace `{0}`")]
   UnknownNamespace(String),
+  /// No entry of the namespace declares a listing line.
+  #[error("no entry of the namespace `{0}` declares a listing line")]
+  NoListing(String),
+  /// No entry of that full name, or none the record holds.
+  #[error("Tool {0} not found")]
+  UnknownEntry(String),
   /// What the launcher handed when asking for a token cannot be a session record.
   #[error("the session record is malformed: {0}")]
   MalformedRecord(String),
+  /// A body or a query that does not read as the route asks.
+  #[error("the request is malformed: {0}")]
+  MalformedRequest(String),
+  /// The arguments do not fit the entry's schema; the sentence is the dispatch's own.
+  #[error("{0}")]
+  ArgumentsMisfit(String),
+  /// The grant lock refused the call; the sentence is the lock's own.
+  #[error("{0}")]
+  GrantRefused(String),
+  /// The tool failed before it answered a tool result; the sentence names how.
+  #[error("{0}")]
+  ToolFailed(String),
   /// The host could not keep or take back a record on disk.
   #[error("the session record could not be written: {0}")]
   Unwritable(String),
+  /// A path the control socket does not serve.
+  #[error("no route `{0}`")]
+  UnknownRoute(String),
+  /// A method a served path does not take.
+  #[error("the path does not take this method")]
+  MethodNotAllowed,
 }
 
 impl HostError {
-  pub fn status_code(&self) -> StatusCode {
+  pub fn code(&self) -> ErrorCode {
     match self {
-      Self::NoToken | Self::UnknownToken => StatusCode::UNAUTHORIZED,
-      Self::UnknownNamespace(_) => StatusCode::NOT_FOUND,
-      Self::MalformedRecord(_) => StatusCode::BAD_REQUEST,
-      Self::Unwritable(_) => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-  }
-
-  pub fn error_code(&self) -> &'static str {
-    match self {
-      Self::NoToken => "mcp-host.no-token",
-      Self::UnknownToken => "mcp-host.unknown-token",
-      Self::UnknownNamespace(_) => "mcp-host.unknown-namespace",
-      Self::MalformedRecord(_) => "mcp-host.malformed-record",
-      Self::Unwritable(_) => "mcp-host.unwritable-record",
+      Self::NoToken => ErrorCode::NoToken,
+      Self::UnknownToken => ErrorCode::UnknownToken,
+      Self::UnknownNamespace(_) => ErrorCode::UnknownNamespace,
+      Self::NoListing(_) => ErrorCode::NoListing,
+      Self::UnknownEntry(_) => ErrorCode::UnknownEntry,
+      Self::MalformedRecord(_) => ErrorCode::MalformedRecord,
+      Self::MalformedRequest(_) => ErrorCode::MalformedRequest,
+      Self::ArgumentsMisfit(_) => ErrorCode::ArgumentsMisfit,
+      Self::GrantRefused(_) => ErrorCode::GrantRefused,
+      Self::ToolFailed(_) => ErrorCode::ToolFailed,
+      Self::Unwritable(_) => ErrorCode::UnwritableRecord,
+      Self::UnknownRoute(_) => ErrorCode::UnknownRoute,
+      Self::MethodNotAllowed => ErrorCode::MethodNotAllowed,
     }
   }
 }
 
-// The problem's detail, which may carry what only the host's own user should read, is said in a debug build
-// alone; the code is what a caller decides on.
+// Every sentence is said, on either face: the tools face's are fixed, and the control socket's reach the host's own
+// user alone.
 impl IntoResponse for HostError {
   fn into_response(self) -> Response {
-    let status = self.status_code();
-    let code = self.error_code();
-    let mut body = json!({
-      "type": format!("urn:sumida:error:{code}"),
-      "title": status.canonical_reason().unwrap_or("Error"),
-      "status": status.as_u16(),
-      "code": code,
-    });
+    let code = self.code();
 
-    if cfg!(debug_assertions) {
-      body["detail"] = json!(self.to_string());
-    }
-
-    let mut response = (status, Json(body)).into_response();
-
-    response
-      .headers_mut()
-      .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/problem+json"));
-    response
+    (code.status(), Json(WireError::new(code, self.to_string()))).into_response()
   }
 }

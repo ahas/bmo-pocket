@@ -23,6 +23,7 @@ use mcp_host::placed::Placed;
 use mcp_host::records::Records;
 use mcp_host::registry::Registry;
 use mcp_host::running::sockets_beside;
+use mcp_host::schedule::{self, Schedules};
 use mcp_host::server;
 use serde::Deserialize;
 use serde_json::Value;
@@ -72,6 +73,9 @@ enum Verb {
     /// How often lapsed records are dropped.
     #[arg(long, default_value_t = 60_000)]
     sweep_every_ms: u64,
+    /// How often the schedules are read and those due called.
+    #[arg(long, default_value_t = 1_000)]
+    schedule_every_ms: u64,
     #[command(flatten)]
     reach: Reach,
     /// The placed tools' folder; `tools/` beside the `bin/` this binary stands in by default.
@@ -145,6 +149,7 @@ fn main() -> ExitCode {
       data_root,
       control,
       sweep_every_ms,
+      schedule_every_ms,
       reach,
       tools,
       settle_ms,
@@ -162,9 +167,12 @@ fn main() -> ExitCode {
           port,
           &data_root,
           &control,
-          Duration::from_millis(sweep_every_ms),
+          Beats {
+            sweep: Duration::from_millis(sweep_every_ms),
+            schedule: Duration::from_millis(schedule_every_ms),
+            settle: Duration::from_millis(settle_ms),
+          },
           host,
-          Duration::from_millis(settle_ms),
         )),
         Err(why) => refused(why),
       }
@@ -242,14 +250,16 @@ async fn stopped() {
   }
 }
 
-async fn serve(
-  port: u16,
-  data_root: &Path,
-  control: &Path,
-  sweep_every: Duration,
-  host: Arc<Host>,
+// How often the host sweeps its records and versions, reads its schedules, and how long changes under the tools
+// must have settled before it reads them again.
+#[derive(Clone, Copy)]
+struct Beats {
+  sweep: Duration,
+  schedule: Duration,
   settle: Duration,
-) -> ExitCode {
+}
+
+async fn serve(port: u16, data_root: &Path, control: &Path, beats: Beats, host: Arc<Host>) -> ExitCode {
   let home = data_root.join("tool-host");
   let records = match Records::load(&home.join("sessions")) {
     Ok(records) => Arc::new(records),
@@ -258,7 +268,7 @@ async fn serve(
     }
   };
   // The placed tools are read before the first request and watched for as long as the host serves.
-  if let Err(why) = host.placed.watch(settle) {
+  if let Err(why) = host.placed.watch(beats.settle) {
     return refused(format!("the placed tools could not be watched: {why}"));
   }
 
@@ -289,13 +299,19 @@ async fn serve(
         gone.kept.close().await;
       }
       sweeping.placed.sweep();
-      tokio::time::sleep(sweep_every).await;
+      tokio::time::sleep(beats.sweep).await;
     }
   });
 
+  // Every schedule of the catalogue kept, those due called by the host itself.
+  let schedules = Arc::new(Schedules::default());
+
+  tokio::spawn(schedule::keep(host.clone(), schedules.clone(), data_root.to_path_buf(), beats.schedule));
+
   let sessions =
     axum::serve(tcp, server::tools(records.clone(), host.clone())).with_graceful_shutdown(stopped());
-  let launchers = axum::serve(unix, server::control(records, host)).with_graceful_shutdown(stopped());
+  let launchers =
+    axum::serve(unix, server::control(records, host, schedules)).with_graceful_shutdown(stopped());
   let (served, controlled) = tokio::join!(sessions, launchers);
   let _ = fs::remove_file(control);
 

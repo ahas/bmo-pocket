@@ -1,18 +1,22 @@
 # The workspace: the tool host under `host/`, the tool contract every Rust tool is written to under
-# `sdk/contract/`, and the repository's own package at the root, which holds the checks that span the
-# repository in `tests/`.
+# `sdk/contract/`, the control socket's client under `client/`, and the repository's own package at the root,
+# which holds the checks that span the repository in `tests/`.
 [workspace]
-members = ["host", "sdk/contract"]
+members = ["client", "host", "sdk/contract"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.1"
+version = "1.0.0"
 edition = "2024"
 publish = false
 
 [workspace.dependencies]
 axum = "0.8.4"
+# A schedule's time, in the host machine's local zone.
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.5.40", features = ["derive", "env", "string"] }
+# A schedule's cron pattern, read and its next time found.
+croner = "4.0.1"
 http = "1.3.1"
 http-body-util = "0.1.3"
 hyper = { version = "1.6.0", features = ["client", "http1"] }
@@ -26,6 +30,7 @@ rmcp = { version = "3.5.0", default-features = false, features = ["server", "tra
 schemars = "1.0.4"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.138"
+strum = { version = "0.28.0", features = ["derive"] }
 sha2 = "0.10.9"
 tempfile = "3.20.0"
 thiserror = "2.0.18"

@@ -15,10 +15,11 @@
 
 ## A pointer
 
-- **One JSON object per tool:** `name`, the tool's name, which is its manifest's; `version`, the placed version it
-  points at; `dir`, that version's folder; `origin`, where it was put from (`path:<folder>`, `git:<address>` or
-  `name:<name>`); `service`, the repository whose own tool it is, where a service registered it; and `put_at`, when,
-  in epoch milliseconds.
+- **One JSON object per tool, its keys in camelCase:** `name`, the tool's name, which is its manifest's; `version`,
+  the placed version it points at; `dir`, that version's folder; `origin`, where it was put from (`path:<folder>`,
+  `git:<address>` or `name:<name>`); `service`, the repository whose own tool it is, where a service registered it;
+  and `putAt`, when, in epoch milliseconds. A pointer naming the time `put_at` reads as one naming it `putAt`, and
+  is written as `putAt` at its next put.
 - **A pointer is written whole or not at all:** written beside its place under a name of its own, then renamed
   over the old one, so the host never reads half of one.
 
@@ -54,7 +55,9 @@
   - **none of its entries' full names is held by another registered tool;**
   - **every capability and grant it asks for is allowed:** each capability its entries, their bundles and its
     resources name, and each grant its entries name, is printed, and the put is refused naming those no
-    `--allow` names.
+    `--allow` names;
+  - **its schedules are said:** each schedule an entry declares is printed with its pattern, since the host will
+    call that entry by itself.
 - **What is placed:**
   - with a `build` command, the command is run through `sh` in the tool's folder with `BMO_TOOL_OUT` naming the new
     version's staging folder and `BMO_CARGO_TARGET` the registry's own Cargo target folder, and the manifest and its

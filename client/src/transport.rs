@@ -1,5 +1,4 @@
-//! One HTTP request over a local socket: how the host asks its sidecar, and how a caller on this
-//! machine asks the host's own control socket.
+//! One HTTP request over a local socket, as a caller on this machine asks the host's control socket.
 
 use std::io;
 use std::path::Path;

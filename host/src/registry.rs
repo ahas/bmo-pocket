@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 /// The pointer files' extension.
 const POINTER: &str = "json";
 
-/// Where a tool's registration points.
+/// Where a tool's registration points, its keys in camel case.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Pointer {
   /// The tool's name, its manifest's.
   pub name: String,
@@ -26,7 +26,8 @@ pub struct Pointer {
   /// The repository whose own tool it is, where a service registered it.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub service: Option<String>,
-  /// When it was put, in epoch milliseconds.
+  /// When it was put, in epoch milliseconds; a pointer naming it `put_at` reads too.
+  #[serde(alias = "put_at")]
   pub put_at: u64,
 }
 

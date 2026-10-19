@@ -4,11 +4,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// One session's record. Its field names are camel case on the wire. A field the record does not know is
 /// refused rather than dropped, so a launcher that hands something new is told rather than ignored.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Session {
   /// The run line the session belongs to, a name a tool may read.
@@ -106,7 +107,7 @@ impl Session {
 
 /// What a research run's web tools are held to: when it closes, whose it is, how it fetches and how
 /// many branches it may open.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Research {
   /// When research closes, in epoch milliseconds.

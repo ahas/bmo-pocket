@@ -6,6 +6,8 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+# A schedule's cron pattern, read as the manifest is.
+croner.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
