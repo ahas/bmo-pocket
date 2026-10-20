@@ -2,13 +2,13 @@
   {
     "id": "plugin/mcp",
     "title": "Harness plugin",
-    "what": "The MCP server bmo-pocket mcp serves on standard input and output under one tool session token: the four fixed tools and every hosted tool of the session's namespaces, each a call through the client; and the ahas-pocket skill. Lives in plugin/.",
+    "what": "The MCP server bmo-pocket mcp serves on standard input and output under one tool session token: the four fixed tools and every hosted tool of the session's namespaces, each a call through the client; and the bmo-pocket skill. Lives in plugin/.",
     "files": [
       "plugin/src/lib.rs",
       "plugin/src/server.rs",
       "plugin/src/tools.rs",
       "plugin/Cargo.toml",
-      "plugin/skills/ahas-pocket/SKILL.md",
+      "plugin/skills/bmo-pocket/SKILL.md",
       "docs/api.md"
     ],
     "symbols": [
@@ -23,6 +23,6 @@
       "client/socket"
     ],
     "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228492
+    "changed": 1792529689559
   }
 ]

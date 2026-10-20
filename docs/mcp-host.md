@@ -311,7 +311,7 @@ flowchart TD
 - **It serves `pocket_namespaces`, `pocket_tools`, `pocket_tool` and `pocket_call`,** and beside them every hosted
   tool of the session's namespaces under the name `<namespace>_<name>`, read afresh at each `tools/list`. A tool
   placed or taken away is in or out of its next list.
-- **The `ahas-pocket` skill** tells a harness what the plugin is for, how to start it with a token, which tool reads
+- **The `bmo-pocket` skill** tells a harness what the plugin is for, how to start it with a token, which tool reads
   what, and how a refusal reads.
 
 ## Tests

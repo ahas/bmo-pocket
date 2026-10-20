@@ -76,7 +76,7 @@ fn the_harness_tools_each_name_a_route_the_document_states() {
   let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
 
   assert_eq!(names, ["pocket_namespaces", "pocket_tools", "pocket_tool", "pocket_call"]);
-  assert_eq!(document["x-harness"]["plugin"], "ahas-pocket");
+  assert_eq!(document["x-harness"]["plugin"], "bmo-pocket");
   assert_eq!(document["x-harness"]["mcp"], "bmo-pocket mcp");
 
   for tool in tools {

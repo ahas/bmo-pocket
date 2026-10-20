@@ -81,7 +81,7 @@ tables, its files or its process. The host calls no other unit. How the host beh
   neither is listed under it, and each is reached through `pocket_call`.
 - **A refusal reaches the harness as a tool result** with `isError` true, whose text is the route's `error` and
   `code`, since the protocol's caller is a model.
-- **The `ahas-pocket` skill,** in `plugin/skills/ahas-pocket/`, tells a harness when and how to use the plugin.
+- **The `bmo-pocket` skill,** in `plugin/skills/bmo-pocket/`, tells a harness when and how to use the plugin.
 
 ## The tools face: MCP over HTTP
 

@@ -1838,7 +1838,7 @@
   "x-harness": {
     "entry": "A harness starts the MCP server with a tool session token and gets every hosted tool of the namespaces the session allows, plus pocket_namespaces, pocket_tools, pocket_tool and pocket_call.",
     "mcp": "bmo-pocket mcp",
-    "plugin": "ahas-pocket"
+    "plugin": "bmo-pocket"
   },
   "x-tools": [
     {

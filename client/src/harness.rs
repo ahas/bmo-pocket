@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::wire::{NamespacePage, Tool, ToolCall, ToolCallRequest, ToolPage};
 
 /// The plugin's name.
-pub const PLUGIN: &str = "ahas-pocket";
+pub const PLUGIN: &str = "bmo-pocket";
 
 /// The command that starts its MCP server.
 pub const MCP_COMMAND: &str = "bmo-pocket mcp";

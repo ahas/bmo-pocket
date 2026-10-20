@@ -1,6 +1,6 @@
 [package]
 name = "bmo-pocket-plugin"
-description = "The tool host's harness plugin: the MCP server `bmo-pocket mcp` serves over standard input and output, each tool a call through bmo-pocket-client, and the ahas-pocket skill."
+description = "The tool host's harness plugin: the MCP server `bmo-pocket mcp` serves over standard input and output, each tool a call through bmo-pocket-client, and the bmo-pocket skill."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

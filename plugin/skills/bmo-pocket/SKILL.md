@@ -1,9 +1,9 @@
 ---
-name: ahas-pocket
+name: bmo-pocket
 description: Reach the tools a tool host holds for one tool session with the bmo-pocket MCP server. Use when a harness is handed a tool session token for a tool host, when looking for a tool among the namespaces that session may use, when calling one, or when building, testing or debugging a tool placed on the host.
 ---
 
-# ahas-pocket
+# bmo-pocket
 
 A tool host serves placed tools, grouped into namespaces, to the tool sessions it issues. A tool session's
 record names the namespaces it may use, the capabilities it holds and the grants it may act under, and every

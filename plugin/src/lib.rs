@@ -1,4 +1,4 @@
-//! The tool host's harness plugin, `ahas-pocket` (docs/api.md, 「The harness plugin」).
+//! The tool host's harness plugin, `bmo-pocket` (docs/api.md, 「The harness plugin」).
 //!
 //! `bmo-pocket mcp` serves the MCP server here on standard input and output, holding one tool session's token: the
 //! four fixed tools, each a call of one route through bmo-pocket-client, and every hosted tool of the session's
