@@ -1,10 +1,11 @@
 # pocket
 
-The tool host, `bmo-pocket`: one process serving every agent session's MCP tools. It reads each tool's
-`tool.toml` manifest, whether the tool stands in a repository of its own or in a service repository's
-`tools/` folder, and serves its entries under the namespaces and capabilities a session's record holds. A
-session is shown a few resident tools by name and reaches every other tool through its toolbook, so adding or
-taking away a tool never changes what a running session's prompt begins with.
+The tool host, `bmo-pocket`: one process serving the MCP tools of every tool session. It reads each tool's
+`tool.toml` manifest, whether the tool stands in a repository of its own or in a service repository's `tools/`
+folder, and serves its entries under the namespaces, capabilities and grants a session's record carries. A session
+is shown a few resident tools by name and reaches every other tool through its toolbook, so adding or taking away a
+tool never changes what a running session's prompt begins with. A harness reaches it over HTTP, or through its
+harness plugin, `bmo-pocket mcp`.
 
 The repository also holds the tool SDK: the contract every tool is written to, which Rust tools link, and the
 helpers tools written in TypeScript or Python import.
@@ -13,10 +14,12 @@ helpers tools written in TypeScript or Python import.
 
 | Folder | Holds |
 |---|---|
+| `client/` | the control socket's client: the Rust crate `bmo-pocket-client`, which generates `docs/openapi.json`, and the TypeScript package `@bmo/pocket-client` generated from it |
 | `deploy/` | the host's user unit, `bmo-mcp-host.service`, which a deployment links from the deploy tree |
-| `docs/` | the canonical documents: the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`) and the boundary every other unit matches (`api.md`) |
+| `docs/` | the canonical documents: the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`), the boundary every other unit matches (`api.md`) and its OpenAPI document (`openapi.json`) |
 | `graph/` | the code dependency graph: one node per feature with its files and what it reads or calls, written only by `bmo graph` |
-| `host/` | the tool host, `mcp-host`, and the registry's command, `bmo-pocket`, with their tests in `host/tests/` |
+| `host/` | the tool host, `mcp-host`, and the command `bmo-pocket` (the registry's verbs and `mcp`), with their tests in `host/tests/` |
+| `plugin/` | the harness plugin, `bmo-pocket-plugin`: the MCP server `bmo-pocket mcp` serves and its `ahas-pocket` skill |
 | `sdk/` | the tool SDK: `sdk/contract/`, the `bmo-tool` crate holding the call protocol and the manifest schema, which Rust tools link; `sdk/ts-kit/` and `sdk/py-kit/`, the helpers a TypeScript or Python tool imports |
 | `tests/` | the checks that span the repository, and `tests/host-contract/`, the host held to what an installed CLI reads of it |
 
@@ -27,9 +30,12 @@ cargo build --workspace
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
+(cd sdk/ts-kit && bun test)
+(cd client && bun test)
+(cd tests/host-contract && bun test)
 ```
 
 ## Version
 
-The workspace's version, in semver, is the repository's: a change to a contract another repository reads
-(the call protocol, the manifest schema, the session record, the host's routes) raises the major version.
+One version for every crate and package, `0.1.0` plus a revision, `0.1.0-rev.<n>`, until the first release, as
+`docs/api.md` states in 「Version」.

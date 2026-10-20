@@ -3,53 +3,58 @@
 ## What it is
 
 - **One process serves every session's MCP tools:** `mcp-host`, under its own user unit.
-- **No session starts a tool server of its own.** A session's MCP configuration names the host's address and a
-  bearer token, and every call the session makes reaches the one host.
-- **The host tells sessions apart by the token alone.** Each token is bound to a session record, which carries
-  everything a tool reads of the run it serves: its checkout, its data root, its place, its own values and which
-  entries it is shown by name (「The session record」).
+- **No session starts a tool server of its own.** A harness reaches the one host, either by an MCP configuration
+  naming the host's address and a bearer token, or through the harness plugin, `bmo-pocket mcp`, started with the
+  token (「The harness plugin」).
+- **The host tells sessions apart by the token alone.** Each token is bound to a tool session's record, in which the
+  issuer states everything a call is checked against and everything a tool reads of it: the namespaces, the
+  capabilities and the grants it holds, which entries it is shown by name, and the variables and labels its tools
+  are handed (「The session record」).
+- **The host asks no other unit.** What a session may do is what its record carries, so no call waits on an
+  account or permission service.
 - **Every tool is placed:** a folder holding a built tool and its manifest, in any language, which the host reads
   at run time and whose own executable it runs for each call (「Placed tools」). No tool is linked into the host,
-  and no list of tools, namespaces, capabilities, lines or roles stands in its code.
+  and no list of tools, namespaces, capabilities, grants or holders stands in its code.
 - **Where a tool comes from is not the host's concern.** A standalone tool is a repository of its own; a tool
   bound to one service stands in that service's `tools/` folder. Both are placed the same way and both are
   registered the same way (`docs/registry.md`), and the host reads every placed manifest alike.
 
 ```mermaid
 flowchart TD
-  CLI[an agent's CLI] -->|HTTP + bearer token| Host[mcp-host]
-  Issuer[the launcher that starts a run] -->|issue, revoke a record| Host
+  Harness[a harness's MCP client] -->|HTTP + bearer token| Host[mcp-host]
+  Harness -->|stdio| Plugin[bmo-pocket mcp]
+  Plugin -->|control socket + tool-session token| Host
+  Issuer[whoever issues a tool session] -->|issue, revoke, with the issuer token| Host
   Host -->|read at run time, again when it changes| Placed[placed tools]
   Host -->|a call, its record on standard input| Exe[a placed tool's executable]
   Exe -->|call-back socket of the call| Host
-  Host -->|grant checks| Accounts[the account service]
   Host -->|a schedule due, under a record of its own| Exe
 ```
 
 ## Namespaces and capabilities
 
-- **A namespace is whatever a manifest declares:** each entry names the namespace it is shown under, and a
-  session's configuration lists one server per namespace its line uses, and the toolbook beside them. So a tool
-  keeps the name the CLI calls it by (`mcp__<namespace>__<name>`), whichever executable answers it.
+- **A namespace is whatever a manifest declares:** each entry names the namespace it is shown under, and a record
+  names the namespaces its session may use. A harness's configuration lists one server per namespace its record
+  names, and the toolbook beside them, so a tool keeps the name its harness calls it by (`mcp__<namespace>__<name>`
+  in some), whichever executable answers it.
 - **The host serves `/mcp/<namespace>` for every namespace a placed manifest names,** and holds no list of
-  namespaces; a path naming none is answered 404. A manifest may name a namespace no line's configuration names
-  yet, and its entries are reached through the toolbook until a line's configuration names that namespace.
+  namespaces; a path naming none, or one the session's record does not name, is answered 404. A manifest may name a
+  namespace no record names yet, and its entries are reached by no session until a record names it.
 - **A capability is a name a manifest declares and the issuer grants,** written `<subject>.<word>`: an entry
   declares the capabilities a session must hold to be shown it, and the record's issuer grants them by the same
   name. The host compares names and knows none of them.
-- **A tool never names a line or a role,** and the host never reads what a line or a role is: a record arrives
-  with the capabilities and the shown entries already resolved by its issuer, so a new line or a new tool changes
-  only its own declaration.
-- **An entry for the system alone** is never shown to a session or callable by one; another tool reaches it
-  through its call-back socket, and the system through the control socket (「The catalogue on the control
-  socket」).
+- **A tool never names a holder,** and the host never reads what a holder is: a record arrives with its namespaces,
+  capabilities, grants and shown entries already resolved by its issuer, so a new holder or a new tool changes only
+  its own declaration.
+- **An entry for the system alone** is never shown to a session; another tool reaches it through its call-back
+  socket, and the system through `POST /tool-calls`, under a record naming its namespace (「The control socket」).
 - **Capabilities are held by name** against the record's; a name no issuer grants is one no session holds, so its
   entry is shown to none.
-- **What a session holds** is every entry it holds whole — its record holds the entry's every capability — and,
-  where it does not, the narrower form a bundle shows the entry in, where its record holds that bundle's
-  capability. A bundle's form shows the arguments the entry names for it alone, refuses any other, and acts under
-  no grant. A call to an entry the session does not hold is refused as an unknown tool, and a call is held to the
-  form the session holds.
+- **What a session holds** is every entry of its namespaces it holds whole — its record holds the entry's every
+  capability — and, where it does not, the narrower form a bundle shows the entry in, where its record holds that
+  bundle's capability. A bundle's form shows the arguments the entry names for it alone, refuses any other, and acts
+  under no grant. A call to an entry the session does not hold is refused as an unknown tool, and a call is held to
+  the form the session holds.
 - **A namespace lists the resident entries it holds; the toolbook lists the booked ones.** An entry is resident
   where the record's `shown` list names it by full name (`docs/toolbook.md`, 「Which tools are resident」), and the
   toolbook, served at `/mcp/toolbook` beside the namespaces, lists, describes and calls the rest by the same
@@ -57,49 +62,58 @@ flowchart TD
 
 ## The session record
 
-- **Issued by the launcher before the program starts,** over the host's control socket, which only the host's own
-  user can reach. The launcher posts the record to `/sessions` and the host answers a fresh token; a record it
-  cannot read, or one naming a field it does not know, is refused with why. `DELETE /sessions/<token>` revokes
-  one. The record's fields are stated in `docs/api.md` (「The session record」).
+- **Issued before the session starts,** over the host's control socket with the issuer token (「Tokens」). The
+  issuer posts the record to `POST /tool-sessions` and the host answers the tool session with a fresh token; a record
+  it cannot read, or one naming a field it does not know, is refused with why. `DELETE /tool-sessions/<token>`
+  revokes one. The record's fields are stated in `docs/api.md` (「The session record」).
 - **What it holds:**
-  - the line it is issued for, and the role of the agent it is issued for where it holds one, both carried as
-    names a tool may read and never interpreted by the host;
-  - its capabilities, as the issuer resolved them for the line and the agent's role, narrowed where a run holds
-    less;
-  - `shown`: the full names of the entries its namespaces list by name, as the issuer resolved them for the
-    line and the role together; a record without it is shown none by name, and every entry it holds stands in its
-    toolbook;
-  - the checkout the run works in;
-  - the data root the run reads, and the archive address it hands its tools where it names one;
-  - the agent's place, for a resident program, where each call reads which run is going;
-  - the run's own variables — the run name, the job runner's marker, the work-order step and every `BMO_TURN_`
-    variable — for a run spawned for itself;
-  - the fragment desk an editor's batch opened, where it opened one;
-  - a research run's close, owner, source, role, branch allowance, room, fetch strategy, pacing intervals and
-    rulebooks, where the run is a search, a browse or a branch;
-  - a deadline, for a run's record.
+  - `holderName`, who holds the session, a name a tool may read and the host never interprets;
+  - `namespaces`, the namespaces the session may use;
+  - `capabilities`, as the issuer resolved them for the holder;
+  - `grants`, the resources the session may act on (「Grants」);
+  - `shown`: the full names of the entries its namespaces list by name; a record without it is shown none by name,
+    and every entry it holds stands in its toolbook;
+  - `variables`, handed to every call's environment, and `variablesFile`, a file read afresh at every call and
+    laid over them, so an issuer whose values move while the session stands rewrites the file rather than the
+    record;
+  - `labels`, the issuer's own metadata, handed to every call inside the record;
+  - `expiresAt`, from the `ttlMs` the issuer asked for, and `createdAt`.
 - **Where it is kept:** one file per record in `tool-host/sessions/` under the data root, readable by the host's
   user alone, named by the SHA-256 of the token rather than the token. The host reads them at start, so a restart
   of the host costs no session its tools.
 - **How it ends:**
-  - a run's record carries the run's own deadline; the issuer revokes it when the run ends, and the host drops one
-    whose deadline has passed at its next sweep, so an issuer that died leaves nothing standing;
-  - a resident program's record carries no deadline and stands until the issuer replaces or ends that program,
-    which revokes it;
+  - a record with an `expiresAt` lapses then: the host refuses its token from that moment and drops it at its next
+    sweep, so an issuer that died leaves nothing standing;
+  - a record with none stands until the issuer revokes it;
   - what a record's tools keep for it ends with it (「What a record's tools keep」).
-- **What a call reads per call** — the run its place names among it — is read afresh on every call. Nothing of one
-  record is ever visible to a call made with another token.
+- **What a call reads per call** — the record's `variablesFile` among it — is read afresh on every call. Nothing of
+  one record is ever visible to a call made with another token.
+
+## Tokens
+
+- **The control socket takes a bearer token on every route,** of one of two kinds (`docs/api.md`, 「The control
+  socket」).
+- **The issuer token** is the host's own: a random token in `tool-host/issuer-token` under the data root, or in the
+  file `--issuer-token-file` names, readable by the host's user alone. The host makes it at its first start where
+  none stands and reads it at every start. Whoever issues tool sessions reads it from that file, so reaching the
+  file is what makes an issuer. It alone issues and revokes tool sessions, and it reads the whole catalogue and
+  every schedule.
+- **A tool session's token** reaches what its record holds and nothing else: its namespaces, the entries its
+  capabilities open there, calls and claims under its grants, and the schedules of those entries. The tools face
+  takes this kind alone.
+- **No session can widen itself.** A session's token can issue nothing, so the only records standing are those the
+  issuer wrote.
 
 ## Transport
 
 - **Streamable HTTP, stateless.** The host keeps no MCP session id: every request stands alone and is known by its
-  bearer token. A host restarted between two calls is never noticed by the CLI, since there is no protocol session
-  for it to lose.
+  bearer token. A host restarted between two calls is never noticed by the harness, since there is no protocol
+  session for it to lose.
 - **A configuration names each server by its URL and an `Authorization` header of `Bearer ${BMO_MCP_TOKEN}`,**
-  which a CLI expands from its own environment, so no token is written into a configuration file. A client that
+  which a harness expands from its own environment, so no token is written into a configuration file. A client that
   takes the bearer token from a named variable is handed `BMO_MCP_TOKEN` as that variable.
 - **A call takes as long as its tool does.** A client is told to wait on a call as long as it can be told to,
-  since an unbounded entry waits for what it set off; how each CLI is told so is its launcher's.
+  since an unbounded entry waits for what it set off; how each harness is told so is its issuer's.
 - **The protocol revision a client negotiates may refuse a result that does not say enough:**
   - every result the host builds says it is complete (`resultType`);
   - a listing or a resource read also says how long it may be kept and by whom: never past its answer, and by the
@@ -111,10 +125,9 @@ flowchart TD
 
 ## When the host is not there
 
-- **A launcher asks the host for the token before it starts a program,** and refuses the launch where the control
-  socket does not answer, so no program is started without its tools. A configuration naming a server that does
-  not answer costs a CLI session its tools in silence; the token request is the refusal the CLI never gives
-  itself.
+- **An issuer asks the host for the token before it starts a session,** and refuses to start it where the control
+  socket does not answer, so no session is started without its tools. A configuration naming a server that does
+  not answer costs a harness its tools in silence; the token request is the refusal the harness never gives itself.
 - **A placed tool that fails a read or a call** fails that one alone, named in its answer: the next starts its
   executable afresh.
 
@@ -175,17 +188,19 @@ flowchart TD
   and handed, in its `BMO_TOOL_START` variable, the same object less the call — the protocol version, the record,
   its call-back socket and its helpers' sockets. Each call is a `tools/call` of the entry's name; the server ends
   with the record. A call past its timeout fails and ends the server, and the record's next call starts it again.
-- **A clean environment:** the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`, each variable `--pass-env` names from
-  the host's own environment, the record's data root as `BMO_DATA_DIR` and its archive address as
-  `BMO_ARCHIVE_URL` where it names one, and its turn — the run's own variables, or those of the run its place
-  names. No other variable of the host's reaches it, and the token never leaves the host.
+- **A clean environment,** each layer laid over the one before it: the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`
+  and each variable `--pass-env` names from the host's own environment; the record's `variables`; the object its
+  `variablesFile` holds, where the file stands and reads as an object of strings, a file that does not being said
+  in the host's log and adding nothing; and the host's own `BMO_TOOL_START` or `BMO_SCHEDULED_AT` where the call has
+  one. No other variable of the host's reaches it, and the token is never handed to a tool.
 - **The call-back socket is the call's alone,** bound under `calls/` beside the control socket and taken away as
   the call ends; a server's stands as long as the server. One JSON object is asked on one line and one answered:
   - `call`: an entry by its full name, with its arguments, dispatched under the same record through the same
     schema, capability and grant checks as a session's call, so a tool reaches another only as far as the session
     it serves could; an entry for the system alone is reached this way too;
   - `claim`: an address, answered with the entry that claims it among those the record holds and the arguments it
-    reads that page with, or with none: each entry whose manifest claims the address's host is asked in turn.
+    reads that page with, or with none: each entry whose manifest claims the address's host is asked, one after
+    another.
 - **A claim request** is a call of kind `claim` handed the address, which the entry's executable answers with the
   arguments it reads the page with, or with none. No shared helper is started for it: a claim reads the address
   alone.
@@ -211,17 +226,17 @@ flowchart TD
 - **A helper placed anew serves the records started after it;** a record's helper already running goes on as it
   is.
 
-### The catalogue on the control socket
+### The control socket
 
-- **`GET /catalogue`, `GET /catalogue/<namespace>/<name>`, `POST /calls` and `POST /claims`** read and call the
-  catalogue as the system does, entries for the system alone included (`docs/api.md`, 「The control socket」). A
-  call through `/calls` is made under the record it carries, as a session's call is, and what that record's tools
-  kept ends as the call answers.
-- **The control socket answers its refusals by status,** in the common error shape: a call through `/calls` that
-  the host refuses or that fails before the tool answers is a non-2xx status naming why, where a session's call is
+- **Its routes read and call the catalogue for a token** (`docs/api.md`, 「The control socket」): the issuer token
+  sees every namespace, entry and schedule, those for the system alone among them, and a tool session's token what
+  its record holds. A call through `POST /tool-calls` is made under the token's record, as a session's call on the
+  tools face is, and reaches an entry for the system alone of the record's namespaces too.
+- **The control socket answers its refusals by status,** in the common error shape: a call the host refuses or
+  that fails before the tool answers is a non-2xx status naming why, where a session's call on the tools face is
   answered the same refusal as a failed tool result for its model to read.
-- **Each catalogue entry carries its icon and its schedules** with where each stands, so a reader of the catalogue
-  needs no second route for either.
+- **Each tool member carries its icon,** and `GET /schedules` where each schedule stands, so a reader needs no
+  second route for either.
 
 ### Schedules
 
@@ -235,20 +250,20 @@ flowchart TD
   time after that beat. So a beat that comes late calls it once, never once per time it passed, and a time that
   passed while the host was not running is not made up.
 - **One call of a schedule runs at a time:** a time that comes while its last call still runs is passed over.
-- **A scheduled call is dispatched as `/calls` dispatches one,** through the schema, capability and grant checks,
-  under a record of its own made for that call: the line `schedule`, the entry's capabilities, the host's data root
-  and a turn no person's message opened. What that record's tools kept ends as the call answers.
+- **A scheduled call is dispatched as `POST /tool-calls` dispatches one,** through the schema, capability and grant
+  checks, under a record of its own made for that call: `holderName` `schedule`, the entry's namespace, its
+  capabilities and its grant, and the host's variables `--pass-env` names. What that record's tools kept ends as
+  the call answers.
 - **What a schedule stands at is kept in the host's process alone:** when it is next due, when its last call was
-  made, why that call failed where it did, and whether one runs. The catalogue answers it; a failure is said in the
-  host's log as well. A restart begins every schedule afresh.
+  made, why that call failed where it did, and whether one runs. `GET /schedules` answers it; a failure is said in
+  the host's log as well. A restart begins every schedule afresh.
 
 ## What a namespace says of itself
 
-- **Beside its tools, a namespace may say three things,** each declared in its entries' manifests and handed on by
-  the control socket:
-  - **a listing,** `GET /listings/<namespace>` — the lines a launcher writes into a line's instructions about what
-    the namespace serves, one line per entry that declares one, in its order;
-  - **its facts,** `GET /facts/<namespace>`, as JSON — what the lines that read it need beyond the tools: the verb a
+- **Beside its tools, a namespace may say three things,** each declared in its entries' manifests:
+  - **a listing:** the line each entry declares about what it serves and its order, carried as each tool member's
+    `listing`, which a caller may write into its own instructions in that order;
+  - **its facts,** in the namespace member's `facts`, as JSON — what a reader needs beyond the tools: the verb a
     sending entry needs, the record a recording entry leaves, the icon each declares, and each list its entries add
     an item to;
   - **its resources,** listed and read on the namespace's own path for the sessions holding what they ask.
@@ -257,12 +272,11 @@ flowchart TD
   its tool's resources (「Placed tools」).
   - The host names no list: which lists a namespace's facts carry is its entries', and a list is started by the
     first entry naming it.
-- **The host adds the digest of what the namespace shows** to its facts: the SHA-256 of every entry it holds,
-  ordered by name, each with its name, description, input and output schemas and its read-only, destructive and
-  open-world hints. So an entry added or a schema changed moves it, and a line whose prefix carries it opens its
-  next session afresh.
-- **A namespace that says none of one is answered 404** for it, and lists no resources; one holding any entry
-  always has facts, its digest among them.
+- **The host adds the digest of what the namespace shows** to its facts: the SHA-256 of every entry the token sees
+  in it, ordered by name, each with its name, description, input and output schemas and its read-only, destructive
+  and open-world hints. So an entry added or a schema changed moves it, and a reader whose cached prompt carries it
+  starts its next session afresh.
+- **A namespace holding any entry the token sees always has facts,** its digest among them.
 
 ## What a record's tools keep
 
@@ -273,49 +287,51 @@ flowchart TD
 - **What a record keeps is ended with the record** — a server, a shared helper and whatever each holds — at the
   first of:
   - the record being revoked;
-  - the record's deadline passing, which the host's sweep looks for, dropping the record;
+  - the record's `expiresAt` passing, which the host's sweep looks for, dropping the record;
   - the host stopping, every process it started ending with it by the parent-death signal.
 
-## The grant lock
+## Grants
 
-- **Beneath the agent's own judgement, the host refuses what the asker may not have done.** The account service
-  decides; the host asks it and refuses with the missing grant named.
-- **It stands only where all three hold:** an account service is configured (`--accounts`), the switch
-  `--grant-lock` does not read `off`, and the account service answers that its account model is in force
-  (`GET /accounts/model`). With no account service configured, nothing is checked.
-- **A tool that acts declares the room relation it needs** in its entry's `grant`; a tool that reads or only speaks
-  declares none, and a bundle's form of a tool acts under none.
-- **Such a call names the message it acts on** in its `message` argument. The host finds the running turn's room
-  in the turn's `BMO_TURN_CHAT` — the run its place names, or the run's own variables — asks the account service
-  whether that message's sender holds the relation there, and refuses with the missing grant named
-  (`bmo_room:<room>#<relation>`).
-  - A turn whose every new message is the owner's, or that no person's message opened, acts for nobody else; a call
-    there may name no message, which the turn's `BMO_TURN_PRIVILEGED` says.
-  - A call naming no message elsewhere, made outside any room's turn, or met by an account service that does not
-    answer, is refused saying which.
-- **A job run for another user's item** carries the user in `BMO_TURN_USER`, and every tool it calls, reading or
-  acting, runs only where that user holds `use` on each of the tool's capabilities (`bmo_tools:<capability>#use`).
-- **The arguments go on unchanged;** a tool reads `message` as its own where it has a use for it.
-- **The calls it makes** are stated in `docs/api.md` (「What the host calls」).
+- **A tool that acts on something a session may or may not touch declares the resource in its entry's `grant`:**
+  an opaque string the issuer and the tool agree on, which the host compares and never reads. A tool that only
+  reads declares none, and a bundle's form of a tool acts under none.
+- **A call of an entry declaring a grant runs only where the record's `grants` hold that resource,** compared whole.
+  Otherwise it is refused before anything runs, the missing resource named: 403 `forbidden` on the control socket,
+  a failed tool result on the tools face and the call-back socket.
+- **A claim is checked the same way:** an entry claiming an address is answered as the claimant only where the
+  record's grants hold its grant (`docs/api.md`, 「Claims」).
+- **The issuer decides what a session may act on** by the grants it writes into the record; the host refuses what
+  the record does not hold and asks nobody else.
+
+## The harness plugin
+
+- **`bmo-pocket mcp` is the host's MCP server for a harness that starts its servers itself,** on standard input
+  and output, holding one tool session's token (`docs/api.md`, 「The harness plugin」). It is a client of the
+  control socket and nothing more: every tool it serves is one call of one route through `bmo-pocket-client`.
+- **It serves `pocket_namespaces`, `pocket_tools`, `pocket_tool` and `pocket_call`,** and beside them every hosted
+  tool of the session's namespaces under the name `<namespace>_<name>`, read afresh at each `tools/list`. A tool
+  placed or taken away is in or out of its next list.
+- **The `ahas-pocket` skill** tells a harness what the plugin is for, how to start it with a token, which tool reads
+  what, and how a refusal reads.
 
 ## Tests
 
-- **Session isolation:** two records naming two checkouts each reach their own through the one host, and a token
-  never reads another record's checkout, desk or place.
+- **Session isolation:** two records naming two sets of variables each hand their own to their calls through the
+  one host, and a token never reads another record's variables, labels or variables file.
 - **Deployment reach:** a placed tool replaced by a build answering differently while a token is in use answers
   the token's next call with the new code.
 - **Bundles and facts:** a record holding bundles alone is shown their entries narrowed and refused any argument
   the bundle does not show; a namespace says its digest, verbs, records and icons; a placed tool's resources are
   listed and read for a record holding their capability alone, and a read it refuses says why.
-- **Capability:** a session lacking a tool's capability is not shown it and is refused when it calls it.
+- **Capability and namespaces:** a session lacking a tool's capability, or whose record does not name its namespace,
+  is not shown it and is refused when it calls it.
 - **Toolbook:** a namespace lists the entries the record's `shown` names alone; the toolbook lists and describes
   the booked ones, calls a read-only one with `call` and refuses with `act` named one that acts, refuses arguments
   that do not fit the tool's schema with the schema, refuses a tool the session does not hold by the words a direct
   call is refused with, and answers a booked tool called by its own name.
-- **Grant lock:** an acting tool naming no message, or one whose sender holds no grant, is refused with the grant
-  named; a reading tool passes; a turn of the owner's alone names none; a job run for another user is refused a
-  tool whose capability they hold no `use` on; the switch turns it off, and with no account service configured or
-  the model not in force nothing is checked.
+- **Grants:** a call of an entry declaring a grant runs where the record's grants hold it and is refused naming it
+  where they do not, on the tools face, the call-back socket and the control socket alike; an entry declaring none
+  runs; a claim whose claimant's grant the record lacks is not granted and says why.
 - **Placed tools:** a tool placed while the host runs is listed by the toolbook, described, and called through
   `call` and `act` under the schema, capability and grant checks; its call-back socket reaches another entry only
   as the session could; a call past its timeout fails; taken away, it is gone from the list and refused as unknown,
@@ -328,12 +344,17 @@ flowchart TD
   call in flight goes on in the version it started in through an upgrade and a take, which is taken away once
   nothing holds it; and a running session's `initialize` and `tools/list` answers stay byte for byte while its
   toolbook's `list` changes (`docs/registry.md`).
-- **The control socket:** an entry for the system alone is shown to no session and called through `/calls`;
-  `/claims` names the entry whose manifest claims an address's host and whose executable claims the address, and
-  none for one no entry claims; every route answers as `docs/openapi.json` states it, each refusal by status with
-  its code, and the catalogue is paged by its cursor and carries each entry's icon and schedules.
+- **The control socket:** every route answers as `docs/openapi.json` states it, each refusal by status with its
+  code; the issuer token alone issues and revokes, and a session's token is refused there; a session's token sees
+  its namespaces and the entries it holds alone, and the issuer token every one; an entry for the system alone is
+  shown to no session and called through `POST /tool-calls`; `POST /claims` names the entry whose manifest claims an
+  address's host and whose executable claims the address, and none for one no entry claims; the namespaces and
+  tools are paged by name, and the schedules by `nextAt` with no run of equal times split.
 - **Schedules:** a schedule is due at its pattern's first time after it is seen, is called once at a beat past it
   with its arguments under a record of its own, is passed over while its last call runs, begins afresh when its
   pattern changes and is dropped with its entry; its last failure is kept and said.
-- **The CLI's header:** an installed Claude Code CLI, named by `BMO_LIVE_CLAUDE`, connects to the host with the
+- **The harness plugin:** `bmo-pocket mcp`, started as a harness starts it with a session's token, lists the four
+  fixed tools and the hosted tools of the session's namespaces exactly, leaves a colliding name out, and calls each
+  through the control socket.
+- **The harness's header:** an installed Claude Code CLI, named by `BMO_LIVE_CLAUDE`, connects to the host with the
   header read from `BMO_MCP_TOKEN` and fails with a wrong one; the suite names none and skips it.

@@ -10,7 +10,7 @@
 ## Why
 
 - **Every schema a session is shown stands in its prompt.** A session holding a namespace of many tools would
-  carry every one's description and schema from its first turn, though most sessions call few of them.
+  carry every one's description and schema from its first request, though most sessions call few of them.
 - **Adding a tool must not move a running session's prefix.** A booked tool joins the list the toolbook answers
   with, not the tool list the session was started with, so a tool placed, upgraded or taken away changes no
   session's prompt.
@@ -38,14 +38,14 @@
   how some CLIs name an MCP tool. The two arguments of `call` and `act` are that full name, `tool`, and the tool's
   own arguments as one object, `arguments`.
 - **Usage reaches the session only as a tool result.** Nothing the toolbook answers is put into a system prompt, a
-  warm prefix or a turn's prompt, so a session's cached prefix never moves for it. The `list` and `describe`
+  warm prefix or a request's prompt, so a session's cached prefix never moves for it. The `list` and `describe`
   answers stand in the session like any other result.
 
 ## Which tools are resident
 
 - **The record's issuer names them.** A session record carries `shown`, the full names of the entries its
-  namespaces list by name, resolved by the issuer from whatever it declares per line and per role; the host reads
-  that list and nothing else, and a tool declares nothing of it. An entry is resident for a session where its
+  namespaces list by name, resolved by the issuer by a rule of its own; the host reads that list and nothing else,
+  and a tool declares nothing of it. An entry is resident for a session where its
   record's `shown` names it, and booked otherwise, so an entry `shown` does not name stands in the toolbook of
   every session holding it.
 - **A record without `shown` is shown none by name:** every entry it holds stands in its toolbook.
@@ -58,8 +58,8 @@
 ## Each session's toolbook
 
 - **A session's toolbook holds the entries its record's capabilities open that its `shown` does not name,** in
-  every namespace, read from the catalogue as the host last read it, as its namespaces' lists hold the shown ones.
-  So each session has a toolbook of its own, made of what it holds, and no tool names a line or a role.
+  every namespace its record names, read from the catalogue as the host last read it, as its namespaces' lists hold
+  the shown ones. So each session has a toolbook of its own, made of what it holds, and no tool names a holder.
 - **A tool added or taken away is in or out of every toolbook from the next `list`,** with no restart of the host
   or of the session: the toolbook answers from the catalogue as the host last read it (`docs/mcp-host.md`,
   「Placed tools」).
@@ -69,25 +69,26 @@
 - **One path for both ways in.** A direct call and a toolbook call reach the tool through the same dispatch in the
   host:
   - the session record is looked up by the token;
-  - the tool must be one the session holds (its record holds the tool's capabilities, or a bundle of it), or the
-    call is refused as an unknown tool, by the same words either way;
-  - for a tool that acts, the grant lock is asked (`docs/mcp-host.md`, 「The grant lock」);
+  - the tool must be one the session holds (its record names the tool's namespace and holds the tool's
+    capabilities, or a bundle of it), or the call is refused as an unknown tool, by the same words either way;
+  - for a tool declaring a grant, the record's grants must hold it (`docs/mcp-host.md`, 「Grants」);
   - the tool runs with the session's record and its answer is returned unchanged.
 - **A call takes as long as its tool does either way.** The toolbook adds no wait and no cut of its own, so an
   unbounded entry called through `act` waits for its work exactly as it does called directly.
 - **The arguments are checked against the tool's schema in the host,** before the tool runs, with a maintained
   JSON Schema validator, the `jsonschema` crate. A refusal names each argument that failed and why, and carries the
-  tool's schema, so the agent can call again without asking `describe` first.
-- **A full name the session is not shown** — no tool of that name, a namespace it holds nothing of, a tool its
-  record does not open — is refused as unknown by the same words a direct call is.
+  tool's schema, so the caller can call again without asking `describe` first.
+- **A full name the session is not shown** — no tool of that name, a namespace its record does not name or holds
+  nothing of, a tool its record does not open — is refused as unknown by the same words a direct call is.
 - **`call` handed a tool that acts** is refused with `act` named, before anything runs.
 - **`list` and `describe` show only what `call` and `act` would accept.** Each is built from the same session
   filter, so no listed tool is refused as unknown and no unlisted tool is callable.
-- **Every line's configuration names `toolbook` beside its namespaces,** at the host's `/mcp/toolbook`, with the
+- **Every harness configuration names `toolbook` beside its namespaces,** at the host's `/mcp/toolbook`, with the
   same bearer header.
-- **A CLI's allow list names servers, never single MCP tools.** A line that lets its agent reach a server's tools
-  lets it reach `toolbook` too. Narrowing which tools a line may use is a capability its record holds, never an
-  entry in an allow or deny list, since such an entry cannot see a tool reached through the toolbook.
+- **A harness's allow list names servers, never single MCP tools.** A configuration that lets a harness reach a
+  server's tools lets it reach `toolbook` too. Narrowing which tools a session may use is a capability its record
+  holds, never an entry in an allow or deny list, since such an entry cannot see a tool reached through the
+  toolbook.
 
 ## How a proxied call is read
 

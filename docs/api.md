@@ -1,27 +1,26 @@
 # The boundary
 
-**Fixed API, version 1.0.0.** This document is the tool host's fixed API: every contract it exposes to another unit
-and every call it makes on one, grouped by the resource each acts on. It is fixed before any caller is connected
-to it, and every caller is served the same routes in the same shapes. Another unit reaches the host only across it,
-and the host reaches another unit only by the calls in 「What the host calls」: never by its code, its tables, its
-files or its process. How the host behaves behind these contracts is `docs/mcp-host.md` and `docs/toolbook.md`;
-how tools are installed is `docs/registry.md`.
+**Fixed API, version 0.1.0-rev.2.** This document is the tool host's fixed API: every contract it exposes to another
+unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
+served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
+tables, its files or its process. The host calls no other unit. How the host behaves behind these contracts is
+`docs/mcp-host.md` and `docs/toolbook.md`; how tools are installed is `docs/registry.md`.
 
-## Versioning
+## Version
 
-- **The boundary carries the repository's one version, in semver,** the workspace's version in `Cargo.toml`, which
-  the OpenAPI document and both clients carry too.
-- **The major moves on a change an existing caller or tool reads:** the call protocol, the manifest schema, the
-  session record, a route, a body, an error code, a variable or the CLI's words. The minor moves on an addition of
-  one; the patch on anything else.
+- **The repository has one version,** numbered as bmo-chat's `docs/conventions.md` states in 「Versions」: before
+  the first release it is `0.1.0` and counts revisions, `0.1.0-rev.<n>`, and major, minor and patch do not move.
+- **Every crate and package the repository publishes carries it,** and so do `GET /health`, the OpenAPI document's
+  `info.version` and the harness plugin: `bmo-tool`, `mcp-host`, `bmo-pocket-client`, `bmo-pocket-plugin`,
+  `@bmo/pocket-client` and the TypeScript and Python tool kits.
 - **The call protocol has a version of its own, 1,** which every manifest and every handed object names; a
   manifest speaking another is left out rather than misread.
 
 ## The wire format
 
 - **The common wire format of bmo-next,** as bmo-chat's `docs/conventions.md` states it: keys in camelCase, times as
-  one integer of epoch milliseconds, error codes in kebab-case, and a list paged by one cursor and `limit`. This
-  document states only what the host serves in it.
+  one integer of epoch milliseconds, error codes in kebab-case, and a list paged by one cursor and `limit` into
+  `{"items": [...], "more": boolean}`. This document states only what the host serves in it.
 - **Every failure and every refusal is a non-2xx status** with a JSON body of two keys: `code`, a stable code a
   caller decides on, and `error`, an English sentence saying why. No 2xx answer stands for a refusal of the host's.
 - **A tool's own answer is not the host's refusal.** A call the host made and the tool answered is 200 with the
@@ -29,37 +28,60 @@ how tools are installed is `docs/registry.md`.
 
 ### Error codes
 
-| Code | Status | Answered where |
+| Status | Code | Answered where |
 |---|---|---|
-| `no-token` | 401 | a request on the tools face carries no bearer token |
-| `unknown-token` | 401 | the token names no record: never issued, revoked, or past its deadline |
-| `unknown-namespace` | 404 | the tools face or `GET /facts/{namespace}` names a namespace no placed entry is declared under |
-| `no-listing` | 404 | `GET /listings/{namespace}`, where no entry of the namespace declares a listing line |
-| `unknown-entry` | 404 | `GET /catalogue/{namespace}/{name}` names no entry, or `POST /calls` names one the record does not hold |
-| `malformed-record` | 400 | `POST /sessions` is handed what does not read as a session record |
-| `malformed-request` | 400 | a body or a query that does not read as the route asks: `POST /calls`, `POST /claims`, a cursor |
-| `arguments-misfit` | 422 | `POST /calls`, where the arguments do not fit the entry's schema in the form held; the sentence names each misfit and carries the schema |
-| `grant-refused` | 403 | `POST /calls`, where the grant lock refuses the call; the sentence names the missing grant or why none could be asked |
-| `tool-failed` | 502 | `POST /calls`, where the tool exited uncleanly, answered what is not a tool result, or ran past its timeout |
-| `unwritable-record` | 500 | a record could not be kept or taken back on disk |
-| `unknown-route` | 404 | a path the control socket does not serve |
-| `method-not-allowed` | 405 | a method a served path does not take |
+| 400 | `bad-request` | a body or a query that does not read as the route takes it: a session record, a call, a claim, a cursor or a `limit` that is not a positive integer; the sentence names what is wrong |
+| 401 | `unauthorized` | a request carries no bearer token, or one naming neither the issuer token nor a tool session: never issued, revoked, or past its `expiresAt` |
+| 403 | `forbidden` | the token is right but may not do this: a tool-session token on an issuer's route, or a call whose entry declares a grant the session's grants do not hold; the sentence names the missing grant |
+| 404 | `not-found` | the route is right, but the namespace, the entry or the tool session its path or body names is not one the token sees |
+| 404 | `no-route` | no route answers the method and path |
+| 422 | `arguments-misfit` | `POST /tool-calls`, where the input does not fit the entry's schema in the form the session holds; the sentence names each misfit and carries the schema |
+| 500 | `failed` | the host failed, as where a record could not be kept or taken back on disk; the sentence is the failure |
+| 502 | `tool-failed` | `POST /tool-calls`, where the tool exited uncleanly, answered what is not a tool result, or ran past its timeout |
 
 ## The OpenAPI document and the clients
 
 - **`docs/openapi.json` states every route of the control socket** in OpenAPI 3.1: each route's method, path,
-  query, request body, answer and the error answers it can give, every JSON body as a JSON Schema. It is generated
-  by the Rust client from the types it sends and reads, which are the types the host answers with, and never edited
-  by hand: `cargo run -p bmo-pocket-client --example openapi > docs/openapi.json` writes it again, and the client's
-  tests fail where the committed file differs from what it generates. This document is the canonical statement:
-  where the two disagree, the code is repaired and the file generated again.
+  query, request body, answer and the error codes it can give, every JSON body as a JSON Schema, one `bearer`
+  security scheme on every route, and the server `/`. Under `x-tools` it states the harness plugin's four fixed
+  tools, each with its input and output schemas and the route it calls, and under `x-harness` the plugin, the
+  command that starts it and what a harness does first with it. It is generated by the Rust client from the types
+  it sends and reads, which are the types the host answers with, and never edited by hand:
+  `cargo run -p bmo-pocket-client --example openapi > docs/openapi.json` writes it again, and the client's tests
+  fail where the committed file differs from what it generates. This document is the canonical statement: where the
+  two disagree, the code is repaired and the file generated again.
 - **The Rust client, the crate `bmo-pocket-client` in `client/`,** holds the wire types and one call per route over
-  the control socket. A failure reads as the route's error answer, its `code` and `error` with it, or as the socket
-  not being reached at all, which a caller waiting on a restarting host tells apart.
+  the control socket, each with a bearer token. A failure reads as the route's error answer, its `code` and `error`
+  with it, or as the socket not being reached at all, which a caller waiting on a restarting host tells apart.
 - **The TypeScript client, the package `@bmo/pocket-client` in `client/`,** is generated from the same document:
-  its types by `openapi-typescript` into `openapi.ts`, which its tests regenerate and compare, and its calls by
-  `openapi-fetch` over the control socket. `bun run generate` in `client/` writes `openapi.ts` again.
+  its types by `openapi-typescript` into `generated/openapi.d.ts`, which its tests generate afresh and compare, and
+  its calls by `openapi-fetch` over Bun's `fetch` on the control socket. `bun run generate` in `client/` writes the
+  types again.
 - **A client carries this contract and nothing else.** A caller uses one of them and writes none of its own.
+
+## The harness plugin
+
+- **`bmo-pocket mcp` starts the host's MCP server for a harness,** on standard input and output, with a tool
+  session's token (`--token`, or `BMO_POCKET_TOKEN`) and the control socket (`--socket`, or `BMO_MCP_HOST_SOCKET`,
+  or the default path). It is the crate `bmo-pocket-plugin` in `plugin/`, and every tool it serves is a thin call
+  of one route through `bmo-pocket-client`.
+- **It serves four fixed tools,** with the input and output schemas `x-tools` states:
+
+| Tool | Input | Route it calls |
+|---|---|---|
+| `pocket_namespaces` | `after?`, `limit?` | `GET /namespaces` |
+| `pocket_tools` | `namespace`, `after?`, `limit?` | `GET /namespaces/{namespace}/tools` |
+| `pocket_tool` | `namespace`, `toolName` | `GET /namespaces/{namespace}/tools/{toolName}` |
+| `pocket_call` | `namespace`, `name`, `input` | `POST /tool-calls` |
+
+- **Beside them, every hosted tool of the session's namespaces,** named `<namespace>_<name>`, with its title,
+  description, input and output schemas and its hints as the tool's member states them. Its `tools/list` reads the
+  session's namespaces and their tools afresh, page by page; a call of a hosted tool is one `POST /tool-calls`, and
+  its answer is the tool's result. Where two hosted tools would take one name, or one would take a fixed tool's,
+  neither is listed under it, and each is reached through `pocket_call`.
+- **A refusal reaches the harness as a tool result** with `isError` true, whose text is the route's `error` and
+  `code`, since the protocol's caller is a model.
+- **The `ahas-pocket` skill,** in `plugin/skills/ahas-pocket/`, tells a harness when and how to use the plugin.
 
 ## The tools face: MCP over HTTP
 
@@ -67,21 +89,21 @@ how tools are installed is `docs/registry.md`.
 - **`/mcp/<namespace>`** for every namespace a placed manifest declares, and **`/mcp/toolbook`** for the toolbook;
   each is a streamable HTTP MCP server with no protocol session kept: every request stands alone, each answer one
   JSON body. The OpenAPI document does not state this face: it is MCP's own protocol.
-- **Every request carries `Authorization: Bearer <token>`,** the token a record was issued with. A request without
-  one is answered 401 `no-token`; a token naming no record, 401 `unknown-token`; a namespace no placed manifest
-  declares, 404 `unknown-namespace`. Each in the common error shape.
-- **What a namespace serves:** `tools/list` lists the entries the record holds in it that its `shown` names, each
+- **Every request carries `Authorization: Bearer <token>`,** a tool session's token. A request without one, or with
+  one naming no session, is answered 401 `unauthorized`; a namespace no placed manifest declares, or one the
+  session's `namespaces` does not name, 404 `not-found`. Each in the common error shape.
+- **What a namespace serves:** `tools/list` lists the entries the session holds in it that its `shown` names, each
   with its name, title, description, input schema, output schema where it declares one, and its annotations
-  (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`); `tools/call` calls any entry the record
+  (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`); `tools/call` calls any entry the session
   holds in it, resident or booked; `resources/list` and `resources/read` serve the resources of every tool
-  declaring them in it, for a record holding their capabilities.
+  declaring them in it, for a session holding their capabilities.
 - **What the toolbook serves:** four tools, `list` (`query?`), `describe` (`tool`), `call` (`tool`, `arguments`)
   and `act` (`tool`, `arguments`), where `tool` is a full name, `<namespace>/<name>`, and `arguments` the inner
   tool's own arguments as one object (`docs/toolbook.md`). A reader of a session's calls reads a `call` or an `act`
   of the server `toolbook` as the inner call by these two arguments.
-- **A refusal a model reads is a tool result:** a call the record may not make, arguments that do not fit, a grant
-  the lock refuses and a tool that failed are each answered as a tool result with `isError` true and an English
-  text, since the protocol's caller is a model.
+- **A refusal a model reads is a tool result:** a call the session may not make, arguments that do not fit, a grant
+  the session does not hold and a tool that failed are each answered as a tool result with `isError` true and an
+  English text, since the protocol's caller is a model.
 - **Every result says it is complete,** and a listing or a resource read says it may be kept by the asking session
   alone and never past its answer, for a client on a protocol revision that asks; an earlier revision is answered
   without them.
@@ -89,125 +111,173 @@ how tools are installed is `docs/registry.md`.
 ## The control socket
 
 - **HTTP/1.1 over a Unix socket,** at the path `--control` names, or `bmo/mcp-host.sock` under the user's runtime
-  directory. Only the host's own user can reach it, so it carries no token. Bodies are JSON both ways unless a route
-  says otherwise.
+  directory; a client finds it at `BMO_MCP_HOST_SOCKET` where it stands elsewhere. Bodies are JSON both ways.
+- **Every route takes a bearer token** in `Authorization: Bearer <token>`, of one of two kinds:
+  - **the issuer token,** the one the host keeps in `tool-host/issuer-token` under the data root, or in the file
+    `--issuer-token-file` names, readable by the host's user alone and made by the host at its first start where
+    none stands. It alone issues and revokes tool sessions, and it sees every namespace, every entry, those for the
+    system alone among them, and every schedule.
+  - **a tool session's token,** answered by `POST /tool-sessions`. It sees the namespaces its record names, and in
+    them the entries its record holds; it makes calls and claims under that record.
+- **The split is what keeps a session to its record.** A session's token can issue nothing, so no holder of one can
+  hand itself a wider record.
 
-### Sessions
+### Health
 
-| Route | Request | Answer |
+| Route | Token | Answer |
 |---|---|---|
-| `POST /sessions` | a session record | 200 `{"token"}`; 400 `malformed-record` naming why the record does not read; 500 `unwritable-record` |
-| `DELETE /sessions/{token}` | | 204, whether or not the token named a record, what its tools kept ended; 500 `unwritable-record` |
+| `GET /health` | either | 200 `{ready, reason, version}`: `ready` true and `reason` null once the catalogue is read, and `version` the repository's |
+
+### Namespaces
+
+| Route | Query | Answer |
+|---|---|---|
+| `GET /namespaces` | `after`, a namespace's name; `limit` | 200 a page of namespaces in order of name |
+| `GET /namespaces/{namespace}` | | 200 one namespace; 404 `not-found` where the token sees no entry under it |
+
+| Field of a namespace | Type | Meaning |
+|---|---|---|
+| `name` | string | Its name, as its entries' manifests declare it |
+| `facts` | object | What it says of itself: `digest`, the SHA-256 of what it shows the token, and the verbs, records, icons and lists its entries add (`docs/mcp-host.md`, 「What a namespace says of itself」) |
+| `toolCount` | integer | How many of its entries the token sees |
+
+- **A namespace's key is its name,** since it has no other: `after` answers the namespaces whose names sort after
+  it. The draft that fixed this API typed the cursor as an integer; a name is the only key a namespace has, so the
+  cursor is a string.
+- **A token sees a namespace** where it sees at least one entry under it: the issuer token every namespace a placed
+  manifest declares, a session's token the namespaces its record names in which it holds an entry.
+
+### Tools
+
+| Route | Query | Answer |
+|---|---|---|
+| `GET /namespaces/{namespace}/tools` | `after`, a tool's name; `limit` | 200 a page of the namespace's tools the token sees, in order of name; 404 `not-found` where it sees none |
+| `GET /namespaces/{namespace}/tools/{toolName}` | | 200 one tool; 404 `not-found` where the token does not see it |
+
+| Field of a tool | Type | Meaning |
+|---|---|---|
+| `namespace` | string | The namespace it is shown under |
+| `name` | string | Its name in the namespace; its full name is `<namespace>/<name>` |
+| `title` | string or null | Its title |
+| `description` | string | What it does |
+| `input` | object | Its input schema, in the form the token holds it |
+| `output` | object or null | The schema of what it answers with, where it declares one |
+| `icon` | string or null | The icon its manifest declares for it, a name its readers know |
+| `capabilities` | array of strings | What a session must hold to be shown it whole |
+| `grant` | string or null | The resource a session's grants must hold for a call of it to run |
+| `hints` | object | `readOnly`, `destructive`, `idempotent` and `openWorld` |
+| `listing` | object or null | The line it adds to its namespace's listing, `{line, order}`, where it declares one |
+| `system` | boolean | Whether it is for the system alone, shown to no session |
+
+- **A tool's key in its namespace is its name,** so `after` answers the tools whose names sort after it, a string
+  for the reason a namespace's cursor is one.
+- **A tool has one shape** wherever it is answered, in a page or alone.
+
+### Tool calls
+
+| Route | Token | Request | Answer |
+|---|---|---|---|
+| `POST /tool-calls` | a session's | `{namespace, name, input}` | 200 `{namespace, name, result, spentMs}`: the tool result as the tool answered it and how long the call took; 400 `bad-request`; 404 `not-found`; 403 `forbidden`; 422 `arguments-misfit`; 502 `tool-failed` |
+
+- **A call is dispatched as a session's call on the tools face is,** under the token's record, through the same
+  schema, capability and grant checks. An entry for the system alone is shown to no session, and is reached here
+  under a record naming its namespace. What the record's tools keep goes on until the record ends.
+
+### Claims
+
+| Route | Token | Request | Answer |
+|---|---|---|---|
+| `POST /claims` | a session's | `{resource}`, an address | 200 `{resource, granted, reason, namespace, toolName, arguments}`; 400 `bad-request` |
+
+- **A claim asks whether the session may have an address read, and by which entry.** `granted` is true where an
+  entry the session holds claims the address and the session's grants hold that entry's grant, if it declares one;
+  `namespace` and `toolName` then name the entry, `arguments` the arguments it reads the address with, and `reason`
+  is null. Where none does, `granted` is false, the other three null, and `reason` says why: no entry the session
+  holds claims it, or the grant that entry needs.
+
+### Tool sessions
+
+| Route | Token | Request | Answer |
+|---|---|---|---|
+| `POST /tool-sessions` | the issuer's | a session record, with `ttlMs` | 201 the tool session; 400 `bad-request` naming why the record does not read; 403 `forbidden`; 500 `failed` |
+| `DELETE /tool-sessions/{token}` | the issuer's | | 204, what the session's tools kept ended; 403 `forbidden`; 404 `not-found` where the token names no session; 500 `failed` |
 
 #### The session record
 
 One JSON object. A field the record does not name is refused, so an issuer handing something new is told rather than
-ignored.
+ignored. The issuer states in it everything the host checks a call against, so the host asks no other unit.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `line` | string, required | The run line the record is issued for, a name a tool may read |
-| `role` | string | The role of the agent it is issued for, a name a tool may read |
-| `capabilities` | array of strings, required | The capabilities the record holds, as the issuer resolved them |
+| `holderName` | string, required | Who holds the session, a name a tool may read and the host never interprets |
+| `namespaces` | array of strings, required | The namespaces the session may use |
+| `capabilities` | array of strings, required | The capabilities the session holds, as the issuer resolved them |
+| `grants` | array, required | The grants it holds, each `{resource}`: the resources it may act on |
 | `shown` | array of strings | The full names of the entries its namespaces list by name; none listed by name where absent |
-| `checkout` | path | The checkout the run works in |
-| `dataRoot` | path, required | The data root the run reads; handed to its tools as `BMO_DATA_DIR` |
-| `archive` | string | The archive address its tools read; handed to them as `BMO_ARCHIVE_URL` where present |
-| `place` | path | A resident program's place: the folder whose `run.json` names the run going |
-| `runVariables` | object of strings | The run's own variables, for a run spawned for itself |
-| `fragmentDesk` | path | The fragment desk an editor's batch opened |
-| `research` | object | What a research run is held to: `closesAt` (epoch ms), `owner`, `source` (`search` or `browse`), `role`, `branches`, `chat` (a room's id), `strategy`, `hostIntervalMs`, `engineIntervalMs`, `rulebooks` (array of strings) |
-| `deadline` | epoch milliseconds | When a run's record lapses; a resident program's has none |
+| `variables` | object of strings | Variables handed to every call's environment |
+| `variablesFile` | path | A file holding a JSON object of strings, read afresh at every call and laid over `variables` |
+| `labels` | object | The issuer's own metadata, handed to every call inside the record and never read by the host |
+| `ttlMs` | integer or null | How long the session stands, in the request alone; none stands until it is revoked |
 
-- **The turn a call is made in** is the record's `runVariables`, overlaid by the `env` object of `run.json` in its
-  `place` where one stands and is not a person's (`"person": true`): of those, `BMO_RUN_NAME`, `BMO_TASK_LOCKED`,
-  `BMO_WORK_ORDER_STEP` and every `BMO_TURN_` variable. The host reads `BMO_TURN_CHAT`, `BMO_TURN_PRIVILEGED` and
-  `BMO_TURN_USER` of it for the grant lock, and hands the whole turn to each call's environment.
+The tool session answered, and the record a call is handed, carry the same fields, `ttlMs` read into:
 
-### Namespaces
+| Field | Type | Meaning |
+|---|---|---|
+| `token` | string | The session's bearer token, in the answer to `POST /tool-sessions` alone |
+| `expiresAt` | epoch milliseconds or null | When the session lapses; null where it stands until revoked |
+| `createdAt` | epoch milliseconds | When it was issued |
 
-| Route | Answer |
-|---|---|
-| `GET /listings/{namespace}` | 200 the namespace's listing as plain text, one line per entry that declares one, in its order; 404 `no-listing` where no entry does |
-| `GET /facts/{namespace}` | 200 the namespace's facts: `digest`, the SHA-256 of what it shows, and each list, verb, record and icon its entries add, as `docs/mcp-host.md` states them; 404 `unknown-namespace` where no entry is declared under it |
+- **A grant is an object holding one `resource`,** an opaque string the issuer and the tools agree on. The draft that
+  fixed this API left a grant's fields open; a resource is the one a call is checked against, so it is the one a
+  grant carries.
+- **A record holds no path, address or value of the issuer's own** beyond these. What a tool reads of the issuer's
+  is in `variables`, `variablesFile` or `labels`, as the issuer puts it there.
 
-### The catalogue
+### Schedules
 
 | Route | Query | Answer |
 |---|---|---|
-| `GET /catalogue` | `after` or `before`, an entry's full name; `limit` | 200 an array of entries in order of full name; 400 `malformed-request` for both cursors at once or a `limit` that is not a positive integer |
-| `GET /catalogue/{namespace}/{name}` | | 200 one entry with its description and schemas; 404 `unknown-entry` |
-
-- **The cursor is an entry's full name,** its identifier: `after` answers the entries whose full names sort after
-  it, `before` those that sort before it, each in ascending order of full name, at most `limit` of them nearest the
-  cursor. Without a cursor the catalogue answers from its start; without `limit`, every entry from the cursor on.
-  Every entry is answered, those for the system alone among them.
-
-| Field of an entry | Type | Meaning |
-|---|---|---|
-| `name` | string | Its full name, `<namespace>/<name>` |
-| `readOnly` | boolean | Whether it only reads |
-| `reachedBy` | `call` or `act` | The toolbook tool it is called through |
-| `capabilities` | array of strings | What a record must hold to be shown it whole |
-| `grant` | string or null | The room relation the sender of the message it acts on must hold |
-| `system` | boolean | Whether it is for the system alone |
-| `resident` | boolean | Whether its namespace lists it by name; false in the catalogue, which no record is shown |
-| `placed` | string | Its tool's placed folder name |
-| `description` | string | What it does |
-| `icon` | string or null | The icon its manifest declares for it, a name its readers know |
-| `schedules` | array | Its schedules, each as below; empty where it declares none |
+| `GET /schedules` | `after`, a time in epoch milliseconds; `limit` | 200 a page of the schedules the token sees, in order of `nextAt`, then namespace, tool name and the schedule's place among its entry's |
 
 | Field of a schedule | Type | Meaning |
 |---|---|---|
+| `namespace` | string | Its entry's namespace |
+| `toolName` | string | Its entry's name |
 | `cron` | string | The pattern its manifest declares |
 | `arguments` | object | The arguments each scheduled call is handed |
-| `nextAt` | epoch ms or null | When it is next due; null where the pattern names no time to come |
-| `lastAt` | epoch ms or null | When its last call was made since the host started; null where none was |
+| `nextAt` | epoch milliseconds | When it is next due |
+| `lastAt` | epoch milliseconds or null | When its last call was made since the host started; null where none was |
 | `lastError` | string or null | Why its last call failed, the host's refusal or the tool's own failed result; null where it did not |
 | `running` | boolean | Whether a call of it is running now |
 
-- **One entry described** carries the fields above and `described`, the text the toolbook's `describe` answers for
-  it, `inputSchema`, and `outputSchema`, null where it declares none.
-
-### Calls
-
-| Route | Request | Answer |
-|---|---|---|
-| `POST /calls` | `{session, tool, arguments?}`: a record, a full name and the arguments | 200 the tool result as the tool answered it; 400 `malformed-request`; 404 `unknown-entry`; 422 `arguments-misfit`; 403 `grant-refused`; 502 `tool-failed` |
-| `POST /claims` | `{session, address}` | 200 `{"entry", "arguments"}`, the entry the record holds that claims the address and the arguments it reads the page with, both null where no entry claims it; 400 `malformed-request` |
-
-- **A call through `/calls` is dispatched as a session's call is,** under the record it carries, through the same
-  schema, capability and grant checks, and reaches the entries for the system alone too. What that record's tools
-  kept ends as it answers.
-
-### Health
-
-| Route | Answer |
-|---|---|
-| `GET /health` | 200 `ok`, as plain text |
+- **A schedule is keyed by its time,** so `after` answers the schedules due after it. Several may be due at one
+  time, so a page never ends inside a run of equal `nextAt`: it carries the whole run, and so exceeds `limit` by at
+  most the run's length.
+- **A schedule whose pattern names no time to come is not listed,** since the host will make no call of it.
+- **A token sees a schedule** where it sees the schedule's entry.
 
 ## The variables
 
 | Variable | Read by | Meaning |
 |---|---|---|
-| `BMO_MCP_HOST_PORT` | the host; a line's configuration | The loopback port the tools face listens on |
-| `BMO_MCP_TOKEN` | a session's CLI | The bearer token its configuration's header expands; set in the program's environment by its launcher |
-| `BMO_MCP_HOST_SOCKET` | a launcher; the clients | Where it reaches the control socket, where it does not stand at the default path |
-| `BMO_DATA_DIR` | the host; every call | The host's data root; in a call's environment, the record's |
-| `BMO_ARCHIVE_URL` | every call | The record's `archive` |
+| `BMO_MCP_HOST_PORT` | the host; a harness's configuration | The loopback port the tools face listens on |
+| `BMO_DATA_DIR` | the host; `bmo-pocket` | The data root whose `tool-host/` folder holds the records, the registry and the issuer token |
+| `BMO_MCP_HOST_SOCKET` | the clients; the plugin | Where the control socket stands, where it does not stand at the default path |
+| `BMO_POCKET_TOKEN` | `bmo-pocket mcp` | The tool session's token it calls with |
+| `BMO_MCP_TOKEN` | a harness's MCP configuration | The bearer token its configuration's header expands for the tools face |
 | `BMO_TOOL_START` | a server tool | Its start object (「The call protocol」) |
 | `BMO_SCHEDULED_AT` | a scheduled call | The time it was due, in epoch milliseconds (「Schedules」) |
-| `BMO_ACCOUNTS_URL`, `BMO_ACCOUNTS_TOKEN_FILE`, `BMO_GRANT_LOCK` | the host | The account service it asks, the file holding its bearer token, and the grant lock's switch (「What the host calls」) |
 | `BMO_POCKET_SOURCE` | `bmo-pocket` | The source template a bare tool name is put from (「The CLI」) |
 
-- **The deployed host reads the host's variables from `env/pocket.env` under the data root,** where the deployment
-  writes them; its user unit names that file.
+- **The deployed host reads its variables from `env/pocket.env` under the data root,** where the deployment writes
+  them; its user unit names that file.
 
 ## The call protocol
 
 Version 1. The host starts a placed tool's run command in its placed folder, in a process group of its own, with a
-clean environment: the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`, each variable `--pass-env` names, `BMO_DATA_DIR`,
-`BMO_ARCHIVE_URL` where the record names an archive, and the record's turn.
+clean environment, each layer laid over the one before it: the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR` and each
+variable `--pass-env` names; the record's `variables`; the object its `variablesFile` holds, where the file stands and
+reads as an object of strings; and `BMO_TOOL_START` for a server's start, `BMO_SCHEDULED_AT` for a scheduled call.
 
 ### What a tool is handed
 
@@ -217,7 +287,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 |---|---|
 | `protocol` | 1 |
 | `kind` | What is asked, with the fields of its kind beside it (below) |
-| `session` | The session record the call is made under |
+| `session` | The session record the call is made under, its token left out |
 | `callback` | The call's own call-back socket into the host; none for a helper |
 | `shared` | Each shared helper's socket, by the helper's name; none where the tool names none |
 
@@ -286,17 +356,17 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | `output` | string | The output schema's file, where it answers an object |
 | `hints` | table | `read_only`, `destructive`, `open_world` (booleans) and `idempotent`; a read-only entry is reached by `call`, any other by `act` |
 | `capabilities` | array of strings | What a record must hold to be shown it whole; required unless `system` |
-| `grant` | string | The room relation the sender of the message it acts on must hold (`docs/mcp-host.md`, 「The grant lock」) |
+| `grant` | string | The resource a session's grants must hold for a call of it to run (`docs/mcp-host.md`, 「Grants」) |
 | `timeout` | integer | A timeout of its own, in seconds |
 | `unbounded` | boolean | A call that waits on what it set off as long as that takes, with no timeout; not with `timeout` |
-| `system` | boolean | For the system alone: shown to no session, reached through the call-back socket and `/calls` |
+| `system` | boolean | For the system alone: shown to no session, reached through the call-back socket and `POST /tool-calls` |
 
 - **`[entry.bundle.<capability>]`:** the narrower form a record holding that capability is shown the entry in:
   `shown`, the arguments it shows, and `required`, those it requires.
 - **`[entry.listing]`:** `line`, the line it adds to its namespace's listing, and `order`.
 - **`[entry.facts]`:** `verb`, the verb a sending entry needs; `record`, the record a recording entry leaves;
-  `icon`, the icon its readers show it by, in its namespace's facts and its catalogue entry; and `lists`, by a
-  list's name, the item it adds to that list of its namespace's facts.
+  `icon`, the icon its readers show it by, in its namespace's facts and its tool member; and `lists`, by a list's
+  name, the item it adds to that list of its namespace's facts.
 - **`[entry.claims]`:** `hosts`, the hosts whose pages it claims, each with its subdomains.
 - **`[[entry.schedule]]`:** a time the host calls the entry by itself (「Schedules」): `cron`, the pattern, and
   `arguments`, the table each call is handed, none by default.
@@ -327,16 +397,18 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 - **The pattern is a cron pattern as the `croner` library reads it:** minute, hour, day of month, month and day of
   week, an optional seconds field before them and an optional year after, and nicknames written with a leading `@`, such as `daily`. It is
   read in the host machine's local time zone.
-- **A scheduled call is made under a record of its own:** `line` `schedule`, the entry's own capabilities, the
-  host's data root, and the run variables `BMO_TURN_PRIVILEGED` `1`, since no person's message opened it, and
-  `BMO_SCHEDULED_AT`, the time it was due. It passes the schema and grant checks a call does.
-- **What a schedule stands at is read in its entry's catalogue entry** (「The catalogue」).
+- **A scheduled call is made under a record of its own:** `holderName` `schedule`, `namespaces` the entry's own,
+  `capabilities` the entry's, `grants` the entry's grant where it declares one, and `variables` the host's own that
+  `--pass-env` names; its environment carries `BMO_SCHEDULED_AT`, the time it was due. It passes the schema and grant
+  checks a call does.
+- **Where a schedule stands is read on `GET /schedules`** (「The control socket」).
 
 ## The CLI
 
-- **`bmo-pocket`,** which `bmo pocket <verb>` hands its words to by the `bmo-<command>` rule. Its verbs stand on the
-  data root `--data-root` or `BMO_DATA_DIR` names. It prints what it did on standard output and why it refused on
-  standard error, and ends 0 where it did what was asked, 1 where it refused, and 2 where its words do not read.
+- **`bmo-pocket`,** which `bmo pocket <verb>` hands its words to by the `bmo-<command>` rule. Its registry verbs
+  stand on the data root `--data-root` or `BMO_DATA_DIR` names. It prints what it did on standard output and why it
+  refused on standard error, and ends 0 where it did what was asked, 1 where it refused, and 2 where its words do
+  not read.
 - **A tool registers itself:** whoever installs a tool, a person or a service's deployment, runs `put` for it, and
   no list of tools stands in the host or in this document.
 
@@ -345,6 +417,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | `put <tool> [--allow <name>]… [--service <repo>] [--placed] [--source <template>]` | Places a tool and registers it, or upgrades the tool registered under its name: `<tool>` is a local folder, a git address (one holding `://`, or `git@`, or ending in `.git`), cloned, or a bare name, made into the repository name `bmo-<name>` and put from the source template `--source` or `BMO_POCKET_SOURCE` names, `{repo}` in it standing for that repository name (a bare name is refused where none is configured) |
 | `take <name> [--service <repo>]` | Takes the tool registered under the name out of the registry; a service's own tool only with `--service` naming that service |
 | `list [--json]` | Every registered tool: its name, its version, where it was put from, the service it is registered for and its entries; `--json` prints the pointers (`docs/registry.md`, 「A pointer」) as a JSON array |
+| `mcp [--socket <path>] [--token <token>]` | Serves the harness plugin on standard input and output (「The harness plugin」) |
 
 - **What `put` checks before anything is placed:** the manifest reads (「The manifest」); its name is no other
   kind's registration, and each of its entries' full names is held by no other registered tool; and every
@@ -360,22 +433,5 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
   replaces one put without it.
 - **`take` and an upgrade** only move the registry's pointer; the host takes a retired version away once no call
   holds it (`docs/registry.md`).
-
-## What the host calls
-
-### The account service
-
-- **Where:** the base address `--accounts` or `BMO_ACCOUNTS_URL` names, with the bearer token the file
-  `--accounts-token-file` or `BMO_ACCOUNTS_TOKEN_FILE` names; the grant lock stands only where an address is named
-  and `--grant-lock` or `BMO_GRANT_LOCK` does not read `off`.
-- **The calls, as the account service's own boundary document in bmo-web states them** (its JSON keys as it writes
-  them):
-
-| Call | Request | Read of the answer |
-|---|---|---|
-| `GET /accounts/model` | | `in_force`; the lock stands only where it is true |
-| `POST /checks/object` | `kind` `bmo_tools`, `object` the capability, `relation` `use`, `user` from `BMO_TURN_USER` | `allowed`, `grant` |
-| `POST /checks/message` | `room` from `BMO_TURN_CHAT`, `message` from the call's `message` argument, `relation` the entry's `grant` | `allowed`, `grant` |
-
-- **A call that does not answer, or answers other than 200,** refuses the tool call with an English sentence naming
-  the account service and what it answered; a refusal's `code` and `error` are carried in it.
+- **`mcp-host call <namespace> <name>`** calls one tool as a session would, with no host running:
+  `{"session": …, "arguments": …}` on standard input, `session` a session record as `POST /tool-sessions` takes it.
