@@ -47,6 +47,8 @@ license.workspace = true
 publish.workspace = true
 
 [dev-dependencies]
-# The workspace's packages as `cargo metadata` answers them, and the other manifests a project carries.
+# The workspace's packages as `cargo metadata` answers them, the other manifests a project carries, and the
+# patterns the personal-data check reads every tracked file with.
 serde_json.workspace = true
 toml.workspace = true
+regex = "1.13.1"

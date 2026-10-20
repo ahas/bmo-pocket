@@ -20,8 +20,9 @@ name; it reads their manifests.
 - **English only** in code, comments, strings, tests and documents, and in commit messages. Messages the
   host answers with are English sentences or status codes; people's text is rendered by the web unit's
   language packs. `tests/repository.rs` fails on Hangul in any `.rs`, `.ts` or `.py` file.
-- **No names of the callers or the people behind them, host names, home paths or private network addresses**
-  in code, documents or commits; tests use neutral names.
+- **No personal data** in code, documents, tests or commits: no names of the callers or the people behind them,
+  no host names, home paths, mail addresses, telephone numbers, tokens or private network addresses; tests use
+  neutral names. `PERSONAL-DATA.md` states the rule whole and `tests/personal_data.rs` holds it.
 - **Tests live in `tests/`.** A crate's tests are in its own `tests/`; checks that span the repository are in
   the root `tests/`. No test module sits in `src/`.
 - **No directory named after its parent** (no `x/x`), **no folder named for a language**, and **only Cargo
