@@ -1,0 +1,36 @@
+[
+  {
+    "id": "client/socket",
+    "title": "Control socket client",
+    "what": "The control socket as a caller reaches it: the Rust wire types and one call per route with a bearer token, the TypeScript package generated from docs/openapi.json, and the harness plugin fixed tools and OpenAPI document. Lives in client/.",
+    "files": [
+      "client/src/lib.rs",
+      "client/src/client.rs",
+      "client/src/error.rs",
+      "client/src/harness.rs",
+      "client/src/openapi.rs",
+      "client/src/transport.rs",
+      "client/src/wire.rs",
+      "client/index.ts",
+      "client/examples/openapi.rs",
+      "docs/api.md",
+      "docs/openapi.json"
+    ],
+    "symbols": [
+      "Pocket",
+      "Failure",
+      "default_socket",
+      "WireError",
+      "ErrorCode",
+      "openapi",
+      "harness_tools",
+      "pocketClient"
+    ],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498436114
+  }
+]

@@ -1,0 +1,223 @@
+[
+  {
+    "id": "host/catalogue",
+    "title": "Placed tool catalogue",
+    "what": "The tools the host serves, read from each placed folder under the tools root and from the registry pointers, reread when either changes so a put or take shows from the next call; retired versions swept once no call holds them. Lives in host/src/placed.rs.",
+    "files": [
+      "host/src/placed.rs",
+      "docs/mcp-host.md",
+      "docs/registry.md"
+    ],
+    "symbols": [
+      "Catalogue",
+      "Placed",
+      "PlacedTool",
+      "schema_faults",
+      "moves",
+      "concerns"
+    ],
+    "aliases": [],
+    "needs": [
+      "registry/pointers",
+      "sdk/contract"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429796
+  },
+  {
+    "id": "host/namespaces",
+    "title": "Namespace serving",
+    "what": "One namespace of tools as the MCP protocol serves it to a session whose record names it: the entries its shown list names, the rest booked into the toolbook, and every call checked against the session's capabilities and grants. Lives in host/src/handler.rs and residency.rs.",
+    "files": [
+      "host/src/handler.rs",
+      "host/src/residency.rs",
+      "docs/mcp-host.md",
+      "docs/toolbook.md"
+    ],
+    "symbols": [
+      "Handler",
+      "Host",
+      "Entry",
+      "Refusal",
+      "Claimant",
+      "unknown"
+    ],
+    "aliases": [],
+    "needs": [
+      "host/catalogue",
+      "host/tool-runner",
+      "host/session-grants",
+      "host/session-records",
+      "host/problem-details"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498640164
+  },
+  {
+    "id": "host/problem-details",
+    "title": "Host refusals",
+    "what": "The refusals the host answers before a request reaches a tool, on the tools face and the control socket alike: each a non-2xx status with the common code and error body of the client. Lives in host/src/error.rs.",
+    "files": [
+      "host/src/error.rs"
+    ],
+    "symbols": [
+      "HostError"
+    ],
+    "aliases": [],
+    "needs": [
+      "client/socket"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498400295
+  },
+  {
+    "id": "host/schedules",
+    "title": "Tool schedules",
+    "what": "The calls the host makes at the times each entry manifest declares in [[entry.schedule]], each under a record of its own, with when it is next due, its last call and failure, and whether one runs. Lives in host/src/schedule.rs.",
+    "files": [
+      "host/src/schedule.rs",
+      "docs/mcp-host.md",
+      "docs/api.md"
+    ],
+    "symbols": [
+      "Schedules",
+      "ScheduleState",
+      "Due",
+      "record",
+      "HOLDER"
+    ],
+    "aliases": [],
+    "needs": [
+      "host/namespaces",
+      "sdk/contract"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429810
+  },
+  {
+    "id": "host/server",
+    "title": "Tool host process",
+    "what": "The mcp-host process and its verbs: the loopback tools face behind each session token, the control socket, and one call of one placed tool without a session. Lives in host/src/server.rs, main.rs and lib.rs.",
+    "files": [
+      "host/src/server.rs",
+      "host/src/main.rs",
+      "host/src/lib.rs",
+      "docs/mcp-host.md",
+      "docs/api.md",
+      "deploy/bmo-mcp-host.service"
+    ],
+    "symbols": [
+      "control",
+      "tools",
+      "Caller",
+      "page_by_name",
+      "page_by_time"
+    ],
+    "aliases": [],
+    "needs": [
+      "host/namespaces",
+      "host/toolbook",
+      "host/session-records",
+      "host/catalogue",
+      "host/problem-details",
+      "host/schedules",
+      "host/tool-runner",
+      "client/socket"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429812
+  },
+  {
+    "id": "host/session-grants",
+    "title": "Session grants",
+    "what": "A call runs only within the namespaces, capabilities and grants its tool session record carries: an entry declaring a grant resource runs where the record grants it, and a claim is answered only for a claimant whose grant the record holds. Lives in host/src/handler.rs.",
+    "files": [
+      "host/src/handler.rs",
+      "docs/mcp-host.md"
+    ],
+    "symbols": [
+      "ungranted",
+      "Entry",
+      "Refusal"
+    ],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429803
+  },
+  {
+    "id": "host/session-records",
+    "title": "Session records",
+    "what": "The tool session records calls are served by, issued and revoked on the control socket with their expiry, one file each readable by the host user alone, named by its token hash and read back at start. Lives in host/src/records.rs.",
+    "files": [
+      "host/src/records.rs",
+      "docs/mcp-host.md",
+      "docs/api.md"
+    ],
+    "symbols": [
+      "Records",
+      "RecordId",
+      "issuer_token",
+      "now_ms"
+    ],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429800
+  },
+  {
+    "id": "host/tool-runner",
+    "title": "Tool runner",
+    "what": "How a placed tool is run: a process per call handed its call on standard input, or one MCP server per record, each in a clean environment, with its call-back socket, shared helpers, timeouts and process group. Lives in host/src/running.rs.",
+    "files": [
+      "host/src/running.rs",
+      "docs/mcp-host.md",
+      "docs/api.md"
+    ],
+    "symbols": [
+      "Placements",
+      "CallBackSocket",
+      "Bound",
+      "call_back",
+      "failed",
+      "claim_answer",
+      "sockets_beside"
+    ],
+    "aliases": [],
+    "needs": [
+      "host/catalogue",
+      "sdk/contract"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429798
+  },
+  {
+    "id": "host/toolbook",
+    "title": "Toolbook",
+    "what": "The server every harness configuration names beside its namespaces, listing, describing and calling the tools a session holds that its namespaces do not list, by the same dispatch a direct call takes. Lives in host/src/toolbook.rs.",
+    "files": [
+      "host/src/toolbook.rs",
+      "docs/toolbook.md",
+      "docs/mcp-host.md"
+    ],
+    "symbols": [
+      "Toolbook",
+      "tools",
+      "first_sentence",
+      "listed",
+      "described",
+      "named",
+      "TOOLBOOK"
+    ],
+    "aliases": [],
+    "needs": [
+      "host/namespaces"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429807
+  }
+]

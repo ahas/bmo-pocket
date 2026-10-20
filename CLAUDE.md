@@ -27,8 +27,9 @@ name; it reads their manifests.
 - **No directory named after its parent** (no `x/x`), **no folder named for a language**, and **only Cargo
   manifests at the root**: the root `Cargo.toml` is the workspace and the repository's own package.
 - **Documents state what is true now**: no change history, no quoted source and no file-and-line pins.
-- **`graph/` is the code dependency graph**, written only by `bmo graph` run with `BMO_SOURCE_DIR` naming this
-  working tree. A commit that moves a feature's files, symbols or edges brings its node along in the same commit.
+- **`.graph/` is the code dependency graph**, written only by `bmo graph` in this checkout. `settings.toml`
+  declares the repository's name and coverage; a commit that moves a feature's files, symbols or edges brings its
+  node along in the same commit.
 
 ## Checks
 

@@ -1,0 +1,208 @@
+[
+  {
+    "id": "api/cli",
+    "title": "Unit command",
+    "what": "The bmo-pocket command bmo dispatches to: its registry verbs put, take, list and mcp, its tool nouns list, describe, call and sites, and the nouns it declares. docs/api.md states its words and exit codes.",
+    "files": [
+      "docs/api.md",
+      "docs/registry.md",
+      "host/src/bin/bmo-pocket.rs",
+      "host/src/command.rs",
+      "host/src/install.rs"
+    ],
+    "symbols": [
+      "NOUNS",
+      "Noun",
+      "Put",
+      "put",
+      "take",
+      "list"
+    ],
+    "aliases": [],
+    "needs": [
+      "registry/pocket-cli",
+      "plugin/mcp"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429826,
+    "boundary": {
+      "side": "exposes"
+    }
+  },
+  {
+    "id": "api/client",
+    "title": "Published clients",
+    "what": "The Rust crate bmo-pocket-client and the TypeScript package @bmo/pocket-client: one call per route over the control socket, the wire types, the harness plugin's fixed tools and the OpenAPI document they are generated from. docs/api.md states this boundary.",
+    "files": [
+      "docs/api.md",
+      "docs/openapi.json",
+      "client/src/lib.rs",
+      "client/src/client.rs",
+      "client/src/wire.rs",
+      "client/src/error.rs",
+      "client/src/harness.rs",
+      "client/src/openapi.rs",
+      "client/src/transport.rs",
+      "client/index.ts"
+    ],
+    "symbols": [
+      "Pocket",
+      "Failure",
+      "default_socket",
+      "openapi",
+      "openapi_json",
+      "pocketClient"
+    ],
+    "aliases": [],
+    "needs": [
+      "client/socket",
+      "api/http"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498640176,
+    "boundary": {
+      "side": "exposes"
+    }
+  },
+  {
+    "id": "api/host-command",
+    "title": "mcp-host command",
+    "what": "The mcp-host command verbs: serve, the host itself on the loopback port and the control socket, and call, one call of one placed tool as a session would make it without a host running. docs/api.md states the call verb.",
+    "files": [
+      "docs/api.md",
+      "docs/mcp-host.md",
+      "host/src/main.rs"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "host/server",
+      "host/tool-runner"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429829,
+    "boundary": {
+      "side": "exposes"
+    }
+  },
+  {
+    "id": "api/http",
+    "title": "Control socket API",
+    "what": "Every route the host answers over its Unix control socket, grouped by resource: health, namespaces, tools, tool calls, claims, tool sessions and schedules, with their status codes and error bodies. docs/api.md states them and docs/openapi.json carries them.",
+    "files": [
+      "docs/api.md",
+      "docs/openapi.json",
+      "host/src/server.rs",
+      "client/src/openapi.rs",
+      "client/src/wire.rs"
+    ],
+    "symbols": [
+      "openapi",
+      "openapi_json"
+    ],
+    "aliases": [],
+    "needs": [
+      "host/server",
+      "host/namespaces",
+      "host/session-records",
+      "host/schedules",
+      "host/toolbook",
+      "host/catalogue",
+      "client/socket"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429817,
+    "boundary": {
+      "side": "exposes"
+    }
+  },
+  {
+    "id": "api/plugin",
+    "title": "Harness plugin tools",
+    "what": "The MCP server bmo-pocket mcp serves on standard input and output: the four fixed tools pocket_namespaces, pocket_tools, pocket_tool and pocket_call, and every hosted tool under its namespace's name. docs/api.md states them.",
+    "files": [
+      "docs/api.md",
+      "plugin/src/server.rs",
+      "plugin/src/tools.rs",
+      "client/src/harness.rs"
+    ],
+    "symbols": [
+      "harness_tools",
+      "fixed",
+      "hosted_names"
+    ],
+    "aliases": [],
+    "needs": [
+      "plugin/mcp",
+      "client/socket"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498640169,
+    "boundary": {
+      "side": "exposes"
+    }
+  },
+  {
+    "id": "api/tool-contract",
+    "title": "Tool contract",
+    "what": "The bmo-tool crate and the call protocol every placed tool speaks: the tool.toml manifest, the object handed on standard input, the call-back socket, the session record and the answer shape. docs/api.md states it and sdk/contract realises it.",
+    "files": [
+      "docs/api.md",
+      "sdk/contract/src/lib.rs",
+      "sdk/contract/src/manifest.rs",
+      "sdk/contract/src/protocol.rs",
+      "sdk/contract/src/answer.rs",
+      "sdk/contract/src/session.rs",
+      "sdk/ts-kit/src/tool.ts",
+      "sdk/py-kit/src/bmo_tool.py"
+    ],
+    "symbols": [
+      "Manifest",
+      "Entry",
+      "Asked",
+      "Handed",
+      "CallBack",
+      "Answer",
+      "Session",
+      "SessionRequest"
+    ],
+    "aliases": [],
+    "needs": [
+      "sdk/contract",
+      "sdk/ts-kit",
+      "sdk/py-kit"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429833,
+    "boundary": {
+      "side": "exposes"
+    }
+  },
+  {
+    "id": "api/tools-face",
+    "title": "MCP tools face",
+    "what": "The streamable HTTP MCP servers on the loopback port: one path for every namespace a placed manifest declares, and one for the toolbook, each request standing alone behind a tool session bearer token. docs/api.md states this face.",
+    "files": [
+      "docs/api.md",
+      "host/src/server.rs",
+      "host/src/handler.rs",
+      "host/src/toolbook.rs"
+    ],
+    "symbols": [
+      "tools",
+      "Handler",
+      "Toolbook"
+    ],
+    "aliases": [],
+    "needs": [
+      "host/server",
+      "host/namespaces",
+      "host/toolbook"
+    ],
+    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
+    "changed": 1792498429820,
+    "boundary": {
+      "side": "exposes"
+    }
+  }
+]
