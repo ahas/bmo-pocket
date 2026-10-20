@@ -262,7 +262,7 @@ The tool session answered, and the record a call is handed, carry the same field
 |---|---|---|
 | `BMO_MCP_HOST_PORT` | the host; a harness's configuration | The loopback port the tools face listens on |
 | `BMO_DATA_DIR` | the host; `bmo-pocket` | The data root whose `tool-host/` folder holds the records, the registry and the issuer token |
-| `BMO_MCP_HOST_SOCKET` | the clients; the plugin | Where the control socket stands, where it does not stand at the default path |
+| `BMO_MCP_HOST_SOCKET` | the clients; the plugin; `bmo-pocket`'s `tool` nouns | Where the control socket stands, where it does not stand at the default path |
 | `BMO_POCKET_TOKEN` | `bmo-pocket mcp` | The tool session's token it calls with |
 | `BMO_MCP_TOKEN` | a harness's MCP configuration | The bearer token its configuration's header expands for the tools face |
 | `BMO_TOOL_START` | a server tool | Its start object (「The call protocol」) |
@@ -405,10 +405,38 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 
 ## The CLI
 
-- **`bmo-pocket`,** which `bmo pocket <verb>` hands its words to by the `bmo-<command>` rule. Its registry verbs
-  stand on the data root `--data-root` or `BMO_DATA_DIR` names. It prints what it did on standard output and why it
-  refused on standard error, and ends 0 where it did what was asked, 1 where it refused, and 2 where its words do
-  not read.
+- **`bmo-pocket` carries two sets of words:** the registry verbs, which `bmo pocket <verb>` hands it by the
+  `bmo-<command>` rule, and the `tool` nouns, which `bmo tool <verb>` hands it by the declared-noun rule.
+  `bmo-pocket nouns` prints the four, one a line: `tool list`, `tool describe`, `tool call` and `tool sites`.
+- **Its registry verbs stand on the data root** `--data-root` or `BMO_DATA_DIR` names. It prints what it did on
+  standard output and why it refused on standard error, and ends 0 where it did what was asked, 1 where it refused,
+  and 2 where its words do not read. The `tool` nouns end the same way: 0 where the host answered, 1 where it
+  refused or the tool answered that it failed, and 2 where their words do not read.
+- **The `tool` nouns read the running host on the control socket** (「The control socket」), at the path
+  `BMO_MCP_HOST_SOCKET` names or the default, with the issuer token kept in the file `--issuer-token-file` names,
+  else `tool-host/issuer-token` under the data root. Where that file does not stand, the host has not started, and
+  the noun refuses.
+
+| Noun | Arguments | Routes it calls | Answer |
+|---|---|---|---|
+| `tool list [words]…` | words the entries must hold | `GET /namespaces`, then `GET /namespaces/{namespace}/tools` for each namespace, every page to the end | every entry the issuer sees, one a line |
+| `tool describe <namespace/name>` | a tool's full name | `GET /namespaces/{namespace}/tools/{toolName}` | what the entry is, holds and declares |
+| `tool call <namespace/name> [arguments]` | a full name, and the arguments as one JSON object, `{}` where none | `GET /namespaces/{namespace}/tools/{toolName}`, `POST /tool-sessions`, `POST /tool-calls`, `DELETE /tool-sessions/{token}` | the tool's result, one content piece a line |
+| `tool sites [--detail]` | `--detail` for each site tool's description | `GET /namespaces/web` | the `sites` list of the web namespace's facts |
+
+- **`tool list`** writes each entry as its full name, `namespace/name`, then its description's first sentence, and
+  marks an entry for the system alone with ` · system` after the name. Every word given must stand in the entry's
+  full name or its description, ignoring case.
+- **`tool describe`** writes the full name and the description, then the title where the entry declares one, the
+  capabilities as a JSON array, the grant's resource or `none`, that it is for the system alone where it is, and the
+  listing line where it declares one.
+- **`tool call`** issues a session of its own holding the entry's capabilities and grant and naming the entry's
+  namespace, calls the entry under it, and takes the session back once the call answers; a session still stands an
+  hour after it is issued where the command does not take it back. Each content piece is written as its `text`
+  where it has one and as JSON where it has none, and a result the tool marks failed ends 1.
+- **`tool sites`** writes how many site tools stand, then each with a blank line before it: its name and what it is
+  for, its site, since when, the arguments it takes or `none`, its answers where it states them, and, with
+  `--detail`, its description. It refuses where the web namespace or its `sites` list does not stand.
 - **A tool registers itself:** whoever installs a tool, a person or a service's deployment, runs `put` for it, and
   no list of tools stands in the host or in this document.
 

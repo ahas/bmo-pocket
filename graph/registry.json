@@ -1,14 +1,16 @@
 [
   {
     "id": "registry/pocket-cli",
-    "title": "bmo pocket put, take, list and mcp",
-    "what": "The bmo-pocket command: a tool put from a folder, a git address or a bare name, its manifest, name clash and asked permissions checked, built or copied into a new version and pointed at; a tool taken; the registry listed; and the harness plugin served. Lives in host/src/install.rs.",
+    "title": "bmo pocket put, take, list, mcp and the catalogue nouns",
+    "what": "The bmo-pocket command: a tool put from a folder or a git address, taken, or the registry listed; the catalogue listed, one entry described and called, and the site tools read as the tool nouns bmo serves; and the harness plugin served. Lives in host/src/install.rs and host/src/command.rs.",
     "files": [
       "host/src/install.rs",
       "host/src/bin/bmo-pocket.rs",
+      "host/src/command.rs",
       "docs/registry.md",
       "docs/api.md",
-      "host/tests/registry.rs"
+      "host/tests/registry.rs",
+      "host/tests/commands.rs"
     ],
     "symbols": [],
     "aliases": [],
@@ -17,7 +19,7 @@
       "sdk/contract",
       "plugin/mcp"
     ],
-    "base": "21f96d0a17574b7dbc4929a24c7ed350dee0c31e"
+    "base": "908b540b14d55240ebb3338e479f342ffe437c23"
   },
   {
     "id": "registry/pointers",

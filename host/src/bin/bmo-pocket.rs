@@ -1,32 +1,43 @@
-//! `bmo-pocket`, which `bmo pocket <verb>` hands its words to (docs/api.md, 「The CLI」; docs/registry.md): a tool
-//! put into the registry, taken out of it, or the registry listed; or the harness plugin's MCP server served on
-//! standard input and output (docs/api.md, 「The harness plugin」). What a registry verb did goes to standard
-//! output and why it refused to standard error; it ends 0 where it did what was asked, 1 where it refused, and 2
-//! where its words do not read.
+//! `bmo-pocket`, which `bmo pocket <verb>` hands its registry words to (docs/api.md, 「The CLI」; docs/registry.md)
+//! and which declares the `tool` nouns `bmo tool <verb>` hands its own: the host's catalogue listed, described and
+//! called, and its site tools read. It also serves the harness plugin's MCP server on standard input and output
+//! (docs/api.md, 「The harness plugin」). A verb writes what it did on standard output and why it refused on standard
+//! error; it ends 0 where it did what was asked, 1 where it refused, and 2 where its words do not read.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use bmo_pocket_client::{Pocket, default_socket};
 use clap::{Parser, Subcommand};
+use mcp_host::command;
 use mcp_host::install::{self, Put};
 use mcp_host::registry::Registry;
 
 #[derive(Parser)]
 #[command(
   name = "bmo-pocket",
-  about = "The tool host's registry: put a tool, take one, list them; and its harness plugin's MCP server."
+  about = "The tool host's registry and catalogue: put a tool, take one, list the registry, list, describe and call a catalogue entry, read its site tools; and its harness plugin's MCP server."
 )]
 struct Cli {
-  /// The data root whose `tool-host/` holds the registry.
+  /// The data root whose `tool-host/` holds the registry and the issuer token.
   #[arg(long, env = "BMO_DATA_DIR", global = true)]
   data_root: Option<PathBuf>,
+  /// The file the issuer token is kept in; `tool-host/issuer-token` under the data root by default.
+  #[arg(long, global = true)]
+  issuer_token_file: Option<PathBuf>,
   #[command(subcommand)]
   verb: Verb,
 }
 
 #[derive(Subcommand)]
 enum Verb {
+  /// Every noun this command declares, one a line.
+  Nouns,
+  /// The host's catalogue: the entries listed, one described, one called, and the site tools read.
+  Tool {
+    #[command(subcommand)]
+    noun: command::Noun,
+  },
   /// Places a tool and registers it, or upgrades the tool registered under its name.
   Put {
     /// A local folder, a git address, or a bare tool name put from the source template.
@@ -86,20 +97,69 @@ fn mcp(socket: Option<PathBuf>, token: String) -> ExitCode {
   }
 }
 
+// One `tool` noun, run to its answer against the host the issuer token opens.
+fn tool(noun: command::Noun, data_root: &Path, issuer_token_file: Option<&Path>) -> ExitCode {
+  let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    Ok(runtime) => runtime,
+    Err(why) => {
+      eprintln!("bmo-pocket: {why}");
+      return ExitCode::FAILURE;
+    }
+  };
+
+  match runtime.block_on(command::run(noun, data_root, issuer_token_file)) {
+    Ok(answered) => {
+      for line in answered.lines {
+        println!("{line}");
+      }
+
+      for note in answered.notes {
+        eprintln!("bmo-pocket: {note}");
+      }
+
+      if answered.failed { ExitCode::FAILURE } else { ExitCode::SUCCESS }
+    }
+    Err(why) => {
+      eprintln!("bmo-pocket: {why}");
+      ExitCode::FAILURE
+    }
+  }
+}
+
+fn default_data_root() -> PathBuf {
+  std::env::var_os("HOME")
+    .map_or_else(|| PathBuf::from("/"), PathBuf::from)
+    .join(".local/share/bmo/data")
+}
+
+fn finish(done: Result<(), String>, said: &[String]) -> ExitCode {
+  for line in said {
+    println!("{line}");
+  }
+
+  match done {
+    Ok(()) => ExitCode::SUCCESS,
+    Err(why) => {
+      eprintln!("bmo-pocket: {why}");
+      ExitCode::FAILURE
+    }
+  }
+}
+
 fn main() -> ExitCode {
   let cli = Cli::parse();
+  let data_root = cli.data_root.clone().unwrap_or_else(default_data_root);
 
-  let data_root = || {
-    cli.data_root.clone().unwrap_or_else(|| {
-      std::env::var_os("HOME")
-        .map_or_else(|| PathBuf::from("/"), PathBuf::from)
-        .join(".local/share/bmo/data")
-    })
-  };
-  let registry = || Registry::of(&data_root());
-  let mut said = Vec::new();
-  let done = match cli.verb {
-    Verb::Mcp { socket, token } => return mcp(socket, token),
+  match cli.verb {
+    Verb::Nouns => {
+      for noun in command::NOUNS {
+        println!("{noun}");
+      }
+
+      ExitCode::SUCCESS
+    }
+    Verb::Tool { noun } => tool(noun, &data_root, cli.issuer_token_file.as_deref()),
+    Verb::Mcp { socket, token } => mcp(socket, token),
     Verb::Put {
       tool,
       allow,
@@ -114,22 +174,22 @@ fn main() -> ExitCode {
         placed,
         source,
       };
+      let mut said = Vec::new();
+      let done = install::put(&Registry::of(&data_root), &asked, &mut said);
 
-      install::put(&registry(), &asked, &mut said)
+      finish(done, &said)
     }
-    Verb::Take { name, service } => install::take(&registry(), &name, service.as_deref(), &mut said),
-    Verb::List { json } => install::list(&registry(), json, &mut said),
-  };
+    Verb::Take { name, service } => {
+      let mut said = Vec::new();
+      let done = install::take(&Registry::of(&data_root), &name, service.as_deref(), &mut said);
 
-  for line in &said {
-    println!("{line}");
-  }
+      finish(done, &said)
+    }
+    Verb::List { json } => {
+      let mut said = Vec::new();
+      let done = install::list(&Registry::of(&data_root), json, &mut said);
 
-  match done {
-    Ok(()) => ExitCode::SUCCESS,
-    Err(why) => {
-      eprintln!("bmo-pocket: {why}");
-      ExitCode::FAILURE
+      finish(done, &said)
     }
   }
 }
