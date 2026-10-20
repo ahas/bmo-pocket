@@ -33,8 +33,8 @@
     ],
     "aliases": [],
     "needs": [],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429781
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228532
   },
   {
     "id": "sdk/py-kit",
@@ -49,8 +49,8 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429786
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228543
   },
   {
     "id": "sdk/ts-kit",
@@ -79,7 +79,7 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498640174
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228553
   }
 ]

@@ -3,6 +3,7 @@ name = "bmo-pocket-client"
 description = "The tool host's control socket as a caller reaches it: its wire types, one call per route, and the OpenAPI document generated from them."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 publish.workspace = true
 
 [dependencies]

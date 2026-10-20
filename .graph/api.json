@@ -23,8 +23,8 @@
       "registry/pocket-cli",
       "plugin/mcp"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429826,
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228266,
     "boundary": {
       "side": "exposes"
     }
@@ -58,8 +58,8 @@
       "client/socket",
       "api/http"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498640176,
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228279,
     "boundary": {
       "side": "exposes"
     }
@@ -79,8 +79,8 @@
       "host/server",
       "host/tool-runner"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429829,
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228291,
     "boundary": {
       "side": "exposes"
     }
@@ -110,8 +110,8 @@
       "host/catalogue",
       "client/socket"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429817,
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228306,
     "boundary": {
       "side": "exposes"
     }
@@ -136,8 +136,8 @@
       "plugin/mcp",
       "client/socket"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498640169,
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228322,
     "boundary": {
       "side": "exposes"
     }
@@ -172,8 +172,8 @@
       "sdk/ts-kit",
       "sdk/py-kit"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429833,
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228339,
     "boundary": {
       "side": "exposes"
     }
@@ -199,8 +199,8 @@
       "host/namespaces",
       "host/toolbook"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429820,
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228357,
     "boundary": {
       "side": "exposes"
     }

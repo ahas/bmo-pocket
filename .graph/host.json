@@ -21,8 +21,8 @@
       "registry/pointers",
       "sdk/contract"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429796
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228387
   },
   {
     "id": "host/namespaces",
@@ -50,8 +50,8 @@
       "host/session-records",
       "host/problem-details"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498640164
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228397
   },
   {
     "id": "host/problem-details",
@@ -67,8 +67,8 @@
     "needs": [
       "client/socket"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498400295
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228408
   },
   {
     "id": "host/schedules",
@@ -91,8 +91,8 @@
       "host/namespaces",
       "sdk/contract"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429810
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228420
   },
   {
     "id": "host/server",
@@ -124,8 +124,8 @@
       "host/tool-runner",
       "client/socket"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429812
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228432
   },
   {
     "id": "host/session-grants",
@@ -144,8 +144,8 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429803
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228444
   },
   {
     "id": "host/session-records",
@@ -166,8 +166,8 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429800
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228455
   },
   {
     "id": "host/tool-runner",
@@ -192,8 +192,8 @@
       "host/catalogue",
       "sdk/contract"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429798
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228467
   },
   {
     "id": "host/toolbook",
@@ -217,7 +217,7 @@
     "needs": [
       "host/namespaces"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498429807
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228479
   }
 ]

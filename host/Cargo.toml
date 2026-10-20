@@ -3,6 +3,7 @@ name = "mcp-host"
 description = "The tool host: one process serving every session's MCP tools."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 publish.workspace = true
 
 # Its binaries hold no tests of their own, so `cargo test` links no test binary of them: the host, and the

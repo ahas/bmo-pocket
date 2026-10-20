@@ -30,7 +30,7 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "6c1cf40108030357e0145736c6394d9d9aa26321",
-    "changed": 1792498436114
+    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
+    "changed": 1792518228374
   }
 ]

@@ -154,14 +154,7 @@ async fn called(host: &Arc<Host>, session: &Session, entry: &str, arguments: Val
 fn committed(folder: &Path) {
   let git = |args: &[&str]| {
     let ran = Command::new("git")
-      .args([
-        "-c",
-        "user.name=test",
-        "-c",
-        "user.email=test",
-        "-c",
-        "init.defaultBranch=main",
-      ])
+      .args(["-c", "user.name=test", "-c", "user.email=test", "-c", "init.defaultBranch=main"])
       .args(args)
       .current_dir(folder)
       .output()
