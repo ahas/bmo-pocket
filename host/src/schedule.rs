@@ -1,12 +1,11 @@
 //! The schedules (docs/mcp-host.md, 「Schedules」): each entry's `[[entry.schedule]]` read from the catalogue as it
 //! stands at every beat, each called by the host itself at the times its pattern names, under a record made for
-//! that call. Where each stands is kept in the host's process alone, and the catalogue answers it.
+//! that call. Where each stands is kept in the host's process alone, and `GET /schedules` answers it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use bmo_pocket_client::ScheduleState;
 use bmo_tool::{Granted, Session};
 use chrono::{Local, TimeZone};
 use serde_json::{Map, Value};
@@ -18,6 +17,23 @@ pub const HOLDER: &str = "schedule";
 
 /// A schedule's place: its entry's full name, and its position among that entry's schedules.
 pub type Key = (String, usize);
+
+/// Where one schedule an entry declares stands, as `GET /schedules` answers it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScheduleState {
+  /// The cron pattern its manifest declares.
+  pub cron: String,
+  /// The arguments each scheduled call is handed.
+  pub arguments: Map<String, Value>,
+  /// When it is next due, in epoch milliseconds; none where the pattern names no time to come.
+  pub next_at: Option<i64>,
+  /// When its last call was made since the host started, in epoch milliseconds.
+  pub last_at: Option<i64>,
+  /// Why its last call failed, where it did.
+  pub last_error: Option<String>,
+  /// Whether a call of it is running now.
+  pub running: bool,
+}
 
 // Where one schedule stands.
 struct Standing {

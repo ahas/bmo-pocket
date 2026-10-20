@@ -19,7 +19,6 @@ use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
 use mcp_host::handler::Host;
 use mcp_host::install::{self, Put};
-use mcp_host::lock::Lock;
 use mcp_host::placed::Placed;
 use mcp_host::records::Records;
 use mcp_host::registry::Registry;
@@ -101,7 +100,6 @@ impl Scratch {
     placed.reread();
 
     Arc::new(Host {
-      lock: Lock::default(),
       placed: Arc::new(placed),
       pass_env: Vec::new(),
     })
@@ -109,10 +107,11 @@ impl Scratch {
 
   fn session(&self, shown: &[&str]) -> Session {
     serde_json::from_value(json!({
-      "line": "worker",
+      "holderName": "tester",
+      "namespaces": ["fixture"],
       "capabilities": ["fixture.read"],
+      "grants": [],
       "shown": shown,
-      "dataRoot": self.data(),
     }))
     .unwrap()
   }
@@ -493,7 +492,7 @@ async fn a_call_in_flight_goes_on_in_the_version_it_started_in_through_an_upgrad
 // One JSON-RPC request to the in-process host's namespace, answered as the bytes it sent back.
 async fn rpc(port: u16, token: &str, namespace: &str, method: &str, params: Value) -> (StatusCode, Bytes) {
   let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-  let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream)).await.unwrap();
+  let (mut link, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream)).await.unwrap();
 
   tokio::spawn(connection);
 
@@ -506,7 +505,7 @@ async fn rpc(port: u16, token: &str, namespace: &str, method: &str, params: Valu
     .header("authorization", format!("Bearer {token}"))
     .body(Full::new(Bytes::from(body.to_string())))
     .unwrap();
-  let response = sender.send_request(asked).await.unwrap();
+  let response = link.send_request(asked).await.unwrap();
   let status = response.status();
 
   (status, response.into_body().collect().await.unwrap().to_bytes())
@@ -600,6 +599,7 @@ fn the_command_says_what_it_did_and_ends_0_1_or_2_as_it_did_refused_or_could_not
   let pointers: Value = serde_json::from_slice(&pocket(&["list", "--json"]).stdout).unwrap();
 
   assert_eq!(pointers[0]["name"], "echo");
+  assert!(pointers[0]["putAt"].is_u64() && pointers[0].get("put_at").is_none(), "{pointers}");
   assert_eq!(pocket(&["take", "echo"]).status.code(), Some(0));
   assert_eq!(String::from_utf8_lossy(&pocket(&["list"]).stdout), "No tool is registered.\n");
   assert_eq!(pocket(&["frobnicate"]).status.code(), Some(2));

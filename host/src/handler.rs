@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use bmo_pocket_client::{CatalogueEntry, ReachedBy};
+use bmo_pocket_client::{Listing, Tool, ToolHints};
 use bmo_tool::manifest::Entry as Declared;
 use bmo_tool::protocol::Asked;
 use bmo_tool::{Answer, Held, Hints, Session, narrowed};
@@ -165,21 +165,31 @@ impl Entry {
     self.declared().facts.as_ref().and_then(|facts| facts.icon.clone())
   }
 
-  /// One entry of the catalogue: its full name, how it is reached, what it asks and its icon; its schedules are
-  /// the schedules' to add.
-  pub fn catalogued(&self) -> CatalogueEntry {
-    CatalogueEntry {
-      name: self.full_name(),
-      read_only: self.read_only(),
-      reached_by: if self.read_only() { ReachedBy::Call } else { ReachedBy::Act },
+  /// The tool member the control socket answers for it, in the form held.
+  pub fn member(&self) -> Tool {
+    let hints = self.hints();
+
+    Tool {
+      namespace: self.namespace().to_owned(),
+      name: self.name().to_owned(),
+      title: self.title(),
+      description: self.description(),
+      input: self.input_schema(),
+      output: self.output_schema(),
+      icon: self.icon(),
       capabilities: self.capabilities(),
       grant: self.grant(),
+      hints: ToolHints {
+        read_only: hints.read_only,
+        destructive: hints.destructive,
+        idempotent: hints.idempotent,
+        open_world: hints.open_world,
+      },
+      listing: self.declared().listing.as_ref().map(|listing| Listing {
+        line: listing.line.clone(),
+        order: listing.order,
+      }),
       system: self.system(),
-      resident: self.resident(),
-      placed: self.tool.folder.clone(),
-      description: self.description(),
-      icon: self.icon(),
-      schedules: Vec::new(),
     }
   }
 }
@@ -219,6 +229,16 @@ fn placed_held(declared: &Declared, session: &Session) -> Option<(Held, Option<S
     .keys()
     .find(|bundle| session.holds(&[bundle]))
     .map(|bundle| (Held::Bundle, Some(bundle.clone())))
+}
+
+/// Who claims an address among the entries a session holds.
+pub enum Claimant {
+  /// An entry claims it under a grant the session holds, reading it with these arguments.
+  Granted { entry: Entry, arguments: Value },
+  /// An entry claims it, but under a grant the session lacks, said why.
+  Ungranted { entry: Entry, why: String },
+  /// No entry the session holds claims it.
+  None,
 }
 
 /// Why the session may not call an entry: the grant it declares, where the session's grants do not hold it.
@@ -464,10 +484,22 @@ impl Host {
   /// claiming the address's host whose grant the session holds asked, one after another, the first that claims
   /// it answering.
   pub async fn claim(self: &Arc<Self>, session: &Session, address: &str) -> Value {
+    match self.claimant(session, address).await {
+      Claimant::Granted { entry, arguments } => claim_answer(Some((entry.full_name(), arguments))),
+      Claimant::Ungranted { .. } | Claimant::None => claim_answer(None),
+    }
+  }
+
+  /// Who claims an address among the entries the session holds: each entry claiming the address's host asked, one
+  /// after another, the first that claims it under a grant the session holds answering; or the first that claims
+  /// it under a grant the session lacks, where none does; or none.
+  pub async fn claimant(self: &Arc<Self>, session: &Session, address: &str) -> Claimant {
+    let mut lacking = Claimant::None;
+
     for entry in self.held(session) {
       let declared = entry.declared();
 
-      if !declared.claims(address) || ungranted(&entry, session).is_some() {
+      if !declared.claims(address) {
         continue;
       }
 
@@ -478,15 +510,21 @@ impl Host {
 
       match ask(self, &entry.tool, Some(declared), session, asked).await {
         Ok(answer) => {
-          if let Some(arguments) = claimed(&answer) {
-            return claim_answer(Some((entry.full_name(), arguments)));
+          let Some(arguments) = claimed(&answer) else {
+            continue;
+          };
+
+          match ungranted(&entry, session) {
+            None => return Claimant::Granted { entry, arguments },
+            Some(why) if matches!(lacking, Claimant::None) => lacking = Claimant::Ungranted { entry, why },
+            Some(_) => {}
           }
         }
         Err(why) => eprintln!("mcp-host: {} could not be asked for {address}: {why}", entry.full_name()),
       }
     }
 
-    claim_answer(None)
+    lacking
   }
 
   // The placed tools serving resources under a namespace to this session.
@@ -550,44 +588,15 @@ impl Host {
     Err(why)
   }
 
-  /// A namespace's listing: each entry's line in its order; none where no entry of it has one.
-  pub fn listing(&self, namespace: &str) -> Option<String> {
-    let mut lines: Vec<(i64, String, String)> = self
-      .every()
-      .iter()
-      .filter(|entry| entry.namespace() == namespace)
-      .filter_map(|entry| {
-        let listing = entry.declared().listing.as_ref()?;
-
-        Some((listing.order, entry.name().to_owned(), listing.line.clone()))
-      })
-      .collect();
-
-    if lines.is_empty() {
-      return None;
-    }
-
-    lines.sort();
-
-    Some(lines.into_iter().map(|(_, _, line)| line).collect::<Vec<_>>().join("\n"))
-  }
-
-  /// What a namespace says of itself: each entry's verb, record and icon in the sending verbs, records
-  /// and icons, each item it adds to a list of the facts, headed with its name, and the digest of every entry
-  /// it holds; none where it holds no entry.
-  pub fn facts(&self, namespace: &str) -> Option<Value> {
-    let held: Vec<Entry> =
-      self.every().into_iter().filter(|entry| entry.namespace() == namespace).collect();
+  /// What a namespace says of itself, of the entries of it a token sees: each entry's verb, record and icon in the
+  /// sending verbs, records and icons, each item it adds to a list of the facts, headed with its name, and the
+  /// digest of every one of them.
+  pub fn facts(&self, held: &[Entry]) -> serde_json::Map<String, Value> {
     let placed: Vec<(String, bmo_tool::manifest::FactsPart)> = held
       .iter()
       .filter_map(|entry| Some((entry.name().to_owned(), entry.declared().facts.clone()?)))
       .collect();
-
-    if held.is_empty() {
-      return None;
-    }
-
-    let mut facts = json!({ "digest": digest(&held) });
+    let mut facts = json!({ "digest": digest(held) });
 
     for (name, said) in placed {
       for (list, item) in said.lists {
@@ -619,7 +628,10 @@ impl Host {
       }
     }
 
-    Some(facts)
+    match facts {
+      Value::Object(facts) => facts,
+      _ => serde_json::Map::new(),
+    }
   }
 }
 

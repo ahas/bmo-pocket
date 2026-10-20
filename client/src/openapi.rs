@@ -1,6 +1,7 @@
 //! The OpenAPI document of the control socket (docs/api.md, 「The OpenAPI document and the clients」): every route,
-//! its query, its request body, its answer and the error answers it can give, the body schemas taken from the
-//! types this crate sends and reads, which are the types the host answers with.
+//! its query, its request body, its answer and the error codes it can give, the body schemas taken from the types
+//! this crate sends and reads, which are the types the host answers with; and the harness plugin, under
+//! `x-harness` and `x-tools`.
 
 use std::collections::BTreeMap;
 
@@ -10,35 +11,53 @@ use schemars::{JsonSchema, Schema};
 use serde_json::{Map, Value, json};
 
 use crate::error::{ErrorCode, WireError};
+use crate::harness::{ENTRY, MCP_COMMAND, PLUGIN, harness_tools};
 use crate::wire::{
-  CallRequest, CatalogueEntry, ClaimRequest, Claimed, DescribedEntry, Facts, Issued, ToolResult,
+  Claim, ClaimRequest, Health, Namespace, NamespacePage, SchedulePage, Tool, ToolCall, ToolCallRequest,
+  ToolPage, ToolSession,
 };
 
 /// Where the schemas the routes refer to stand in the document.
 const SCHEMAS: &str = "/components/schemas";
 
-const DESCRIPTION: &str = "The tool host's control socket: HTTP/1.1 over a Unix socket that only the host's own \
-  user reaches, so it carries no token. Bodies are JSON both ways unless a route answers plain text. Every failure \
-  and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback \
-  port, is MCP's own protocol and is not stated here.";
+const DESCRIPTION: &str = "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer \
+  token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, \
+  tool and schedule, or a tool session's token, which sees the namespaces its record names and the tools it holds \
+  there, and calls and claims under that record. Bodies are JSON both ways. Every failure and refusal is a non-2xx \
+  status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own \
+  protocol and is not stated here.";
 
-/// What a route answers where it succeeds.
-enum Answer {
-  Json(u16, Schema),
-  Text,
-  Empty,
+/// Which token a route takes.
+#[derive(Clone, Copy)]
+enum Token {
+  Either,
+  Issuer,
+  Session,
+}
+
+impl Token {
+  fn said(self) -> &'static str {
+    match self {
+      Self::Either => "either",
+      Self::Issuer => "issuer",
+      Self::Session => "session",
+    }
+  }
 }
 
 /// One route of the control socket.
 struct Route {
   method: &'static str,
   path: &'static str,
+  operation: &'static str,
   tag: &'static str,
   summary: &'static str,
+  token: Token,
   parameters: Vec<Value>,
   request: Option<Schema>,
-  answer: Answer,
-  refusals: &'static [ErrorCode],
+  /// The status it succeeds with, and the schema of its body where it answers one.
+  answer: (u16, Option<Schema>),
+  codes: &'static [ErrorCode],
 }
 
 fn path_parameter(name: &str, description: &str) -> Value {
@@ -49,127 +68,161 @@ fn query_parameter(name: &str, description: &str, schema: Value) -> Value {
   json!({ "name": name, "in": "query", "required": false, "description": description, "schema": schema })
 }
 
+fn limit() -> Value {
+  query_parameter(
+    "limit",
+    "At most this many members; every one where absent.",
+    json!({ "type": "integer", "minimum": 1 }),
+  )
+}
+
+fn after_name(of: &str) -> Value {
+  query_parameter(
+    "after",
+    &format!("The last {of} name a page answered: the members whose names sort after it."),
+    json!({ "type": "string" }),
+  )
+}
+
 fn schema<T: JsonSchema>(generator: &mut SchemaGenerator) -> Schema {
   generator.subschema_for::<T>()
 }
 
 fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
+  use ErrorCode::{ArgumentsMisfit, BadRequest, Failed, Forbidden, NotFound, ToolFailed, Unauthorized};
+
   vec![
     Route {
-      method: "post",
-      path: "/sessions",
-      tag: "sessions",
-      summary: "Issue a session record and answer the token it is known by.",
+      method: "get",
+      path: "/health",
+      operation: "listHealth",
+      tag: "health",
+      summary: "Readiness and version.",
+      token: Token::Either,
       parameters: Vec::new(),
-      request: Some(schema::<SessionRequest>(generator)),
-      answer: Answer::Json(200, schema::<Issued>(generator)),
-      refusals: &[ErrorCode::MalformedRecord, ErrorCode::UnwritableRecord],
-    },
-    Route {
-      method: "delete",
-      path: "/sessions/{token}",
-      tag: "sessions",
-      summary: "Revoke a record, whether or not the token named one, and end what its tools kept.",
-      parameters: vec![path_parameter("token", "The token the record was issued with.")],
       request: None,
-      answer: Answer::Empty,
-      refusals: &[ErrorCode::UnwritableRecord],
+      answer: (200, Some(schema::<Health>(generator))),
+      codes: &[Unauthorized],
     },
     Route {
       method: "get",
-      path: "/listings/{namespace}",
+      path: "/namespaces",
+      operation: "listNamespaces",
       tag: "namespaces",
-      summary: "The namespace's listing as plain text, one line per entry that declares one, in its order.",
-      parameters: vec![path_parameter("namespace", "The namespace.")],
+      summary: "A page of the namespaces the token sees, in order of name.",
+      token: Token::Either,
+      parameters: vec![after_name("namespace's"), limit()],
       request: None,
-      answer: Answer::Text,
-      refusals: &[ErrorCode::NoListing],
+      answer: (200, Some(schema::<NamespacePage>(generator))),
+      codes: &[Unauthorized, BadRequest],
     },
     Route {
       method: "get",
-      path: "/facts/{namespace}",
+      path: "/namespaces/{namespace}",
+      operation: "readNamespace",
       tag: "namespaces",
-      summary: "What the namespace says of itself: its digest, and each list its entries add an item to.",
-      parameters: vec![path_parameter("namespace", "The namespace.")],
+      summary: "One namespace and its facts.",
+      token: Token::Either,
+      parameters: vec![path_parameter("namespace", "The namespace's name.")],
       request: None,
-      answer: Answer::Json(200, schema::<Facts>(generator)),
-      refusals: &[ErrorCode::UnknownNamespace],
+      answer: (200, Some(schema::<Namespace>(generator))),
+      codes: &[Unauthorized, NotFound],
     },
     Route {
       method: "get",
-      path: "/catalogue",
-      tag: "catalogue",
-      summary: "A page of every entry, those for the system alone among them, in order of full name.",
+      path: "/namespaces/{namespace}/tools",
+      operation: "listNamespaceTools",
+      tag: "namespaces",
+      summary: "A page of one namespace's tools the token sees, in order of name, with their icons.",
+      token: Token::Either,
+      parameters: vec![path_parameter("namespace", "The namespace's name."), after_name("tool's"), limit()],
+      request: None,
+      answer: (200, Some(schema::<ToolPage>(generator))),
+      codes: &[Unauthorized, BadRequest, NotFound],
+    },
+    Route {
+      method: "get",
+      path: "/namespaces/{namespace}/tools/{toolName}",
+      operation: "readNamespaceTool",
+      tag: "namespaces",
+      summary: "One tool, its schemas with it.",
+      token: Token::Either,
       parameters: vec![
-        query_parameter(
-          "after",
-          "An entry's full name: the entries whose full names sort after it. Not with `before`.",
-          json!({ "type": "string" }),
-        ),
-        query_parameter(
-          "before",
-          "An entry's full name: the entries whose full names sort before it. Not with `after`.",
-          json!({ "type": "string" }),
-        ),
-        query_parameter(
-          "limit",
-          "At most this many entries, the nearest the cursor; every one where absent.",
-          json!({ "type": "integer", "minimum": 1 }),
-        ),
+        path_parameter("namespace", "The namespace's name."),
+        path_parameter("toolName", "The tool's name in the namespace."),
       ],
       request: None,
-      answer: Answer::Json(200, schema::<Vec<CatalogueEntry>>(generator)),
-      refusals: &[ErrorCode::MalformedRequest],
-    },
-    Route {
-      method: "get",
-      path: "/catalogue/{namespace}/{name}",
-      tag: "catalogue",
-      summary: "One entry described, its schemas with it.",
-      parameters: vec![
-        path_parameter("namespace", "The entry's namespace."),
-        path_parameter("name", "The entry's name."),
-      ],
-      request: None,
-      answer: Answer::Json(200, schema::<DescribedEntry>(generator)),
-      refusals: &[ErrorCode::UnknownEntry],
+      answer: (200, Some(schema::<Tool>(generator))),
+      codes: &[Unauthorized, NotFound],
     },
     Route {
       method: "post",
-      path: "/calls",
-      tag: "calls",
-      summary: "Call an entry under the record the request carries, as a session's call is dispatched, entries for \
-        the system alone among those reached. A tool's own failed result is answered 200.",
+      path: "/tool-calls",
+      operation: "createToolCall",
+      tag: "tool-calls",
+      summary: "Call one tool under the token's tool session; answered with its result. A tool's own failed \
+        result is answered 200.",
+      token: Token::Session,
       parameters: Vec::new(),
-      request: Some(schema::<CallRequest>(generator)),
-      answer: Answer::Json(200, schema::<ToolResult>(generator)),
-      refusals: &[
-        ErrorCode::MalformedRequest,
-        ErrorCode::UnknownEntry,
-        ErrorCode::ArgumentsMisfit,
-        ErrorCode::GrantRefused,
-        ErrorCode::ToolFailed,
-      ],
+      request: Some(schema::<ToolCallRequest>(generator)),
+      answer: (200, Some(schema::<ToolCall>(generator))),
+      codes: &[Unauthorized, BadRequest, Forbidden, NotFound, ArgumentsMisfit, ToolFailed],
     },
     Route {
       method: "post",
       path: "/claims",
-      tag: "calls",
-      summary: "Which entry the record holds claims an address, and the arguments it reads the page with.",
+      operation: "createClaim",
+      tag: "claims",
+      summary: "Whether the token's tool session may have an address read, by the entries and grants it holds.",
+      token: Token::Session,
       parameters: Vec::new(),
       request: Some(schema::<ClaimRequest>(generator)),
-      answer: Answer::Json(200, schema::<Claimed>(generator)),
-      refusals: &[ErrorCode::MalformedRequest],
+      answer: (200, Some(schema::<Claim>(generator))),
+      codes: &[Unauthorized, BadRequest, Forbidden],
+    },
+    Route {
+      method: "post",
+      path: "/tool-sessions",
+      operation: "createToolSession",
+      tag: "tool-sessions",
+      summary: "Issue a tool session for a holder, carrying the namespaces, capabilities and grants it allows.",
+      token: Token::Issuer,
+      parameters: Vec::new(),
+      request: Some(schema::<SessionRequest>(generator)),
+      answer: (201, Some(schema::<ToolSession>(generator))),
+      codes: &[Unauthorized, BadRequest, Forbidden, Failed],
+    },
+    Route {
+      method: "delete",
+      path: "/tool-sessions/{token}",
+      operation: "deleteToolSession",
+      tag: "tool-sessions",
+      summary: "Revoke a tool session and end what its tools kept.",
+      token: Token::Issuer,
+      parameters: vec![path_parameter("token", "The token the session was issued with.")],
+      request: None,
+      answer: (204, None),
+      codes: &[Unauthorized, Forbidden, NotFound, Failed],
     },
     Route {
       method: "get",
-      path: "/health",
-      tag: "health",
-      summary: "`ok`, as plain text, where the host answers.",
-      parameters: Vec::new(),
+      path: "/schedules",
+      operation: "listSchedules",
+      tag: "schedules",
+      summary: "A page of the tool calls the host makes at the times each tool's own manifest declares, in order \
+        of when each is next due; a page never ends inside a run of equal times.",
+      token: Token::Either,
+      parameters: vec![
+        query_parameter(
+          "after",
+          "A time in epoch milliseconds: the schedules next due after it.",
+          json!({ "type": "integer", "format": "int64" }),
+        ),
+        limit(),
+      ],
       request: None,
-      answer: Answer::Text,
-      refusals: &[],
+      answer: (200, Some(schema::<SchedulePage>(generator))),
+      codes: &[Unauthorized, BadRequest],
     },
   ]
 }
@@ -177,28 +230,21 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
 impl Route {
   fn operation(&self, error: &Schema) -> Value {
     let mut responses = Map::new();
+    let (status, answer) = &self.answer;
 
-    match &self.answer {
-      Answer::Json(status, schema) => {
-        responses.insert(
-          status.to_string(),
-          json!({ "description": "The route's answer.", "content": { "application/json": { "schema": schema } } }),
-        );
-      }
-      Answer::Text => {
-        responses.insert(
-          "200".to_owned(),
-          json!({ "description": "The route's answer.", "content": { "text/plain": { "schema": { "type": "string" } } } }),
-        );
-      }
-      Answer::Empty => {
-        responses.insert("204".to_owned(), json!({ "description": "Done; no body." }));
-      }
-    }
+    responses.insert(
+      status.to_string(),
+      match answer {
+        Some(schema) => {
+          json!({ "description": "The route's answer.", "content": { "application/json": { "schema": schema } } })
+        }
+        None => json!({ "description": "Done; no body." }),
+      },
+    );
 
     let mut by_status: BTreeMap<u16, Vec<&'static str>> = BTreeMap::new();
 
-    for code in self.refusals {
+    for code in self.codes {
       by_status.entry(code.status().as_u16()).or_default().push(code.as_str());
     }
 
@@ -215,8 +261,11 @@ impl Route {
     }
 
     let mut operation = json!({
+      "operationId": self.operation,
       "tags": [self.tag],
       "summary": self.summary,
+      "x-token": self.token.said(),
+      "x-codes": self.codes.iter().map(|code| code.as_str()).collect::<Vec<_>>(),
       "responses": responses,
     });
 
@@ -251,22 +300,43 @@ pub fn openapi() -> Value {
     }
   }
 
+  let tools: Vec<Value> = harness_tools()
+    .iter()
+    .map(|tool| {
+      json!({
+        "name": tool.name,
+        "description": tool.description,
+        "input": (tool.input_in)(&mut generator),
+        "output": (tool.output_in)(&mut generator),
+        "route": tool.route,
+      })
+    })
+    .collect();
+
   json!({
     "openapi": "3.1.0",
     "info": {
-      "title": "The tool host's control socket",
+      "title": "bmo-pocket",
       "version": env!("CARGO_PKG_VERSION"),
       "description": DESCRIPTION,
     },
+    "servers": [{ "url": "/", "description": "the control socket" }],
+    "security": [{ "bearer": [] }],
     "tags": [
-      { "name": "sessions", "description": "The session records the host serves each session's tools by." },
-      { "name": "namespaces", "description": "What a namespace says of itself beside its tools." },
-      { "name": "catalogue", "description": "Every entry the host serves, its icon and its schedules." },
-      { "name": "calls", "description": "Calls and claims made under the record a request carries." },
-      { "name": "health", "description": "Whether the host answers." },
+      { "name": "health", "description": "Whether the host is ready." },
+      { "name": "namespaces", "description": "Every namespace with its tools: the catalogue." },
+      { "name": "tool-calls", "description": "Calls made under a tool session." },
+      { "name": "claims", "description": "Which entry a tool session may have an address read by." },
+      { "name": "tool-sessions", "description": "The tool sessions a harness is handed tools through." },
+      { "name": "schedules", "description": "The calls the host makes at the times each tool declares." },
     ],
     "paths": paths,
-    "components": { "schemas": generator.take_definitions(true) },
+    "components": {
+      "securitySchemes": { "bearer": { "type": "http", "scheme": "bearer" } },
+      "schemas": generator.take_definitions(true),
+    },
+    "x-harness": { "plugin": PLUGIN, "mcp": MCP_COMMAND, "entry": ENTRY },
+    "x-tools": tools,
   })
 }
 

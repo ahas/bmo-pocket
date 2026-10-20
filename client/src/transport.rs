@@ -23,18 +23,29 @@ impl Reply {
   }
 }
 
-/// A request to `path` on the server listening at `socket`, with a JSON body where one is given.
-/// Failing to reach the socket at all is an error of its own kind, which a caller waiting for a
+/// A request to `path` on the server listening at `socket`, with the bearer token and a JSON body where each is
+/// given. Failing to reach the socket at all is an error of its own kind, which a caller waiting for a
 /// restarting server tells apart from a server that answered badly.
-pub async fn request(socket: &Path, method: Method, path: &str, body: Option<&Value>) -> io::Result<Reply> {
+pub async fn request(
+  socket: &Path,
+  method: Method,
+  path: &str,
+  token: Option<&str>,
+  body: Option<&Value>,
+) -> io::Result<Reply> {
   let stream = UnixStream::connect(socket).await?;
-  let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+  let (mut link, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
     .await
     .map_err(io::Error::other)?;
 
   tokio::spawn(connection);
 
   let mut asked = Request::builder().method(method).uri(path).header(http::header::HOST, "localhost");
+
+  if let Some(token) = token {
+    asked = asked.header(http::header::AUTHORIZATION, format!("Bearer {token}"));
+  }
+
   let bytes = match body {
     Some(body) => {
       asked = asked.header(http::header::CONTENT_TYPE, "application/json");
@@ -42,7 +53,7 @@ pub async fn request(socket: &Path, method: Method, path: &str, body: Option<&Va
     }
     None => Bytes::new(),
   };
-  let response = sender
+  let response = link
     .send_request(asked.body(Full::new(bytes)).map_err(io::Error::other)?)
     .await
     .map_err(io::Error::other)?;

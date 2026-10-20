@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-// Whether the installed Claude Code reaches the tool host through the configuration a line is handed
+// Whether the installed Claude Code reaches the tool host through the configuration a harness is handed
 // (docs/mcp-host.md, 「Transport」): an `http` server whose `Authorization` header reads the token out of
 // `${BMO_MCP_TOKEN}`, and the tools fetched over the protocol revision it negotiates. No CLI is named in the
 // suite, so this skips there; `BMO_LIVE_CLAUDE` names the installed one to run it. It runs in a configuration
@@ -62,11 +62,16 @@ test.skipIf(cli === "" || !existsSync(cli))("Claude Code hands the token its hea
   try {
     const said = new TextDecoder().decode((await host.stdout.getReader().read()).value);
     const port = Number(/127\.0\.0\.1:(\d+)/.exec(said)?.[1]);
-    const issued = await fetch("http://localhost/sessions", {
+    const issuer = readFileSync(join(scratch, "data", "tool-host", "issuer-token"), "utf8").trim();
+    const issued = await fetch("http://localhost/tool-sessions", {
       unix: join(sockets, "c.sock"),
       method: "POST",
-      body: JSON.stringify({ line: "worker", capabilities: ["fixture.read"], shown: ["fixture/echo_back"], dataRoot: join(scratch, "data") }),
+      headers: { Authorization: `Bearer ${issuer}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ holderName: "tester", namespaces: ["fixture"], capabilities: ["fixture.read"], grants: [], shown: ["fixture/echo_back"] }),
     });
+
+    expect(issued.status).toBe(201);
+
     const { token } = (await issued.json()) as { token: string };
     const file = join(scratch, "fixture.mcp.json");
 

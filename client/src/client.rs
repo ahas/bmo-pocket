@@ -1,5 +1,5 @@
-//! One call per route of the control socket (docs/api.md, 「The control socket」), each answering the route's
-//! body, or the host's refusal as it answered it.
+//! One call per route of the control socket (docs/api.md, 「The control socket」), each made with the client's
+//! bearer token and answering the route's body, or the host's refusal as it answered it.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,8 +14,8 @@ use url::Url;
 use crate::error::WireError;
 use crate::transport::{Reply, request};
 use crate::wire::{
-  CallRequest, CatalogueEntry, CatalogueQuery, ClaimRequest, Claimed, DescribedEntry, Facts, Issued,
-  ToolResult,
+  Claim, ClaimRequest, Health, NameQuery, Namespace, NamespacePage, SchedulePage, TimeQuery, Tool,
+  ToolCall, ToolCallRequest, ToolPage, ToolSession,
 };
 
 /// Why a call answered no body of its route.
@@ -45,10 +45,11 @@ pub fn default_socket() -> PathBuf {
   )
 }
 
-/// The tool host's control socket.
+/// The tool host's control socket, asked with one bearer token: the issuer's, or a tool session's.
 #[derive(Clone, Debug)]
 pub struct Pocket {
   socket: PathBuf,
+  token: String,
 }
 
 // A route's path and query, its segments encoded.
@@ -66,6 +67,14 @@ fn route(segments: &[&str], query: &[(&str, String)]) -> String {
   url[url::Position::BeforePath..].to_owned()
 }
 
+// The query a page is asked with: its cursor and its limit, where given.
+fn paged(after: Option<String>, limit: Option<u32>) -> Vec<(&'static str, String)> {
+  [("after", after), ("limit", limit.map(|limit| limit.to_string()))]
+    .into_iter()
+    .filter_map(|(name, value)| Some((name, value?)))
+    .collect()
+}
+
 // What a reply reads as where its status is the one the route succeeds with.
 fn body<T: DeserializeOwned>(reply: Reply, success: StatusCode) -> Result<T, Failure> {
   let status = reply.status;
@@ -76,17 +85,6 @@ fn body<T: DeserializeOwned>(reply: Reply, success: StatusCode) -> Result<T, Fai
 
   serde_json::from_slice(&reply.body).map_err(|why| Failure::Unreadable {
     status,
-    why: why.to_string(),
-  })
-}
-
-fn text(reply: Reply) -> Result<String, Failure> {
-  if reply.status != StatusCode::OK {
-    return Err(refusal(&reply));
-  }
-
-  String::from_utf8(reply.body.to_vec()).map_err(|why| Failure::Unreadable {
-    status: reply.status,
     why: why.to_string(),
   })
 }
@@ -112,16 +110,17 @@ fn json<T: serde::Serialize>(value: &T) -> Result<Value, Failure> {
 }
 
 impl Pocket {
-  /// The control socket at this path.
-  pub fn at(socket: impl Into<PathBuf>) -> Self {
+  /// The control socket at this path, asked with this token.
+  pub fn at(socket: impl Into<PathBuf>, token: impl Into<String>) -> Self {
     Self {
       socket: socket.into(),
+      token: token.into(),
     }
   }
 
-  /// The control socket at its default path.
-  pub fn standing() -> Self {
-    Self::at(default_socket())
+  /// The control socket at its default path, asked with this token.
+  pub fn standing(token: impl Into<String>) -> Self {
+    Self::at(default_socket(), token)
   }
 
   pub fn socket(&self) -> &Path {
@@ -129,19 +128,72 @@ impl Pocket {
   }
 
   async fn ask(&self, method: Method, path: &str, sent: Option<&Value>) -> Result<Reply, Failure> {
-    request(&self.socket, method, path, sent).await.map_err(Failure::Unreachable)
+    request(&self.socket, method, path, Some(&self.token), sent)
+      .await
+      .map_err(Failure::Unreachable)
   }
 
-  /// `POST /sessions`: a record issued, answered with its token.
-  pub async fn issue(&self, session: &SessionRequest) -> Result<String, Failure> {
-    let reply = self.ask(Method::POST, "/sessions", Some(&json(session)?)).await?;
-
-    body::<Issued>(reply, StatusCode::OK).map(|issued| issued.token)
+  /// `GET /health`: whether the host is ready, and its version.
+  pub async fn health(&self) -> Result<Health, Failure> {
+    body(self.ask(Method::GET, "/health", None).await?, StatusCode::OK)
   }
 
-  /// `DELETE /sessions/{token}`: a record revoked, whether or not the token named one.
+  /// `GET /namespaces`: a page of the namespaces the token sees, in order of name.
+  pub async fn namespaces(&self, page: &NameQuery) -> Result<NamespacePage, Failure> {
+    let query = paged(page.after.clone(), page.limit);
+
+    body(self.ask(Method::GET, &route(&["namespaces"], &query), None).await?, StatusCode::OK)
+  }
+
+  /// `GET /namespaces/{namespace}`: one namespace and its facts.
+  pub async fn namespace(&self, namespace: &str) -> Result<Namespace, Failure> {
+    body(
+      self.ask(Method::GET, &route(&["namespaces", namespace], &[]), None).await?,
+      StatusCode::OK,
+    )
+  }
+
+  /// `GET /namespaces/{namespace}/tools`: a page of one namespace's tools the token sees, in order of name.
+  pub async fn tools(&self, namespace: &str, page: &NameQuery) -> Result<ToolPage, Failure> {
+    let query = paged(page.after.clone(), page.limit);
+    let path = route(&["namespaces", namespace, "tools"], &query);
+
+    body(self.ask(Method::GET, &path, None).await?, StatusCode::OK)
+  }
+
+  /// `GET /namespaces/{namespace}/tools/{toolName}`: one tool.
+  pub async fn tool(&self, namespace: &str, tool_name: &str) -> Result<Tool, Failure> {
+    let path = route(&["namespaces", namespace, "tools", tool_name], &[]);
+
+    body(self.ask(Method::GET, &path, None).await?, StatusCode::OK)
+  }
+
+  /// `POST /tool-calls`: one tool called under the token's session.
+  pub async fn call(&self, call: &ToolCallRequest) -> Result<ToolCall, Failure> {
+    body(self.ask(Method::POST, "/tool-calls", Some(&json(call)?)).await?, StatusCode::OK)
+  }
+
+  /// `POST /claims`: whether the token's session may have an address read, and by which entry.
+  pub async fn claim(&self, resource: &str) -> Result<Claim, Failure> {
+    let asked = json(&ClaimRequest {
+      resource: resource.to_owned(),
+    })?;
+
+    body(self.ask(Method::POST, "/claims", Some(&asked)).await?, StatusCode::OK)
+  }
+
+  /// `POST /tool-sessions`: a tool session issued, with the issuer's token.
+  pub async fn issue(&self, session: &SessionRequest) -> Result<ToolSession, Failure> {
+    body(
+      self.ask(Method::POST, "/tool-sessions", Some(&json(session)?)).await?,
+      StatusCode::CREATED,
+    )
+  }
+
+  /// `DELETE /tool-sessions/{token}`: a tool session revoked, with the issuer's token, and what its tools kept
+  /// ended.
   pub async fn revoke(&self, token: &str) -> Result<(), Failure> {
-    let reply = self.ask(Method::DELETE, &route(&["sessions", token], &[]), None).await?;
+    let reply = self.ask(Method::DELETE, &route(&["tool-sessions", token], &[]), None).await?;
 
     match reply.status {
       StatusCode::NO_CONTENT => Ok(()),
@@ -149,50 +201,10 @@ impl Pocket {
     }
   }
 
-  /// `GET /listings/{namespace}`: the namespace's listing, a line per entry declaring one.
-  pub async fn listing(&self, namespace: &str) -> Result<String, Failure> {
-    text(self.ask(Method::GET, &route(&["listings", namespace], &[]), None).await?)
-  }
+  /// `GET /schedules`: a page of the schedules the token sees, in order of when each is next due.
+  pub async fn schedules(&self, page: &TimeQuery) -> Result<SchedulePage, Failure> {
+    let query = paged(page.after.map(|after| after.to_string()), page.limit);
 
-  /// `GET /facts/{namespace}`: what the namespace says of itself.
-  pub async fn facts(&self, namespace: &str) -> Result<Facts, Failure> {
-    body(self.ask(Method::GET, &route(&["facts", namespace], &[]), None).await?, StatusCode::OK)
-  }
-
-  /// `GET /catalogue`: a page of the catalogue, in order of full name.
-  pub async fn catalogue(&self, page: &CatalogueQuery) -> Result<Vec<CatalogueEntry>, Failure> {
-    let query: Vec<(&str, String)> = [
-      ("after", page.after.clone()),
-      ("before", page.before.clone()),
-      ("limit", page.limit.map(|limit| limit.to_string())),
-    ]
-    .into_iter()
-    .filter_map(|(name, value)| Some((name, value?)))
-    .collect();
-
-    body(self.ask(Method::GET, &route(&["catalogue"], &query), None).await?, StatusCode::OK)
-  }
-
-  /// `GET /catalogue/{namespace}/{name}`: one entry described.
-  pub async fn entry(&self, namespace: &str, name: &str) -> Result<DescribedEntry, Failure> {
-    body(
-      self.ask(Method::GET, &route(&["catalogue", namespace, name], &[]), None).await?,
-      StatusCode::OK,
-    )
-  }
-
-  /// `POST /calls`: an entry called under the record the request carries.
-  pub async fn call(&self, call: &CallRequest) -> Result<ToolResult, Failure> {
-    body(self.ask(Method::POST, "/calls", Some(&json(call)?)).await?, StatusCode::OK)
-  }
-
-  /// `POST /claims`: which entry the record holds claims an address.
-  pub async fn claim(&self, claim: &ClaimRequest) -> Result<Claimed, Failure> {
-    body(self.ask(Method::POST, "/claims", Some(&json(claim)?)).await?, StatusCode::OK)
-  }
-
-  /// `GET /health`: `ok` where the host answers.
-  pub async fn health(&self) -> Result<String, Failure> {
-    text(self.ask(Method::GET, "/health", None).await?)
+    body(self.ask(Method::GET, &route(&["schedules"], &query), None).await?, StatusCode::OK)
   }
 }

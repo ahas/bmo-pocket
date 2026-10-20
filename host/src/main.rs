@@ -20,7 +20,7 @@ use bmo_tool::SessionRequest;
 use clap::{Args, Parser, Subcommand};
 use mcp_host::handler::Host;
 use mcp_host::placed::Placed;
-use mcp_host::records::{Records, now_ms};
+use mcp_host::records::{Records, issuer_token, now_ms};
 use mcp_host::registry::Registry;
 use mcp_host::running::sockets_beside;
 use mcp_host::schedule::{self, Schedules};
@@ -61,6 +61,10 @@ enum Verb {
     /// The control socket; `bmo/mcp-host.sock` under the user's runtime directory by default.
     #[arg(long)]
     control: Option<PathBuf>,
+    /// The file the issuer token is kept in, made where it does not stand; `tool-host/issuer-token` under the data
+    /// root by default.
+    #[arg(long)]
+    issuer_token_file: Option<PathBuf>,
     /// How often lapsed records are dropped.
     #[arg(long, default_value_t = 60_000)]
     sweep_every_ms: u64,
@@ -120,6 +124,7 @@ fn main() -> ExitCode {
       port,
       data_root,
       control,
+      issuer_token_file,
       sweep_every_ms,
       schedule_every_ms,
       reach,
@@ -128,6 +133,13 @@ fn main() -> ExitCode {
     } => {
       let data_root = data_root.unwrap_or_else(default_data_root);
       let control = control.unwrap_or_else(|| runtime_dir().join("bmo/mcp-host.sock"));
+      let issuer_file = issuer_token_file.unwrap_or_else(|| data_root.join("tool-host/issuer-token"));
+      let issuer = match issuer_token(&issuer_file) {
+        Ok(token) => token,
+        Err(why) => {
+          return refused(format!("the issuer token {} could not be kept: {why}", issuer_file.display()));
+        }
+      };
       let placed = Arc::new(placed(tools, &data_root, &control));
       let host = Arc::new(reach.host(placed));
 
@@ -135,7 +147,7 @@ fn main() -> ExitCode {
         Ok(runtime) => runtime.block_on(serve(
           port,
           &data_root,
-          &control,
+          (&control, issuer),
           Beats {
             sweep: Duration::from_millis(sweep_every_ms),
             schedule: Duration::from_millis(schedule_every_ms),
@@ -224,7 +236,15 @@ struct Beats {
   settle: Duration,
 }
 
-async fn serve(port: u16, data_root: &Path, control: &Path, beats: Beats, host: Arc<Host>) -> ExitCode {
+// The host served: the tools face on the loopback port, and the control socket at its path behind the issuer token
+// and the tool sessions' tokens.
+async fn serve(
+  port: u16,
+  data_root: &Path,
+  (control, issuer): (&Path, String),
+  beats: Beats,
+  host: Arc<Host>,
+) -> ExitCode {
   let home = data_root.join("tool-host");
   let records = match Records::load(&home.join("sessions")) {
     Ok(records) => Arc::new(records),
@@ -276,7 +296,7 @@ async fn serve(port: u16, data_root: &Path, control: &Path, beats: Beats, host: 
   let sessions =
     axum::serve(tcp, server::tools(records.clone(), host.clone())).with_graceful_shutdown(stopped());
   let issuers =
-    axum::serve(unix, server::control(records, host, schedules)).with_graceful_shutdown(stopped());
+    axum::serve(unix, server::control(records, host, schedules, issuer)).with_graceful_shutdown(stopped());
   let (served, controlled) = tokio::join!(sessions, issuers);
   let _ = fs::remove_file(control);
 

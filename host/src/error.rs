@@ -1,5 +1,5 @@
 //! What the host refuses and fails with over HTTP, on either face: a non-2xx status and the common error body of
-//! `code` and `error` (docs/api.md, 「Error codes」), each case the host names with its own code.
+//! `code` and `error` (docs/api.md, 「Error codes」), each case the host names answered with its code.
 
 use axum::Json;
 use axum::response::{IntoResponse, Response};
@@ -11,22 +11,28 @@ pub enum HostError {
   /// No bearer token came with the request.
   #[error("a bearer token is required")]
   NoToken,
-  /// The token names no session record: never issued, revoked, or past its run's deadline.
+  /// The token is neither the issuer's nor a tool session's: never issued, revoked, or past its `expiresAt`.
   #[error("the token names no session")]
   UnknownToken,
-  /// The path names a namespace no tool is shown under.
-  #[error("no entry is declared under the namespace `{0}`")]
+  /// A tool session's token on a route the issuer token alone takes.
+  #[error("the issuer token alone issues and revokes tool sessions")]
+  IssuerOnly,
+  /// The issuer token on a route a tool session's token alone takes.
+  #[error("a call or a claim is made under a tool session's token")]
+  SessionOnly,
+  /// The token sees no entry under the namespace.
+  #[error("no entry the token sees is declared under the namespace `{0}`")]
   UnknownNamespace(String),
-  /// No entry of the namespace declares a listing line.
-  #[error("no entry of the namespace `{0}` declares a listing line")]
-  NoListing(String),
-  /// No entry of that full name, or none the record holds.
+  /// No tool of that full name the token sees.
   #[error("Tool {0} not found")]
   UnknownEntry(String),
-  /// What the launcher handed when asking for a token cannot be a session record.
+  /// The token names no tool session.
+  #[error("no tool session stands under that token")]
+  UnknownSession,
+  /// What was handed to be issued cannot be a session record.
   #[error("the session record is malformed: {0}")]
   MalformedRecord(String),
-  /// A body or a query that does not read as the route asks.
+  /// A body or a query that does not read as the route takes it.
   #[error("the request is malformed: {0}")]
   MalformedRequest(String),
   /// The arguments do not fit the entry's schema; the sentence is the dispatch's own.
@@ -52,25 +58,20 @@ pub enum HostError {
 impl HostError {
   pub fn code(&self) -> ErrorCode {
     match self {
-      Self::NoToken => ErrorCode::NoToken,
-      Self::UnknownToken => ErrorCode::UnknownToken,
-      Self::UnknownNamespace(_) => ErrorCode::UnknownNamespace,
-      Self::NoListing(_) => ErrorCode::NoListing,
-      Self::UnknownEntry(_) => ErrorCode::UnknownEntry,
-      Self::MalformedRecord(_) => ErrorCode::MalformedRecord,
-      Self::MalformedRequest(_) => ErrorCode::MalformedRequest,
+      Self::NoToken | Self::UnknownToken => ErrorCode::Unauthorized,
+      Self::IssuerOnly | Self::SessionOnly | Self::GrantRefused(_) => ErrorCode::Forbidden,
+      Self::UnknownNamespace(_) | Self::UnknownEntry(_) | Self::UnknownSession => ErrorCode::NotFound,
+      Self::MalformedRecord(_) | Self::MalformedRequest(_) => ErrorCode::BadRequest,
       Self::ArgumentsMisfit(_) => ErrorCode::ArgumentsMisfit,
-      Self::GrantRefused(_) => ErrorCode::GrantRefused,
       Self::ToolFailed(_) => ErrorCode::ToolFailed,
-      Self::Unwritable(_) => ErrorCode::UnwritableRecord,
-      Self::UnknownRoute(_) => ErrorCode::UnknownRoute,
-      Self::MethodNotAllowed => ErrorCode::MethodNotAllowed,
+      Self::Unwritable(_) => ErrorCode::Failed,
+      Self::UnknownRoute(_) | Self::MethodNotAllowed => ErrorCode::NoRoute,
     }
   }
 }
 
-// Every sentence is said, on either face: the tools face's are fixed, and the control socket's reach the host's own
-// user alone.
+// Every sentence is said, on either face: the tools face's are fixed, and the control socket's reach a token holder
+// alone.
 impl IntoResponse for HostError {
   fn into_response(self) -> Response {
     let code = self.code();

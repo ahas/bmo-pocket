@@ -21,7 +21,7 @@
   {
     "id": "registry/pointers",
     "title": "Tool registry",
-    "what": "One pointer file per registered tool under the data root tool-host/registry, naming the immutable version folder under tool-host/tools the host serves, written atomically under the registry lock. Lives in host/src/registry.rs.",
+    "what": "One pointer file per registered tool under the data root tool-host/registry, its keys in camelCase, naming the immutable version folder under tool-host/tools the host serves, written atomically under the registry lock. Lives in host/src/registry.rs.",
     "files": [
       "host/src/registry.rs",
       "docs/registry.md",
@@ -32,6 +32,6 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+    "base": "f246a5a06e56d7f86d60f7c0c27c47570f0110b2"
   }
 ]

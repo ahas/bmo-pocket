@@ -36,6 +36,33 @@ fn lapsed(session: &Session, now: u64) -> bool {
   session.lapsed(now)
 }
 
+// A fresh token, as a record or the issuer is known by.
+fn fresh_token() -> String {
+  rand::random::<[u8; 32]>().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The issuer token kept in `file` (docs/mcp-host.md, 「Tokens」): read where the file stands, and made, readable by
+/// the host's user alone, where it does not.
+pub fn issuer_token(file: &Path) -> io::Result<String> {
+  match fs::read_to_string(file) {
+    Ok(token) if !token.trim().is_empty() => return Ok(token.trim().to_owned()),
+    Ok(_) => return Err(io::Error::other(format!("the issuer token {} is empty", file.display()))),
+    Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+    Err(_) => {}
+  }
+
+  if let Some(dir) = file.parent() {
+    fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+  }
+
+  let token = fresh_token();
+  let mut written = OpenOptions::new().write(true).create_new(true).mode(0o600).open(file)?;
+
+  written.write_all(format!("{token}\n").as_bytes())?;
+  written.sync_all()?;
+  Ok(token)
+}
+
 impl Records {
   /// The records in `dir`, made where it is not. A file that is not a record is left where it is and
   /// named on standard error; a lapsed one is dropped.
@@ -85,7 +112,7 @@ impl Records {
 
   /// A record kept, and the fresh token it is known by from now on.
   pub fn issue(&self, session: Session) -> io::Result<String> {
-    let token: String = rand::random::<[u8; 32]>().iter().map(|byte| format!("{byte:02x}")).collect();
+    let token = fresh_token();
     let hash = digest(&token);
     let staged = self.dir.join(format!(".{hash}.json.tmp"));
     let mut file = OpenOptions::new().write(true).create_new(true).mode(0o600).open(&staged)?;

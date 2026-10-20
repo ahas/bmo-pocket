@@ -9,4 +9,5 @@ mod records;
 mod residency;
 mod running;
 mod schedule;
+mod server;
 mod toolbook;

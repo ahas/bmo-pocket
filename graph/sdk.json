@@ -17,17 +17,10 @@
       "sdk/contract/tests/contract/main.rs",
       "docs/api.md"
     ],
-    "symbols": [
-      "Session",
-      "SessionRequest",
-      "Granted",
-      "Grant",
-      "Tool",
-      "Served"
-    ],
+    "symbols": [],
     "aliases": [],
     "needs": [],
-    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
+    "base": "f246a5a06e56d7f86d60f7c0c27c47570f0110b2"
   },
   {
     "id": "sdk/py-kit",

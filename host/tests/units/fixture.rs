@@ -1,13 +1,19 @@
-//! A stand-in tool placed under a tools root and the host serving it in this process, for the schedules' tests.
+//! A stand-in tool placed under a tools root, the host serving it in this process, and its control socket served on a
+//! socket of the test's own, for the control socket's and the schedules' tests.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use bmo_tool::manifest::{MANIFEST, PLACED};
 use bmo_tool::{Granted, Session};
 use mcp_host::handler::Host;
 use mcp_host::placed::Placed;
+use mcp_host::records::Records;
+use mcp_host::schedule::Schedules;
+use mcp_host::server;
 use serde_json::Value;
 use tempfile::TempDir;
+use tokio::net::UnixListener;
 
 // The stand-in's executable: it keeps what each call was handed beside itself, then breaks for `broken`, answers a
 // failed result for the text `fail`, and says the text back otherwise.
@@ -88,7 +94,7 @@ hints = { read_only = true }
 pub struct Fixture {
   dir: TempDir,
   // Sockets are bound under a short path of their own, which stands as long as the fixture.
-  _sockets: TempDir,
+  sockets: TempDir,
   pub host: Arc<Host>,
 }
 
@@ -113,11 +119,7 @@ impl Fixture {
       pass_env: Vec::new(),
     });
 
-    Self {
-      dir,
-      _sockets: sockets,
-      host,
-    }
+    Self { dir, sockets, host }
   }
 
   pub fn new() -> Self {
@@ -148,4 +150,19 @@ impl Fixture {
       .map(|line| serde_json::from_str(line).unwrap())
       .collect()
   }
+
+  /// The control socket served in this process on a socket of its own, behind `ISSUER`; it ends with the test's
+  /// runtime.
+  pub fn serve(&self, schedules: Arc<Schedules>) -> PathBuf {
+    let socket = self.sockets.path().join("control.sock");
+    let listener = UnixListener::bind(&socket).unwrap();
+    let records = Arc::new(Records::load(&self.dir.path().join("sessions")).unwrap());
+    let router = server::control(records, self.host.clone(), schedules, ISSUER.to_owned());
+
+    tokio::spawn(async move { axum::serve(listener, router).await });
+    socket
+  }
 }
+
+/// The issuer token the fixture's control socket is served behind.
+pub const ISSUER: &str = "issuer-token-of-the-fixture";

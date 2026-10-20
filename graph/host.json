@@ -14,7 +14,7 @@
       "registry/pointers",
       "sdk/contract"
     ],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+    "base": "f246a5a06e56d7f86d60f7c0c27c47570f0110b2"
   },
   {
     "id": "host/namespaces",
@@ -41,15 +41,17 @@
   {
     "id": "host/problem-details",
     "title": "Host HTTP refusals",
-    "what": "The RFC 7807 problem details the host answers before a request reaches a tool, each with an urn:sumida:error code. Lives in host/src/error.rs.",
+    "what": "The refusals the host answers before a request reaches a tool, on either face, each a non-2xx status with the common code and error body of the client. Lives in host/src/error.rs.",
     "files": [
       "host/src/error.rs",
       "host/tests/units/error.rs"
     ],
     "symbols": [],
     "aliases": [],
-    "needs": [],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+    "needs": [
+      "client/socket"
+    ],
+    "base": "f246a5a06e56d7f86d60f7c0c27c47570f0110b2"
   },
   {
     "id": "host/schedules",
@@ -59,7 +61,8 @@
       "host/src/schedule.rs",
       "host/tests/units/schedule.rs",
       "host/tests/units/fixture.rs",
-      "docs/mcp-host.md"
+      "docs/mcp-host.md",
+      "docs/api.md"
     ],
     "symbols": [],
     "aliases": [],
@@ -67,19 +70,21 @@
       "host/namespaces",
       "sdk/contract"
     ],
-    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
+    "base": "f246a5a06e56d7f86d60f7c0c27c47570f0110b2"
   },
   {
     "id": "host/server",
     "title": "Tool host",
-    "what": "The mcp-host process: every namespace and the toolbook on the loopback port behind each session bearer token, and the control socket launchers issue tokens on. Lives in host/src/server.rs and main.rs.",
+    "what": "The mcp-host process: every namespace and the toolbook on the loopback port behind each tool session token, and the control socket routes behind the issuer token or a tool session token, paged by name or by time. Lives in host/src/server.rs and main.rs.",
     "files": [
       "host/src/server.rs",
       "host/src/main.rs",
       "host/src/lib.rs",
       "docs/mcp-host.md",
+      "docs/api.md",
       "deploy/bmo-mcp-host.service",
       "host/tests/host.rs",
+      "host/tests/units/server.rs",
       "tests/host-contract/mcp-header.test.ts"
     ],
     "symbols": [],
@@ -89,9 +94,11 @@
       "host/toolbook",
       "host/session-records",
       "host/catalogue",
-      "host/problem-details"
+      "host/problem-details",
+      "host/schedules",
+      "client/socket"
     ],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+    "base": "f246a5a06e56d7f86d60f7c0c27c47570f0110b2"
   },
   {
     "id": "host/session-grants",
@@ -102,15 +109,12 @@
       "host/tests/units/handler.rs",
       "docs/mcp-host.md"
     ],
-    "symbols": [
-      "ungranted",
-      "Refusal"
-    ],
+    "symbols": [],
     "aliases": [],
     "needs": [
       "sdk/contract"
     ],
-    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
+    "base": "f246a5a06e56d7f86d60f7c0c27c47570f0110b2"
   },
   {
     "id": "host/session-records",
@@ -147,7 +151,7 @@
   {
     "id": "host/toolbook",
     "title": "Toolbook",
-    "what": "The server every line is handed beside its namespaces, listing, describing and calling the tools a session holds that its namespaces do not list, by the same dispatch a direct call takes. Lives in host/src/toolbook.rs.",
+    "what": "The server every harness configuration names beside its namespaces, listing, describing and calling the tools a session holds that its namespaces do not list, by the same dispatch a direct call takes. Lives in host/src/toolbook.rs.",
     "files": [
       "host/src/toolbook.rs",
       "host/tests/units/toolbook.rs",
@@ -158,6 +162,6 @@
     "needs": [
       "host/namespaces"
     ],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+    "base": "f246a5a06e56d7f86d60f7c0c27c47570f0110b2"
   }
 ]

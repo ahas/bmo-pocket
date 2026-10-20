@@ -13,48 +13,35 @@ use strum::{IntoStaticStr, VariantArray};
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum ErrorCode {
-  /// A request on the tools face carries no bearer token.
-  NoToken,
-  /// The token names no record: never issued, revoked, or past its deadline.
-  UnknownToken,
-  /// No placed entry is declared under the namespace.
-  UnknownNamespace,
-  /// No entry of the namespace declares a listing line.
-  NoListing,
-  /// No entry of that full name, or none the record holds.
-  UnknownEntry,
-  /// What was handed does not read as a session record.
-  MalformedRecord,
-  /// A body or a query that does not read as the route asks.
-  MalformedRequest,
-  /// The arguments do not fit the entry's schema in the form held.
+  /// The body or the query is not the shape the route takes.
+  BadRequest,
+  /// The token is missing, or names neither the issuer nor a tool session.
+  Unauthorized,
+  /// The token is right but may not do this.
+  Forbidden,
+  /// The route is right, but nothing the token sees stands at the key it names.
+  NotFound,
+  /// No route answers the method and path.
+  NoRoute,
+  /// The input does not fit the tool's schema in the form held.
   ArgumentsMisfit,
-  /// The grant lock refused the call.
-  GrantRefused,
+  /// The host failed.
+  Failed,
   /// The tool exited uncleanly, answered what is not a tool result, or ran past its timeout.
   ToolFailed,
-  /// A record could not be kept or taken back on disk.
-  UnwritableRecord,
-  /// A path the control socket does not serve.
-  UnknownRoute,
-  /// A method a served path does not take.
-  MethodNotAllowed,
 }
 
 impl ErrorCode {
   /// The status it is answered with.
   pub fn status(self) -> StatusCode {
     match self {
-      Self::NoToken | Self::UnknownToken => StatusCode::UNAUTHORIZED,
-      Self::UnknownNamespace | Self::NoListing | Self::UnknownEntry | Self::UnknownRoute => {
-        StatusCode::NOT_FOUND
-      }
-      Self::MalformedRecord | Self::MalformedRequest => StatusCode::BAD_REQUEST,
+      Self::BadRequest => StatusCode::BAD_REQUEST,
+      Self::Unauthorized => StatusCode::UNAUTHORIZED,
+      Self::Forbidden => StatusCode::FORBIDDEN,
+      Self::NotFound | Self::NoRoute => StatusCode::NOT_FOUND,
       Self::ArgumentsMisfit => StatusCode::UNPROCESSABLE_ENTITY,
-      Self::GrantRefused => StatusCode::FORBIDDEN,
+      Self::Failed => StatusCode::INTERNAL_SERVER_ERROR,
       Self::ToolFailed => StatusCode::BAD_GATEWAY,
-      Self::UnwritableRecord => StatusCode::INTERNAL_SERVER_ERROR,
-      Self::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
     }
   }
 

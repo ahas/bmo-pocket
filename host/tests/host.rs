@@ -1,28 +1,28 @@
-//! The tool host as a session meets it: the binary started on a scratch data root, tokens issued on
-//! its control socket, and the protocol spoken to it over HTTP (docs/mcp-host.md, 「Tests」).
+//! The tool host as a session meets it: the binary started on a scratch data root, tool sessions issued on its
+//! control socket with its issuer token, and the protocol spoken to it over HTTP (docs/mcp-host.md, 「Tests」).
 
 use std::fs;
 use std::io::{BufRead, BufReader};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
-use axum::Json;
-use axum::routing::post;
+use bmo_pocket_client::transport::{Reply, request};
 use http::{Method, Request, StatusCode};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
-use mcp_host::unix_http::request;
 use serde_json::{Value, json};
 use tempfile::TempDir;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 
 // A host running on its own data root, with its sockets in a directory short enough to bind.
 struct Running {
   child: Child,
   port: u16,
   control: PathBuf,
+  issuer: String,
 }
 
 impl Drop for Running {
@@ -53,26 +53,14 @@ impl Scratch {
     self.data.path().join("calls")
   }
 
-  // The file the account service's token is read from.
-  fn token_file(&self) -> PathBuf {
-    let file = self.data.path().join("accounts.token");
-
-    fs::write(&file, format!("{ACCOUNTS_TOKEN}\n")).unwrap();
-    file
-  }
-
-  // A host asking the account service standing at `accounts`, with the switch and anything more given.
-  fn start_asking(&self, accounts: &str, more: &[&str]) -> Running {
-    let token = self.token_file();
-    let mut args = vec!["--accounts", accounts, "--accounts-token-file", token.to_str().unwrap()];
-
-    args.extend_from_slice(more);
-    self.start_with(&args)
-  }
-
   // The deploy tree's `tools/` standing in, which the host reads and watches.
   fn tools(&self) -> PathBuf {
     self.data.path().join("tools")
+  }
+
+  // Where the host keeps its issuer token.
+  fn issuer_file(&self) -> PathBuf {
+    self.data.path().join("tool-host/issuer-token")
   }
 
   // What the host said on its standard error.
@@ -109,37 +97,21 @@ impl Scratch {
       .nth(1)
       .and_then(|rest| rest.split(',').next())
       .and_then(|port| port.parse().ok())
-      .unwrap();
+      .unwrap_or_else(|| panic!("the host did not start: {line}\n{}", self.log()));
+    let issuer = fs::read_to_string(self.issuer_file()).unwrap().trim().to_owned();
 
     Running {
       child,
       port,
       control,
+      issuer,
     }
   }
 }
 
-fn now_ms() -> u64 {
-  SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
-}
-
-// A checkout whose graph holds one node of its own name.
-fn checkout(name: &str) -> TempDir {
-  let dir = tempfile::tempdir().unwrap();
-
-  fs::create_dir_all(dir.path().join("graph")).unwrap();
-  fs::write(
-    dir.path().join("graph/area.json"),
-    json!([{ "id": format!("area/{name}"), "title": name, "what": "-", "files": [], "symbols": [], "aliases": [], "needs": [], "base": "-" }]).to_string(),
-  )
-  .unwrap();
-
-  dir
-}
-
-// The graph's, the queue's and the desk's tools standing in, placed where the host reads them
-// (docs/mcp-host.md, 「Placed tools」), each entry by its own name and capability: a graph verb answers
-// with the one node of its session's checkout, the desk's entry with its session's desk.
+// The garden's, the queue's and the desk's tools standing in, placed where the host reads them (docs/mcp-host.md,
+// 「Placed tools」), each entry by its own name and capability: a garden entry answers with the plot its session's
+// variables name, the desk's entry with the desk its session's labels name.
 const READERS_MANIFEST: &str = r#"
 [tool]
 name = "readers"
@@ -149,51 +121,51 @@ run = ["python3", "readers.py"]
 timeout = 20
 
 [[entry]]
-namespace = "worker"
-name = "graph_search"
-description = "Finds the features a word is about, as id and title."
+namespace = "garden"
+name = "plant_search"
+description = "Finds the plants a word is about, as id and title."
 input = "any.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 hints = { read_only = true }
 
 [[entry]]
-namespace = "worker"
-name = "graph_get"
-description = "One feature."
+namespace = "garden"
+name = "plant_get"
+description = "One plant."
 input = "any.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 hints = { read_only = true }
 
 [[entry]]
-namespace = "worker"
-name = "graph_list"
-description = "Asked with an area, that area's features. Asked with none, the areas."
+namespace = "garden"
+name = "plant_list"
+description = "Asked with a bed, that bed's plants. Asked with none, the beds."
 input = "any.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 hints = { read_only = true }
 
 [[entry]]
-namespace = "worker"
-name = "graph_impact"
-description = "What else a change to one feature would reach."
+namespace = "garden"
+name = "plant_impact"
+description = "What else a change to one plant would reach."
 input = "any.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 hints = { read_only = true }
 
 [[entry]]
-namespace = "worker"
-name = "todo_list"
-description = "The work queue in its own order."
+namespace = "garden"
+name = "queue_list"
+description = "The queue in its own order."
 input = "any.json"
 capabilities = ["queue.read"]
 hints = { read_only = true }
 
 [[entry]]
-namespace = "fragments"
-name = "fragment_owed"
+namespace = "desk"
+name = "desk_owed"
 description = "The pieces still owed a row."
 input = "any.json"
-capabilities = ["fragments.desk"]
+capabilities = ["desk.read"]
 hints = { read_only = true }
 "#;
 
@@ -201,14 +173,11 @@ const READERS_SCRIPT: &str = r#"
 import json, os, sys
 
 handed = json.load(sys.stdin)
-session = handed["session"]
 
-if handed["entry"].startswith("fragments/"):
-    said = "owed on " + session["fragmentDesk"]
+if handed["entry"].startswith("desk/"):
+    said = "owed on " + handed["session"]["labels"]["desk"]
 else:
-    with open(os.path.join(session["checkout"], "graph", "area.json")) as graph:
-        node = json.load(graph)[0]
-    said = node["id"] + "  " + node["title"]
+    said = "plot/" + os.environ["PLOT"] + "  " + os.environ["PLOT"]
 
 print(json.dumps({"content": [{"type": "text", "text": said}], "isError": False}))
 "#;
@@ -226,42 +195,56 @@ fn place_readers(scratch: &Scratch) {
   );
 }
 
-// The entries a line's sessions are shown by name, as the issuer of their records resolves them: the worker
-// line three graph verbs, the chat line a filing and a reading entry, and every other line none.
-fn shown_on(line: &str) -> Value {
-  match line {
-    "worker" => json!(["worker/graph_get", "worker/graph_impact", "worker/graph_search"]),
-    "chat" => json!(["bmo/running", "bmo/todo_add"]),
+// Every namespace the stand-ins declare, which a record names unless `more` says otherwise.
+const NAMESPACES: [&str; 6] = ["desk", "echoes", "garden", "notes", "papers", "web"];
+
+// The entries a holder's sessions are shown by name, as the issuer of their records resolves them: a gardener three
+// garden entries, a scribe a filing and a reading entry, and every other holder none.
+fn shown_by(holder: &str) -> Value {
+  match holder {
+    "gardener" => json!(["garden/plant_get", "garden/plant_impact", "garden/plant_search"]),
+    "scribe" => json!(["notes/note_add", "notes/status"]),
     _ => json!([]),
   }
 }
 
-// A record as its issuer writes it, shown by name what its line's sessions are unless `more` says otherwise.
-fn record(data: &Path, capabilities: &[&str], more: Value) -> Value {
-  let mut said = json!({ "line": "worker", "capabilities": capabilities, "dataRoot": data });
+// A record as its issuer asks for it, a gardener's holding no grant and shown by name what its holder's sessions
+// are, unless `more` says otherwise.
+fn record(capabilities: &[&str], more: Value) -> Value {
+  let mut said = json!({ "holderName": "gardener", "namespaces": NAMESPACES, "capabilities": capabilities, "grants": [] });
 
   said.as_object_mut().unwrap().extend(more.as_object().unwrap().clone());
 
   if said.get("shown").is_none() {
-    said["shown"] = shown_on(said["line"].as_str().unwrap());
+    said["shown"] = shown_by(said["holderName"].as_str().unwrap());
   }
 
   said
 }
 
-// A namespace's listing as the control socket answers it.
-async fn listing(host: &Running, namespace: &str) -> (StatusCode, String) {
-  let reply = request(&host.control, Method::GET, &format!("/listings/{namespace}"), None)
-    .await
-    .unwrap();
+// One request on the control socket, with the token where one is given.
+async fn control(
+  host: &Running,
+  method: Method,
+  path: &str,
+  token: Option<&str>,
+  body: Option<&Value>,
+) -> Reply {
+  request(&host.control, method, path, token, body).await.unwrap()
+}
 
-  (reply.status, String::from_utf8_lossy(&reply.body).into_owned())
+// One request on the control socket with the issuer token, its answer read as JSON.
+async fn issued_ask(host: &Running, method: Method, path: &str) -> Value {
+  let reply = control(host, method, path, Some(&host.issuer), None).await;
+
+  assert_eq!(reply.status, StatusCode::OK, "{}", String::from_utf8_lossy(&reply.body));
+  reply.json().unwrap()
 }
 
 async fn issue(host: &Running, session: &Value) -> String {
-  let reply = request(&host.control, Method::POST, "/sessions", Some(session)).await.unwrap();
+  let reply = control(host, Method::POST, "/tool-sessions", Some(&host.issuer), Some(session)).await;
 
-  assert_eq!(reply.status, StatusCode::OK, "{}", String::from_utf8_lossy(&reply.body));
+  assert_eq!(reply.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&reply.body));
   reply.json().unwrap()["token"].as_str().unwrap().to_owned()
 }
 
@@ -286,7 +269,7 @@ async fn rpc_on(
   params: Value,
 ) -> (StatusCode, Value) {
   let stream = TcpStream::connect(("127.0.0.1", host.port)).await.unwrap();
-  let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream)).await.unwrap();
+  let (mut link, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream)).await.unwrap();
 
   tokio::spawn(connection);
 
@@ -313,7 +296,7 @@ async fn rpc_on(
     asked = asked.header("authorization", format!("Bearer {token}"));
   }
 
-  let response = sender
+  let response = link
     .send_request(asked.body(Full::new(Bytes::from(body.to_string()))).unwrap())
     .await
     .unwrap();
@@ -351,76 +334,101 @@ async fn listed(host: &Running, token: &str, namespace: &str) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn two_sessions_each_read_their_own_checkout_and_desk_through_one_host() {
+async fn two_sessions_each_hand_their_own_variables_and_labels_through_one_host() {
   let scratch = Scratch::new();
 
   place_readers(&scratch);
 
   let host = scratch.start();
-  let (left, right) = (checkout("left"), checkout("right"));
-  let desks = tempfile::tempdir().unwrap();
-  let (left_desk, right_desk) = (desks.path().join("left-desk.json"), desks.path().join("right-desk.json"));
   let one = issue(
     &host,
     &record(
-      scratch.data.path(),
-      &["graph.read", "fragments.desk"],
-      json!({ "checkout": left.path(), "fragmentDesk": left_desk }),
+      &["garden.read", "desk.read"],
+      json!({ "variables": { "PLOT": "left" }, "labels": { "desk": "left-desk.json" } }),
     ),
   )
   .await;
   let other = issue(
     &host,
     &record(
-      scratch.data.path(),
-      &["graph.read", "fragments.desk"],
-      json!({ "checkout": right.path(), "fragmentDesk": right_desk }),
+      &["garden.read", "desk.read"],
+      json!({ "variables": { "PLOT": "right" }, "labels": { "desk": "right-desk.json" } }),
     ),
   )
   .await;
 
   assert_eq!(
-    text(&called(&host, &one, "worker", "graph_search", json!({ "text": "area" })).await),
-    "area/left  left"
+    text(&called(&host, &one, "garden", "plant_search", json!({ "text": "plot" })).await),
+    "plot/left  left"
   );
   assert_eq!(
-    text(&called(&host, &other, "worker", "graph_search", json!({ "text": "area" })).await),
-    "area/right  right"
+    text(&called(&host, &other, "garden", "plant_search", json!({ "text": "plot" })).await),
+    "plot/right  right"
   );
 
-  let owed = text(&called(&host, &one, "fragments", "fragment_owed", json!({})).await);
+  let owed = text(&called(&host, &one, "desk", "desk_owed", json!({})).await);
 
   assert!(owed.contains("left-desk.json") && !owed.contains("right-desk.json"), "{owed}");
 }
 
+// A variables file is read afresh at every call and laid over the record's own variables.
 #[tokio::test]
-async fn a_session_is_shown_and_may_call_only_what_its_capabilities_open() {
+async fn a_records_variables_file_is_read_at_every_call_over_its_variables() {
   let scratch = Scratch::new();
 
   place_readers(&scratch);
 
   let host = scratch.start();
-  let graph = checkout("only");
+  let file = scratch.data.path().join("variables.json");
   let token = issue(
     &host,
-    &record(scratch.data.path(), &["graph.read"], json!({ "checkout": graph.path() })),
+    &record(&["garden.read"], json!({ "variables": { "PLOT": "own" }, "variablesFile": file })),
   )
   .await;
+  let plot = || async { text(&called(&host, &token, "garden", "plant_get", json!({})).await) };
+
+  assert_eq!(plot().await, "plot/own  own");
+
+  fs::write(&file, json!({ "PLOT": "moved" }).to_string()).unwrap();
+  assert_eq!(plot().await, "plot/moved  moved");
+
+  fs::write(&file, json!({ "PLOT": "again" }).to_string()).unwrap();
+  assert_eq!(plot().await, "plot/again  again");
+}
+
+#[tokio::test]
+async fn a_session_is_shown_and_may_call_only_what_its_namespaces_and_capabilities_open() {
+  let scratch = Scratch::new();
+
+  place_readers(&scratch);
+
+  let host = scratch.start();
+  let token = issue(&host, &record(&["garden.read"], json!({ "variables": { "PLOT": "only" } }))).await;
 
   // The booked one of the four is the toolbook's to list.
-  assert_eq!(listed(&host, &token, "worker").await, ["graph_get", "graph_impact", "graph_search"]);
-  assert!(listed(&host, &token, "fragments").await.is_empty());
+  assert_eq!(listed(&host, &token, "garden").await, ["plant_get", "plant_impact", "plant_search"]);
+  assert!(listed(&host, &token, "desk").await.is_empty());
 
-  assert!(!text(&called(&host, &token, "worker", "graph_list", json!({})).await).is_empty());
+  assert!(!text(&called(&host, &token, "garden", "plant_list", json!({})).await).is_empty());
 
-  let refused = called(&host, &token, "worker", "todo_list", json!({})).await;
+  let refused = called(&host, &token, "garden", "queue_list", json!({})).await;
 
   assert_eq!(refused["error"]["code"], -32602);
-  assert_eq!(refused["error"]["message"], "Tool todo_list not found");
+  assert_eq!(refused["error"]["message"], "Tool queue_list not found");
+
+  // A record not naming a namespace reaches nothing of it, though it holds the capability.
+  let elsewhere =
+    issue(&host, &record(&["garden.read", "desk.read"], json!({ "namespaces": ["desk"] }))).await;
+
+  assert_eq!(
+    rpc(&host, Some(&elsewhere), "garden", "tools/list", json!({})).await.0,
+    StatusCode::NOT_FOUND
+  );
+  assert!(!book(&host, &elsewhere).await.contains("garden/"));
 }
 
 // "An entry is resident for a session where its record's `shown` names it" (docs/toolbook.md, 「Which tools are
-// resident」): a worker's record names three graph verbs, and a searcher's names none.
+// resident」): a gardener's record names three garden entries, and a seeker's names none.
 #[tokio::test]
 async fn a_placed_entry_is_listed_where_its_sessions_record_shows_it_and_booked_where_it_does_not() {
   let scratch = Scratch::new();
@@ -428,95 +436,122 @@ async fn a_placed_entry_is_listed_where_its_sessions_record_shows_it_and_booked_
   place_readers(&scratch);
 
   let host = scratch.start();
-  let graph = checkout("lines");
-  let on = |line: &str| {
-    record(scratch.data.path(), &["graph.read"], json!({ "line": line, "checkout": graph.path() }))
+  let on = |holder: &str| {
+    record(&["garden.read"], json!({ "holderName": holder, "variables": { "PLOT": "beds" } }))
   };
-  let worker = issue(&host, &on("worker")).await;
-  let searcher = issue(&host, &on("search")).await;
+  let gardener = issue(&host, &on("gardener")).await;
+  let seeker = issue(&host, &on("seeker")).await;
 
-  assert_eq!(listed(&host, &worker, "worker").await, ["graph_get", "graph_impact", "graph_search"]);
-  assert!(!book(&host, &worker).await.contains("worker/graph_search"));
-  assert!(listed(&host, &searcher, "worker").await.is_empty());
+  assert_eq!(listed(&host, &gardener, "garden").await, ["plant_get", "plant_impact", "plant_search"]);
+  assert!(!book(&host, &gardener).await.contains("garden/plant_search"));
+  assert!(listed(&host, &seeker, "garden").await.is_empty());
 
-  let booked = book(&host, &searcher).await;
+  let booked = book(&host, &seeker).await;
 
-  for entry in ["graph_get", "graph_impact", "graph_list", "graph_search"] {
+  for entry in ["plant_get", "plant_impact", "plant_list", "plant_search"] {
     assert!(
-      booked.lines().any(|line| line.starts_with(&format!("worker/{entry} · call — "))),
+      booked.lines().any(|line| line.starts_with(&format!("garden/{entry} · call — "))),
       "{booked}"
     );
   }
 
   assert_eq!(
-    text(&through(&host, &searcher, "call", "worker/graph_search", json!({ "text": "lines" })).await),
-    "area/lines  lines"
+    text(&through(&host, &seeker, "call", "garden/plant_search", json!({ "text": "beds" })).await),
+    "plot/beds  beds"
   );
   assert_eq!(
-    text(&called(&host, &worker, "worker", "graph_search", json!({ "text": "lines" })).await),
-    "area/lines  lines"
+    text(&called(&host, &gardener, "garden", "plant_search", json!({ "text": "beds" })).await),
+    "plot/beds  beds"
   );
 }
 
 #[tokio::test]
-async fn a_request_with_no_token_an_unknown_one_or_an_unknown_namespace_is_turned_away() {
+async fn a_request_with_no_token_an_unknown_one_the_issuers_or_an_unknown_namespace_is_turned_away() {
   let scratch = Scratch::new();
   let host = scratch.start();
-  let token = issue(&host, &record(scratch.data.path(), &["graph.read"], json!({}))).await;
+  let token = issue(&host, &record(&["garden.read"], json!({}))).await;
 
-  assert_eq!(rpc(&host, None, "worker", "tools/list", json!({})).await.0, StatusCode::UNAUTHORIZED);
+  assert_eq!(rpc(&host, None, "garden", "tools/list", json!({})).await.0, StatusCode::UNAUTHORIZED);
   assert_eq!(
-    rpc(&host, Some("nope"), "worker", "tools/list", json!({})).await.0,
+    rpc(&host, Some("nope"), "garden", "tools/list", json!({})).await.0,
     StatusCode::UNAUTHORIZED
   );
   assert_eq!(
-    rpc(&host, Some(&token), "graph", "tools/list", json!({})).await.0,
+    rpc(&host, Some(&host.issuer), "garden", "tools/list", json!({})).await.0,
+    StatusCode::UNAUTHORIZED
+  );
+  assert_eq!(
+    rpc(&host, Some(&token), "plants", "tools/list", json!({})).await.0,
     StatusCode::NOT_FOUND
   );
 }
 
+// "The issuer token alone issues and revokes" (docs/mcp-host.md, 「Tests」): a record that is not one is refused
+// where it is issued, and a session's own token issues nothing.
 #[tokio::test]
-async fn a_record_that_is_not_one_is_refused_where_it_is_issued() {
+async fn the_issuer_token_alone_issues_and_a_record_that_is_not_one_is_refused() {
   let scratch = Scratch::new();
   let host = scratch.start();
-  let reply =
-    request(&host.control, Method::POST, "/sessions", Some(&json!({ "line": "worker", "room": 5 })))
-      .await
-      .unwrap();
+  let malformed = control(
+    &host,
+    Method::POST,
+    "/tool-sessions",
+    Some(&host.issuer),
+    Some(&json!({ "holderName": "gardener", "scope": 5 })),
+  )
+  .await;
 
-  assert_eq!(reply.status, StatusCode::BAD_REQUEST);
-  assert_eq!(reply.json().unwrap()["code"], "mcp-host.malformed-record");
+  assert_eq!(malformed.status, StatusCode::BAD_REQUEST);
+  assert_eq!(malformed.json().unwrap()["code"], "bad-request");
+
+  let asked = record(&["garden.read"], json!({ "ttlMs": 60_000 }));
+  let answered = control(&host, Method::POST, "/tool-sessions", Some(&host.issuer), Some(&asked)).await;
+  let session = answered.json().unwrap();
+
+  assert_eq!(answered.status, StatusCode::CREATED);
+  assert_eq!(session["holderName"], "gardener");
+  assert_eq!(session["expiresAt"], session["createdAt"].as_u64().unwrap() + 60_000);
+
+  let own = session["token"].as_str().unwrap();
+  let widened = control(&host, Method::POST, "/tool-sessions", Some(own), Some(&asked)).await;
+
+  assert_eq!(widened.status, StatusCode::FORBIDDEN);
+  assert_eq!(widened.json().unwrap()["code"], "forbidden");
+  assert_eq!(
+    control(&host, Method::POST, "/tool-sessions", None, Some(&asked)).await.status,
+    StatusCode::UNAUTHORIZED
+  );
 }
 
 #[tokio::test]
-async fn a_revoked_token_and_a_lapsed_run_reach_nothing_and_leave_no_record() {
+async fn a_revoked_token_and_a_lapsed_session_reach_nothing_and_leave_no_record() {
   let scratch = Scratch::new();
   let host = scratch.start();
-  let revoked = issue(&host, &record(scratch.data.path(), &["graph.read"], json!({}))).await;
-  let lapsed = issue(
-    &host,
-    &record(scratch.data.path(), &["graph.read"], json!({ "deadline": now_ms() + 300 })),
-  )
-  .await;
+  let revoked = issue(&host, &record(&["garden.read"], json!({}))).await;
+  let lapsed = issue(&host, &record(&["garden.read"], json!({ "ttlMs": 300 }))).await;
   let sessions = scratch.data.path().join("tool-host/sessions");
+  let revoke = |token: String| {
+    let host = &host;
+
+    async move {
+      control(host, Method::DELETE, &format!("/tool-sessions/{token}"), Some(&host.issuer), None)
+        .await
+        .status
+    }
+  };
 
   assert_eq!(fs::read_dir(&sessions).unwrap().count(), 2);
+  assert_eq!(revoke(revoked.clone()).await, StatusCode::NO_CONTENT);
+  assert_eq!(revoke(revoked.clone()).await, StatusCode::NOT_FOUND);
   assert_eq!(
-    request(&host.control, Method::DELETE, &format!("/sessions/{revoked}"), None)
-      .await
-      .unwrap()
-      .status,
-    StatusCode::NO_CONTENT
-  );
-  assert_eq!(
-    rpc(&host, Some(&revoked), "worker", "tools/list", json!({})).await.0,
+    rpc(&host, Some(&revoked), "garden", "tools/list", json!({})).await.0,
     StatusCode::UNAUTHORIZED
   );
 
   tokio::time::sleep(Duration::from_millis(400)).await;
 
   assert_eq!(
-    rpc(&host, Some(&lapsed), "worker", "tools/list", json!({})).await.0,
+    rpc(&host, Some(&lapsed), "garden", "tools/list", json!({})).await.0,
     StatusCode::UNAUTHORIZED
   );
   assert_eq!(fs::read_dir(&sessions).unwrap().count(), 0);
@@ -531,16 +566,11 @@ async fn a_client_on_the_2026_revision_is_told_each_result_is_complete_and_an_ea
   place_readers(&scratch);
 
   let host = scratch.start();
-  let graph = checkout("told");
-  let token = issue(
-    &host,
-    &record(scratch.data.path(), &["graph.read"], json!({ "checkout": graph.path() })),
-  )
-  .await;
-  let search = json!({ "name": "graph_search", "arguments": { "text": "told" } });
+  let token = issue(&host, &record(&["garden.read"], json!({ "variables": { "PLOT": "told" } }))).await;
+  let search = json!({ "name": "plant_search", "arguments": { "text": "told" } });
 
   for method in ["tools/list", "resources/list"] {
-    let (_, listed) = rpc_on("2026-07-28", &host, Some(&token), "worker", method, json!({})).await;
+    let (_, listed) = rpc_on("2026-07-28", &host, Some(&token), "garden", method, json!({})).await;
 
     assert_eq!(listed["result"]["resultType"], "complete", "{method}: {listed}");
     assert_eq!(
@@ -550,30 +580,28 @@ async fn a_client_on_the_2026_revision_is_told_each_result_is_complete_and_an_ea
     );
   }
 
-  let (_, called) = rpc_on("2026-07-28", &host, Some(&token), "worker", "tools/call", search.clone()).await;
+  let (_, called) = rpc_on("2026-07-28", &host, Some(&token), "garden", "tools/call", search.clone()).await;
 
   assert_eq!(called["result"]["resultType"], "complete", "{called}");
 
-  let (_, earlier) = rpc(&host, Some(&token), "worker", "tools/list", json!({})).await;
+  let (_, earlier) = rpc(&host, Some(&token), "garden", "tools/list", json!({})).await;
 
   assert!(earlier["result"].get("resultType").is_none(), "{earlier}");
 }
 
 #[tokio::test]
-async fn records_survive_a_restart_and_the_same_token_works_after_it() {
+async fn records_and_the_issuer_token_survive_a_restart_and_the_same_tokens_work_after_it() {
   let scratch = Scratch::new();
 
   place_readers(&scratch);
 
-  let graph = checkout("kept");
-  let token = {
+  let (token, issuer) = {
     let host = scratch.start();
 
-    issue(
-      &host,
-      &record(scratch.data.path(), &["graph.read"], json!({ "checkout": graph.path() })),
+    (
+      issue(&host, &record(&["garden.read"], json!({ "variables": { "PLOT": "kept" } }))).await,
+      host.issuer.clone(),
     )
-    .await
   };
   let host = scratch.start();
   let file = fs::read_dir(scratch.data.path().join("tool-host/sessions"))
@@ -582,15 +610,16 @@ async fn records_survive_a_restart_and_the_same_token_works_after_it() {
     .unwrap()
     .unwrap();
 
+  assert_eq!(host.issuer, issuer);
   assert_eq!(
-    text(&called(&host, &token, "worker", "graph_search", json!({ "text": "kept" })).await),
-    "area/kept  kept"
+    text(&called(&host, &token, "garden", "plant_search", json!({ "text": "kept" })).await),
+    "plot/kept  kept"
   );
   assert!(!file.file_name().to_string_lossy().contains(&token));
   assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+  assert_eq!(fs::metadata(scratch.issuer_file()).unwrap().permissions().mode() & 0o777, 0o600);
+  assert_eq!(issued_ask(&host, Method::GET, "/health").await["ready"], true);
 }
-
-use std::os::unix::fs::PermissionsExt;
 
 // What the stand-in readings answer every call with, and the one procedure the stand-in procedures serve.
 const CARRIED: &str = "carried";
@@ -606,8 +635,8 @@ run = ["python3", "papers.py"]
 timeout = 20
 
 [resources]
-namespace = "bmo"
-capabilities = ["room.tools"]
+namespace = "papers"
+capabilities = ["papers.read"]
 "#;
 
 const PAPERS_SCRIPT: &str = r#"
@@ -617,8 +646,8 @@ asked = json.load(sys.stdin)
 open(f"{CALLS}/{time.time_ns()}.in", "w").write(json.dumps(asked))
 
 if asked["kind"] == "resources_list":
-    print(json.dumps({"resources": [{"uri": "bmo://procedure/carried", "name": "carried", "mimeType": "text/markdown"}]}))
-elif asked["uri"] == "bmo://procedure/carried":
+    print(json.dumps({"resources": [{"uri": "papers://procedure/carried", "name": "carried", "mimeType": "text/markdown"}]}))
+elif asked["uri"] == "papers://procedure/carried":
     print(json.dumps({"contents": [{"uri": asked["uri"], "mimeType": "text/markdown", "text": "carried"}]}))
 else:
     print(json.dumps({"error": "no procedure named " + asked["uri"]}))
@@ -646,7 +675,7 @@ fn handed(scratch: &Scratch) -> Vec<Value> {
 }
 
 // A placed tool is started with nothing of the call on its command line and is handed the call on standard
-// input, and a namespace serving resources alone lists nothing for a line's instructions.
+// input, and a namespace serving resources alone holds no tool the control socket answers.
 #[tokio::test]
 async fn resources_are_listed_and_read_by_their_placed_tool_handed_the_record_and_the_request_on_standard_input()
  {
@@ -655,19 +684,18 @@ async fn resources_are_listed_and_read_by_their_placed_tool_handed_the_record_an
   place_papers(&scratch);
 
   let host = scratch.start();
-  let reader =
-    issue(&host, &record(scratch.data.path(), &["room.tools"], json!({ "line": "search" }))).await;
-  let stranger = issue(&host, &record(scratch.data.path(), &["graph.read"], json!({}))).await;
-  let (_, resources) = rpc(&host, Some(&reader), "bmo", "resources/list", json!({})).await;
+  let reader = issue(&host, &record(&["papers.read"], json!({ "holderName": "seeker" }))).await;
+  let stranger = issue(&host, &record(&["garden.read"], json!({}))).await;
+  let (_, resources) = rpc(&host, Some(&reader), "papers", "resources/list", json!({})).await;
 
-  assert_eq!(resources["result"]["resources"][0]["uri"], "bmo://procedure/carried");
+  assert_eq!(resources["result"]["resources"][0]["uri"], "papers://procedure/carried");
 
   let (_, read) = rpc(
     &host,
     Some(&reader),
-    "bmo",
+    "papers",
     "resources/read",
-    json!({ "uri": "bmo://procedure/carried" }),
+    json!({ "uri": "papers://procedure/carried" }),
   )
   .await;
 
@@ -676,58 +704,61 @@ async fn resources_are_listed_and_read_by_their_placed_tool_handed_the_record_an
   let (_, refused) = rpc(
     &host,
     Some(&reader),
-    "bmo",
+    "papers",
     "resources/read",
-    json!({ "uri": "bmo://procedure/missing" }),
+    json!({ "uri": "papers://procedure/missing" }),
   )
   .await;
 
-  assert_eq!(refused["error"]["message"], "no procedure named bmo://procedure/missing");
+  assert_eq!(refused["error"]["message"], "no procedure named papers://procedure/missing");
 
   let calls = handed(&scratch);
 
   assert_eq!(calls.len(), 3);
   assert_eq!(calls[0]["kind"], "resources_list");
-  assert_eq!(calls[0]["session"]["line"], "search");
+  assert_eq!(calls[0]["session"]["holderName"], "seeker");
   assert!(!calls[0].to_string().contains(&reader));
   assert_eq!(
     (&calls[1]["kind"], &calls[1]["uri"]),
-    (&json!("resources_read"), &json!("bmo://procedure/carried"))
+    (&json!("resources_read"), &json!("papers://procedure/carried"))
   );
   assert!(
-    rpc(&host, Some(&stranger), "bmo", "resources/list", json!({})).await.1["result"]["resources"]
+    rpc(&host, Some(&stranger), "papers", "resources/list", json!({})).await.1["result"]["resources"]
       .as_array()
       .unwrap()
       .is_empty()
   );
   assert_eq!(handed(&scratch).len(), 3);
-  assert_eq!(listing(&host, "bmo").await.0, StatusCode::NOT_FOUND);
+  assert_eq!(
+    control(&host, Method::GET, "/namespaces/papers", Some(&host.issuer), None).await.status,
+    StatusCode::NOT_FOUND
+  );
 }
 
-// A placed sending entry, declaring the chat verb it needs and its icon beside it.
-const SENDER_MANIFEST: &str = r#"
+// A placed sending entry, declaring the verb it needs and its icon beside it.
+const STAMPER_MANIFEST: &str = r#"
 [tool]
-name = "sender"
+name = "stamper"
 protocol = 1
 language = "python"
-run = ["python3", "sender.py"]
+run = ["python3", "stamper.py"]
 timeout = 20
 
 [[entry]]
-namespace = "bmo"
-name = "sticker"
-description = "Sends a sticker."
+namespace = "notes"
+name = "stamp"
+description = "Sends a stamp."
 input = "any.json"
-capabilities = ["room.tools"]
+capabilities = ["notes.use"]
 hints = { open_world = true }
 
 [entry.facts]
-verb = "sticker"
-icon = "i-lucide-sticker"
+verb = "stamp"
+icon = "i-lucide-stamp"
 "#;
 
-// A placed filing entry, under a name a chat line's record shows: it carries a grant, a bundle's narrower form and
-// the record its call leaves, and its executable answers every call alike.
+// A placed filing entry, under a name a scribe's record shows: it carries a grant, a bundle's narrower form and the
+// record its call leaves, and its executable answers every call alike.
 const FILER_MANIFEST: &str = r#"
 [tool]
 name = "filer"
@@ -737,22 +768,22 @@ run = ["python3", "filer.py"]
 timeout = 20
 
 [[entry]]
-namespace = "bmo"
-name = "todo_add"
+namespace = "notes"
+name = "note_add"
 description = "Files a row."
-input = "todo_add.json"
-capabilities = ["room.tools"]
-grant = "file_todo"
+input = "note_add.json"
+capabilities = ["notes.use"]
+grant = "notes.file"
 
-[entry.bundle."room.chat"]
+[entry.bundle."notes.brief"]
 shown = ["title", "text"]
 required = ["title", "text"]
 
 [entry.facts]
-record = "todo-add"
+record = "note-add"
 "#;
 
-const FILING_SCHEMA: &str = r#"{ "type": "object", "properties": { "title": { "type": "string" }, "text": { "type": "string" }, "chat": { "type": "integer" }, "message": { "type": "integer" } }, "required": ["title"], "additionalProperties": false }"#;
+const FILING_SCHEMA: &str = r#"{ "type": "object", "properties": { "title": { "type": "string" }, "text": { "type": "string" }, "scope": { "type": "integer" } }, "required": ["title"], "additionalProperties": false }"#;
 
 const FILED: &str = "filed";
 
@@ -769,14 +800,14 @@ fn place_filer(scratch: &Scratch) {
     "filer",
     &[
       ("tool.toml", FILER_MANIFEST),
-      ("todo_add.json", FILING_SCHEMA),
+      ("note_add.json", FILING_SCHEMA),
       ("filer.py", FILER_SCRIPT),
     ],
   );
 }
 
-// Placed readings: `running`, which a chat line's record shows, and `jobs`, which no record shows, each read-only
-// and answering with the reading's object; its executable answers every call alike.
+// Placed readings: `status`, which a scribe's record shows, and `history`, which no record shows, each read-only and
+// answering with the reading's object; its executable answers every call alike.
 const READINGS_MANIFEST: &str = r#"
 [tool]
 name = "readings"
@@ -786,21 +817,21 @@ run = ["python3", "readings.py"]
 timeout = 20
 
 [[entry]]
-namespace = "bmo"
-name = "running"
+namespace = "notes"
+name = "status"
 description = "The live work, as it stands."
-input = "running.json"
+input = "status.json"
 output = "reading.json"
-capabilities = ["room.tools"]
+capabilities = ["notes.use"]
 hints = { read_only = true }
 
 [[entry]]
-namespace = "bmo"
-name = "jobs"
-description = "A room's job runs, newest first."
-input = "jobs.json"
+namespace = "notes"
+name = "history"
+description = "The history, newest first."
+input = "history.json"
 output = "reading.json"
-capabilities = ["room.tools"]
+capabilities = ["notes.use"]
 hints = { read_only = true }
 "#;
 
@@ -818,12 +849,12 @@ fn place_readings(scratch: &Scratch) {
     &[
       ("tool.toml", READINGS_MANIFEST),
       (
-        "running.json",
+        "status.json",
         r#"{ "type": "object", "properties": { "full": { "type": "boolean" } }, "additionalProperties": false }"#,
       ),
       (
-        "jobs.json",
-        r#"{ "type": "object", "properties": { "chat": { "type": "integer" }, "limit": { "type": "integer" }, "full": { "type": "boolean" } }, "additionalProperties": false }"#,
+        "history.json",
+        r#"{ "type": "object", "properties": { "scope": { "type": "integer" }, "limit": { "type": "integer" }, "full": { "type": "boolean" } }, "additionalProperties": false }"#,
       ),
       (
         "reading.json",
@@ -841,18 +872,18 @@ async fn a_namespace_says_its_digest_its_sending_verbs_its_records_and_its_icons
 
   place(
     &scratch.tools(),
-    "sender",
+    "stamper",
     &[
-      ("tool.toml", SENDER_MANIFEST),
+      ("tool.toml", STAMPER_MANIFEST),
       ("any.json", r#"{ "type": "object" }"#),
-      ("sender.py", ""),
+      ("stamper.py", ""),
     ],
   );
   place_filer(&scratch);
 
   let host = scratch.start();
-  let reply = request(&host.control, Method::GET, "/facts/bmo", None).await.unwrap();
-  let facts: Value = serde_json::from_slice(&reply.body).unwrap();
+  let notes = issued_ask(&host, Method::GET, "/namespaces/notes").await;
+  let facts = &notes["facts"];
   let named = |field: &str, value: &str| -> Vec<(String, String)> {
     facts[field]
       .as_array()
@@ -862,13 +893,13 @@ async fn a_namespace_says_its_digest_its_sending_verbs_its_records_and_its_icons
       .collect()
   };
 
-  assert_eq!(reply.status, StatusCode::OK);
+  assert_eq!((notes["name"].as_str(), notes["toolCount"].as_u64()), (Some("notes"), Some(2)));
   assert_eq!(facts["digest"].as_str().unwrap().len(), 64);
-  assert_eq!(named("sending", "verb"), [("sticker".to_owned(), "sticker".to_owned())]);
-  assert_eq!(named("records", "record"), [("todo_add".to_owned(), "todo-add".to_owned())]);
-  assert!(named("icons", "icon").contains(&("sticker".to_owned(), "i-lucide-sticker".to_owned())));
+  assert_eq!(named("sending", "verb"), [("stamp".to_owned(), "stamp".to_owned())]);
+  assert_eq!(named("records", "record"), [("note_add".to_owned(), "note-add".to_owned())]);
+  assert!(named("icons", "icon").contains(&("stamp".to_owned(), "i-lucide-stamp".to_owned())));
   assert_eq!(
-    request(&host.control, Method::GET, "/facts/worker", None).await.unwrap().status,
+    control(&host, Method::GET, "/namespaces/garden", Some(&host.issuer), None).await.status,
     StatusCode::NOT_FOUND
   );
 }
@@ -882,164 +913,73 @@ fn appeared(scratch: &Scratch, before: &[String]) -> String {
     .unwrap()
 }
 
-// A run whose deadline has passed with nothing calling it: the beat drops its record, and what the record
-// kept ends with it, while a resident program's record stands.
+// A session whose `expiresAt` has passed with nothing calling it: the beat drops its record, and what the record kept
+// ends with it, while a session standing until revoked stands.
 #[tokio::test]
-async fn a_lapsed_run_is_dropped_on_the_next_beat_though_nothing_calls_it() {
+async fn a_lapsed_session_is_dropped_on_the_next_beat_though_nothing_calls_it() {
   let scratch = Scratch::new();
   let host = scratch.start_with(&["--sweep-every-ms", "100"]);
   let sessions = scratch.data.path().join("tool-host/sessions");
 
-  issue(&host, &record(scratch.data.path(), &["web.read"], json!({}))).await;
-  let resident_id = appeared(&scratch, &[]);
-  issue(&host, &record(scratch.data.path(), &["web.read"], json!({ "deadline": now_ms() }))).await;
-  let lapsed_id = appeared(&scratch, std::slice::from_ref(&resident_id));
+  issue(&host, &record(&["web.read"], json!({}))).await;
+  let standing_id = appeared(&scratch, &[]);
+  issue(&host, &record(&["web.read"], json!({ "ttlMs": 1 }))).await;
+  let lapsed_id = appeared(&scratch, std::slice::from_ref(&standing_id));
   let bound = std::time::Instant::now() + Duration::from_secs(30);
 
   while sessions.join(format!("{lapsed_id}.json")).exists() {
-    assert!(std::time::Instant::now() < bound, "the lapsed run's record was never dropped");
+    assert!(std::time::Instant::now() < bound, "the lapsed session's record was never dropped");
     tokio::time::sleep(Duration::from_millis(20)).await;
   }
 
-  assert!(sessions.join(format!("{resident_id}.json")).exists());
+  assert!(sessions.join(format!("{standing_id}.json")).exists());
 }
 
-// The bearer token the stand-in account service holds its callers to.
-const ACCOUNTS_TOKEN: &str = "accounts-token";
-
-// The account service standing in, on a loopback port of its own: its model in force where `in_force` says so;
-// in room -5 the sender of message 1 holds what is asked and the sender of message 2 does not; user 9 holds no
-// tool capability; and a caller without its token is refused as the service refuses one. Its base address.
-async fn stand_in_accounts(in_force: bool) -> String {
-  use axum::http::HeaderMap;
-  use axum::response::IntoResponse;
-  use axum::routing::get;
-
-  fn bearer(headers: &HeaderMap) -> bool {
-    headers.get("authorization").and_then(|value| value.to_str().ok())
-      == Some(&format!("Bearer {ACCOUNTS_TOKEN}"))
-  }
-
-  fn refused() -> axum::response::Response {
-    (
-      StatusCode::UNAUTHORIZED,
-      Json(json!({ "error": "The token is not the server's.", "code": "unauthorized" })),
-    )
-      .into_response()
-  }
-
-  let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
-  let base = format!("http://{}", listener.local_addr().unwrap());
-  let app = axum::Router::new()
-    .route(
-      "/accounts/model",
-      get(move |headers: HeaderMap| async move {
-        if !bearer(&headers) {
-          return refused();
-        }
-
-        Json(json!({ "in_force": in_force })).into_response()
-      }),
-    )
-    .route(
-      "/checks/message",
-      post(|headers: HeaderMap, Json(asked): Json<Value>| async move {
-        if !bearer(&headers) {
-          return refused();
-        }
-
-        let grant = format!("bmo_room:{}#{}", asked["room"], asked["relation"].as_str().unwrap_or(""));
-
-        Json(json!({ "allowed": asked["room"] == -5 && asked["message"] == 1, "grant": grant }))
-          .into_response()
-      }),
-    )
-    .route(
-      "/checks/object",
-      post(|headers: HeaderMap, Json(asked): Json<Value>| async move {
-        if !bearer(&headers) {
-          return refused();
-        }
-
-        let grant = format!("bmo_tools:{}#use", asked["object"].as_str().unwrap_or(""));
-
-        Json(json!({ "allowed": asked["user"] != 9, "grant": grant })).into_response()
-      }),
-    );
-
-  tokio::spawn(async move {
-    axum::serve(listener, app).await.unwrap();
-  });
-
-  base
-}
-
-// A tool that acts carries the grant it needs and takes the message it acts on; a bundle's form carries none.
+// "A call of an entry declaring a grant runs where the record's grants hold it" (docs/mcp-host.md, 「Grants」), on the
+// tools face and on the control socket alike; an entry declaring none runs for any session holding it.
 #[tokio::test]
-async fn a_tool_that_acts_runs_only_on_a_message_whose_sender_holds_its_grant_in_the_turns_room() {
+async fn an_entry_declaring_a_grant_runs_only_where_the_records_grants_hold_it() {
   let scratch = Scratch::new();
 
   place_filer(&scratch);
   place_readings(&scratch);
 
-  let accounts = stand_in_accounts(true).await;
-  let host = scratch.start_asking(&accounts, &[]);
-  let session = record(
-    scratch.data.path(),
-    &["room.tools"],
-    json!({ "line": "chat", "runVariables": { "BMO_TURN_CHAT": "-5" } }),
-  );
-  let token = issue(&host, &session).await;
-  let unnamed = called(&host, &token, "bmo", "todo_add", json!({ "title": "x" })).await;
-
-  assert_eq!(unnamed["result"]["isError"], true);
-  assert!(text(&unnamed).contains("names the message it acts on"), "{unnamed}");
-
-  let refused = called(&host, &token, "bmo", "todo_add", json!({ "title": "x", "message": 2 })).await;
+  let host = scratch.start();
+  let scribe = |grants: Value| record(&["notes.use"], json!({ "holderName": "scribe", "grants": grants }));
+  let ungranted = issue(&host, &scribe(json!([]))).await;
+  let elsewhere = issue(&host, &scribe(json!([{ "resource": "notes" }]))).await;
+  let granted = issue(&host, &scribe(json!([{ "resource": "notes.file" }]))).await;
+  let refused = called(&host, &ungranted, "notes", "note_add", json!({ "title": "x" })).await;
 
   assert_eq!(refused["result"]["isError"], true);
-  assert!(text(&refused).contains("does not hold bmo_room:-5#file_todo"), "{refused}");
+  assert!(text(&refused).contains("the session holds no grant for notes.file"), "{refused}");
   assert_eq!(
-    text(&called(&host, &token, "bmo", "todo_add", json!({ "title": "x", "message": 1 })).await),
+    called(&host, &elsewhere, "notes", "note_add", json!({ "title": "x" })).await["result"]["isError"],
+    true
+  );
+  assert_eq!(
+    text(&called(&host, &granted, "notes", "note_add", json!({ "title": "x" })).await),
     FILED
   );
-  assert_eq!(text(&called(&host, &token, "bmo", "running", json!({})).await), CARRIED);
+  assert_eq!(text(&called(&host, &ungranted, "notes", "status", json!({})).await), CARRIED);
 
-  // A turn whose every new message is the owner's acts for nobody else, and names no message.
-  let privileged = issue(
-    &host,
-    &record(
-      scratch.data.path(),
-      &["room.tools"],
-      json!({ "line": "chat", "runVariables": { "BMO_TURN_CHAT": "-5", "BMO_TURN_PRIVILEGED": "1" } }),
-    ),
-  )
-  .await;
+  let call = json!({ "namespace": "notes", "name": "note_add", "input": { "title": "x" } });
+  let denied = control(&host, Method::POST, "/tool-calls", Some(&ungranted), Some(&call)).await;
 
-  assert_eq!(
-    text(&called(&host, &privileged, "bmo", "todo_add", json!({ "title": "x" })).await),
-    FILED
-  );
+  assert_eq!(denied.status, StatusCode::FORBIDDEN);
+  assert_eq!(denied.json().unwrap()["code"], "forbidden");
 
-  // A job run for another user's item uses a tool only where that user holds its capability.
-  let for_user = issue(
-    &host,
-    &record(
-      scratch.data.path(),
-      &["room.tools"],
-      json!({ "line": "chat", "runVariables": { "BMO_TURN_CHAT": "-5", "BMO_TURN_USER": "9" } }),
-    ),
-  )
-  .await;
-  let narrowed = called(&host, &for_user, "bmo", "running", json!({})).await;
+  let made = control(&host, Method::POST, "/tool-calls", Some(&granted), Some(&call)).await;
+  let made = made.json().unwrap();
 
-  assert_eq!(narrowed["result"]["isError"], true);
-  assert!(text(&narrowed).contains("does not hold bmo_tools:room.tools#use"), "{narrowed}");
+  assert_eq!((&made["namespace"], &made["name"]), (&json!("notes"), &json!("note_add")));
+  assert_eq!(made["result"]["content"][0]["text"], FILED);
+  assert!(made["spentMs"].is_u64());
 }
 
 // The tools a session is shown, each by the schema of the form it holds.
 async fn shown(host: &Running, token: &str) -> Vec<(String, Value)> {
-  rpc(host, Some(token), "bmo", "tools/list", json!({})).await.1["result"]["tools"]
+  rpc(host, Some(token), "notes", "tools/list", json!({})).await.1["result"]["tools"]
     .as_array()
     .unwrap()
     .iter()
@@ -1050,8 +990,7 @@ async fn shown(host: &Running, token: &str) -> Vec<(String, Value)> {
 // A record holding bundles alone is shown and served their entries alone, each schema narrowed to what its entry
 // shows and each call held to it; one holding the whole catalogue as well is shown each entry once and whole.
 #[tokio::test]
-async fn a_record_holding_a_role_bundle_alone_is_shown_its_tools_narrowed_and_one_holding_both_each_whole()
-{
+async fn a_record_holding_a_bundle_alone_is_shown_its_tools_narrowed_and_one_holding_both_each_whole() {
   let scratch = Scratch::new();
 
   place_filer(&scratch);
@@ -1060,30 +999,23 @@ async fn a_record_holding_a_role_bundle_alone_is_shown_its_tools_narrowed_and_on
   let host = scratch.start();
   let both = issue(
     &host,
-    &record(
-      scratch.data.path(),
-      &["room.tools", "room.chat", "room.send"],
-      json!({ "line": "chat" }),
-    ),
+    &record(&["notes.use", "notes.brief", "notes.send"], json!({ "holderName": "scribe" })),
   )
   .await;
-  let bundles = issue(
-    &host,
-    &record(scratch.data.path(), &["room.chat", "room.send"], json!({ "line": "chat" })),
-  )
-  .await;
+  let bundles =
+    issue(&host, &record(&["notes.brief", "notes.send"], json!({ "holderName": "scribe" }))).await;
   let whole = shown(&host, &both).await;
   let narrowed = shown(&host, &bundles).await;
   let names = |tools: &[(String, Value)]| tools.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
 
-  assert_eq!(names(&whole).iter().filter(|name| *name == "todo_add").count(), 1);
-  assert!(names(&whole).contains(&"running".to_owned()));
+  assert_eq!(names(&whole).iter().filter(|name| *name == "note_add").count(), 1);
+  assert!(names(&whole).contains(&"status".to_owned()));
   assert!(
     whole
       .iter()
-      .any(|(name, schema)| name == "todo_add" && schema["properties"]["chat"].is_object())
+      .any(|(name, schema)| name == "note_add" && schema["properties"]["scope"].is_object())
   );
-  assert_eq!(names(&narrowed), ["todo_add"]);
+  assert_eq!(names(&narrowed), ["note_add"]);
 
   let filing = &narrowed[0].1;
   let mut offered: Vec<&String> = filing["properties"].as_object().unwrap().keys().collect();
@@ -1094,7 +1026,7 @@ async fn a_record_holding_a_role_bundle_alone_is_shown_its_tools_narrowed_and_on
 
   // A bundle's form is held to its own arguments, and acts under no grant.
   let refused =
-    called(&host, &bundles, "bmo", "todo_add", json!({ "title": "x", "text": "y", "chat": 5 })).await;
+    called(&host, &bundles, "notes", "note_add", json!({ "title": "x", "text": "y", "scope": 5 })).await;
 
   assert_eq!(refused["result"]["isError"], true);
   assert!(
@@ -1102,46 +1034,10 @@ async fn a_record_holding_a_role_bundle_alone_is_shown_its_tools_narrowed_and_on
     "{refused}"
   );
   assert_eq!(
-    text(&called(&host, &bundles, "bmo", "todo_add", json!({ "title": "x", "text": "y" })).await),
+    text(&called(&host, &bundles, "notes", "note_add", json!({ "title": "x", "text": "y" })).await),
     FILED
   );
-  assert_eq!(called(&host, &bundles, "bmo", "running", json!({})).await["error"]["code"], -32602);
-}
-
-// The lock stands only where an account service is named, the switch leaves it on and the service's model is
-// in force: a call naming no message is filed under the switch off, with no service named, and with the
-// model not in force, and refused once all three hold.
-#[tokio::test]
-async fn the_switch_turns_the_lock_off_and_with_no_account_service_or_no_model_in_force_it_never_stands() {
-  let scratch = Scratch::new();
-
-  place_filer(&scratch);
-
-  let in_force = stand_in_accounts(true).await;
-  let not_in_force = stand_in_accounts(false).await;
-  let session = record(
-    scratch.data.path(),
-    &["room.tools"],
-    json!({ "line": "chat", "runVariables": { "BMO_TURN_CHAT": "-5" } }),
-  );
-  let filed = |host: Running| {
-    let session = session.clone();
-
-    async move {
-      let token = issue(&host, &session).await;
-
-      text(&called(&host, &token, "bmo", "todo_add", json!({ "title": "x" })).await)
-    }
-  };
-
-  assert_eq!(filed(scratch.start_asking(&in_force, &["--grant-lock", "off"])).await, FILED);
-  assert_eq!(filed(scratch.start()).await, FILED);
-  assert_eq!(filed(scratch.start_asking(&not_in_force, &[])).await, FILED);
-  assert!(
-    filed(scratch.start_asking(&in_force, &[]))
-      .await
-      .contains("names the message it acts on")
-  );
+  assert_eq!(called(&host, &bundles, "notes", "status", json!({})).await["error"]["code"], -32602);
 }
 
 // The toolbook (docs/toolbook.md): what a namespace does not list, listed, described and called through
@@ -1155,43 +1051,41 @@ async fn the_toolbook_lists_describes_and_calls_what_the_namespaces_do_not_list(
   place_readings(&scratch);
 
   let host = scratch.start();
-  let graph = checkout("book");
-  let searcher = issue(
+  let seeker = issue(
     &host,
     &record(
-      scratch.data.path(),
-      &["room.tools", "graph.read"],
-      json!({ "line": "search", "checkout": graph.path() }),
+      &["notes.use", "garden.read"],
+      json!({ "holderName": "seeker", "variables": { "PLOT": "book" }, "grants": [{ "resource": "notes.file" }] }),
     ),
   )
   .await;
 
-  // A searcher's record shows none of the `bmo` namespace's entries, so every one it holds is booked.
-  assert!(listed(&host, &searcher, "bmo").await.is_empty());
-  assert_eq!(listed(&host, &searcher, "toolbook").await, ["list", "describe", "call", "act"]);
+  // A seeker's record shows none of the `notes` namespace's entries, so every one it holds is booked.
+  assert!(listed(&host, &seeker, "notes").await.is_empty());
+  assert_eq!(listed(&host, &seeker, "toolbook").await, ["list", "describe", "call", "act"]);
 
-  let book = text(&called(&host, &searcher, "toolbook", "list", json!({})).await);
+  let book = text(&called(&host, &seeker, "toolbook", "list", json!({})).await);
 
   for line in [
-    "bmo/jobs · call — A room's job runs, newest first.",
-    "bmo/running · call — The live work, as it stands.",
-    "bmo/todo_add · act — Files a row.",
-    "worker/graph_list · call — Asked with an area, that area's features.",
+    "notes/history · call — The history, newest first.",
+    "notes/status · call — The live work, as it stands.",
+    "notes/note_add · act — Files a row.",
+    "garden/plant_list · call — Asked with a bed, that bed's plants.",
   ] {
     assert!(book.lines().any(|listed| listed == line), "{line}\n{book}");
   }
 
   assert_eq!(
-    text(&called(&host, &searcher, "toolbook", "list", json!({ "query": "JOB RUNS" })).await),
-    "bmo/jobs · call — A room's job runs, newest first."
+    text(&called(&host, &seeker, "toolbook", "list", json!({ "query": "NEWEST" })).await),
+    "notes/history · call — The history, newest first."
   );
 
   let described =
-    text(&called(&host, &searcher, "toolbook", "describe", json!({ "tool": "bmo/jobs" })).await);
+    text(&called(&host, &seeker, "toolbook", "describe", json!({ "tool": "notes/history" })).await);
 
   assert!(
     described.starts_with(
-      "bmo/jobs — reached with call\nA room's job runs, newest first.\nRead-only: yes\nInput schema: "
+      "notes/history — reached with call\nThe history, newest first.\nRead-only: yes\nInput schema: "
     ),
     "{described}"
   );
@@ -1199,98 +1093,55 @@ async fn the_toolbook_lists_describes_and_calls_what_the_namespaces_do_not_list(
 
   // A booked tool answers through the toolbook and by its own name alike.
   assert_eq!(
-    text(
-      &called(
-        &host,
-        &searcher,
-        "toolbook",
-        "call",
-        json!({ "tool": "bmo/jobs", "arguments": { "limit": 3 } })
-      )
-      .await
-    ),
+    text(&through(&host, &seeker, "call", "notes/history", json!({ "limit": 3 })).await),
     CARRIED
   );
-  assert_eq!(text(&called(&host, &searcher, "bmo", "jobs", json!({ "limit": 3 })).await), CARRIED);
-  assert!(
-    text(
-      &called(
-        &host,
-        &searcher,
-        "toolbook",
-        "call",
-        json!({ "tool": "worker/graph_list", "arguments": {} })
-      )
-      .await
-    )
-    .contains("area")
-  );
+  assert_eq!(text(&called(&host, &seeker, "notes", "history", json!({ "limit": 3 })).await), CARRIED);
+  assert!(text(&through(&host, &seeker, "call", "garden/plant_list", json!({})).await).contains("book"));
 
   // Arguments that do not fit are refused before anything runs, naming each and carrying the schema.
-  let misfit = called(
-    &host,
-    &searcher,
-    "toolbook",
-    "call",
-    json!({ "tool": "bmo/jobs", "arguments": { "limit": "three" } }),
-  )
-  .await;
+  let misfit = through(&host, &seeker, "call", "notes/history", json!({ "limit": "three" })).await;
 
   assert_eq!(misfit["result"]["isError"], true);
   assert!(
     text(&misfit)
-      .starts_with("ERROR: bmo/jobs was not called: its arguments do not fit its schema.\n- /limit: "),
+      .starts_with("ERROR: notes/history was not called: its arguments do not fit its schema.\n- /limit: "),
     "{misfit}"
   );
   assert!(text(&misfit).contains("Its schema: {"), "{misfit}");
 
   // A tool that acts is reached with act alone.
-  let refused = called(
-    &host,
-    &searcher,
-    "toolbook",
-    "call",
-    json!({ "tool": "bmo/todo_add", "arguments": { "title": "x" } }),
-  )
-  .await;
+  let refused = through(&host, &seeker, "call", "notes/note_add", json!({ "title": "x" })).await;
 
-  assert_eq!(text(&refused), "ERROR: bmo/todo_add acts, so call does not reach it: call it with act.");
   assert_eq!(
-    text(
-      &called(
-        &host,
-        &searcher,
-        "toolbook",
-        "act",
-        json!({ "tool": "bmo/todo_add", "arguments": { "title": "x" } })
-      )
-      .await
-    ),
+    text(&refused),
+    "ERROR: notes/note_add acts, so call does not reach it: call it with act."
+  );
+  assert_eq!(
+    text(&through(&host, &seeker, "act", "notes/note_add", json!({ "title": "x" })).await),
     FILED
   );
 
   // A tool the session does not hold is refused by the words a direct call is.
   assert_eq!(
-    text(
-      &called(&host, &searcher, "toolbook", "call", json!({ "tool": "web/nope", "arguments": {} })).await
-    ),
+    text(&through(&host, &seeker, "call", "web/nope", json!({})).await),
     "ERROR: Tool web/nope not found"
   );
   assert_eq!(
-    text(&called(&host, &searcher, "toolbook", "describe", json!({ "tool": "nope" })).await),
+    text(&called(&host, &seeker, "toolbook", "describe", json!({ "tool": "nope" })).await),
     "ERROR: Tool nope not found"
   );
 
-  // A worker holds web.read alone: none of the `bmo` namespace's entries is in a toolbook of its.
-  let worker = issue(&host, &record(scratch.data.path(), &["web.read"], json!({}))).await;
+  // A reader holds web.read alone: none of the `notes` namespace's entries is in a toolbook of its.
+  let reader = issue(&host, &record(&["web.read"], json!({ "holderName": "reader" }))).await;
 
   assert_eq!(
-    text(&called(&host, &worker, "toolbook", "list", json!({})).await),
+    text(&called(&host, &reader, "toolbook", "list", json!({})).await),
     "No tool is reached through the toolbook in this session."
   );
   assert_eq!(
-    text(&called(&host, &worker, "toolbook", "call", json!({ "tool": "bmo/jobs", "arguments": {} })).await),
-    "ERROR: Tool bmo/jobs not found"
+    text(&through(&host, &reader, "call", "notes/history", json!({})).await),
+    "ERROR: Tool notes/history not found"
   );
 }
 
@@ -1347,26 +1198,26 @@ run = ["python3", "echo.py"]
 timeout = 20
 
 [[entry]]
-namespace = "worker"
+namespace = "garden"
 name = "echo_back"
 description = "Says the text back. Then more."
 input = "echo.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 hints = { read_only = true }
 
 [[entry]]
-namespace = "bmo"
+namespace = "notes"
 name = "echo_note"
 description = "Notes the text."
 input = "note.json"
-capabilities = ["room.tools"]
-grant = "notes"
+capabilities = ["notes.use"]
+grant = "notes.echo"
 
 [entry.facts]
 icon = "i-lucide-notebook"
 
 [[entry]]
-namespace = "worker"
+namespace = "garden"
 name = "echo_hidden"
 description = "Shown to a web reader alone."
 input = "echo.json"
@@ -1374,7 +1225,7 @@ capabilities = ["web.read"]
 hints = { read_only = true }
 
 [[entry]]
-namespace = "worker"
+namespace = "garden"
 name = "echo_quiet"
 description = "Says the text back to the system alone."
 input = "echo.json"
@@ -1382,20 +1233,20 @@ system = true
 hints = { read_only = true }
 
 [[entry]]
-namespace = "worker"
+namespace = "garden"
 name = "echo_slow"
 description = "Never answers in time."
 input = "echo.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 timeout = 1
 hints = { read_only = true }
 
 [[entry]]
-namespace = "worker"
+namespace = "garden"
 name = "echo_broken"
 description = "Ends badly."
 input = "echo.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 hints = { read_only = true }
 
 [[entry]]
@@ -1403,7 +1254,7 @@ namespace = "web"
 name = "echo_page"
 description = "Reads a page of example.org."
 input = "echo.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 hints = { read_only = true }
 
 [entry.claims]
@@ -1421,13 +1272,14 @@ namespace = "echoes"
 name = "echo_far"
 description = "Stands in a namespace of its own."
 input = "echo.json"
-capabilities = ["graph.read"]
+capabilities = ["garden.read"]
 hints = { read_only = true }
 "#;
 
 const ECHO_SCHEMA: &str = r#"{ "type": "object", "properties": { "text": { "type": "string" }, "via": { "type": "string" }, "with": { "type": "object" }, "claim": { "type": "string" }, "hold": { "type": "string" } }, "required": ["text"], "additionalProperties": false }"#;
 
-const NOTE_SCHEMA: &str = r#"{ "type": "object", "properties": { "text": { "type": "string" }, "message": { "type": "integer" } }, "required": ["text"] }"#;
+const NOTE_SCHEMA: &str =
+  r#"{ "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] }"#;
 
 const ECHO_SCRIPT: &str = r#"
 import json, socket, sys, time
@@ -1461,7 +1313,7 @@ if entry.endswith("echo_broken"):
     print("it broke", file=sys.stderr)
     sys.exit(3)
 
-said = handed["session"]["line"] + ":" + arguments["text"]
+said = handed["session"]["holderName"] + ":" + arguments["text"]
 
 if "via" in arguments:
     said += " via " + back({"kind": "call", "entry": arguments["via"], "arguments": arguments.get("with", {})})["content"][0]["text"]
@@ -1482,18 +1334,13 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
 
   place_readings(&scratch);
 
-  let accounts = stand_in_accounts(true).await;
-  let mut host = scratch.start_asking(&accounts, &[]);
+  let mut host = scratch.start();
   let pid = host.child.id();
-  let token = issue(
-    &host,
-    &record(
-      scratch.data.path(),
-      &["graph.read", "room.tools"],
-      json!({ "line": "search", "runVariables": { "BMO_TURN_CHAT": "-5" } }),
-    ),
-  )
-  .await;
+  let seeker = |grants: Value| {
+    record(&["garden.read", "notes.use"], json!({ "holderName": "seeker", "grants": grants }))
+  };
+  let token = issue(&host, &seeker(json!([]))).await;
+  let keeper = issue(&host, &seeker(json!([{ "resource": "notes.echo" }]))).await;
 
   assert!(!book(&host, &token).await.contains("echo_back"));
   assert_eq!(
@@ -1501,8 +1348,7 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
     StatusCode::NOT_FOUND
   );
 
-  let standing: Value =
-    request(&host.control, Method::GET, "/facts/bmo", None).await.unwrap().json().unwrap();
+  let standing = issued_ask(&host, Method::GET, "/namespaces/notes").await;
 
   place(
     &scratch.tools(),
@@ -1518,7 +1364,7 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
 
   until(
     "the placed tool",
-    move || async move { book(at, held).await.contains("worker/echo_back") },
+    move || async move { book(at, held).await.contains("garden/echo_back") },
   )
   .await;
 
@@ -1528,43 +1374,43 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
   let read_before_calls = readings();
 
   assert!(
-    listed.lines().any(|line| line == "worker/echo_back · call — Says the text back."),
+    listed.lines().any(|line| line == "garden/echo_back · call — Says the text back."),
     "{listed}"
   );
-  assert!(listed.lines().any(|line| line == "bmo/echo_note · act — Notes the text."), "{listed}");
+  assert!(listed.lines().any(|line| line == "notes/echo_note · act — Notes the text."), "{listed}");
   assert!(!listed.contains("echo_hidden") && !listed.contains("echo_quiet"), "{listed}");
   assert!(
-    text(&called(&host, &token, "toolbook", "describe", json!({ "tool": "worker/echo_back" })).await)
-      .starts_with("worker/echo_back — reached with call\nSays the text back. Then more.\nRead-only: yes\nInput schema: {")
+    text(&called(&host, &token, "toolbook", "describe", json!({ "tool": "garden/echo_back" })).await)
+      .starts_with("garden/echo_back — reached with call\nSays the text back. Then more.\nRead-only: yes\nInput schema: {")
   );
   assert_eq!(rpc(&host, Some(&token), "echoes", "tools/list", json!({})).await.0, StatusCode::OK);
 
   // Called through the toolbook and by its own name alike, its arguments held to the schema in its folder.
   assert_eq!(
-    text(&through(&host, &token, "call", "worker/echo_back", json!({ "text": "hi" })).await),
-    "search:hi"
+    text(&through(&host, &token, "call", "garden/echo_back", json!({ "text": "hi" })).await),
+    "seeker:hi"
   );
   assert_eq!(
-    text(&called(&host, &token, "worker", "echo_back", json!({ "text": "x" })).await),
-    "search:x"
+    text(&called(&host, &token, "garden", "echo_back", json!({ "text": "x" })).await),
+    "seeker:x"
   );
   assert!(
-    text(&through(&host, &token, "call", "worker/echo_back", json!({ "text": 3 })).await)
+    text(&through(&host, &token, "call", "garden/echo_back", json!({ "text": 3 })).await)
       .contains("was not called: its arguments do not fit its schema")
   );
 
-  // An entry that acts is reached with act alone, and runs only for a sender holding its grant.
+  // An entry that acts is reached with act alone, and runs only for a session holding its grant.
   assert!(
-    text(&through(&host, &token, "call", "bmo/echo_note", json!({ "text": "n" })).await)
+    text(&through(&host, &token, "call", "notes/echo_note", json!({ "text": "n" })).await)
       .contains("call it with act")
   );
   assert!(
-    text(&through(&host, &token, "act", "bmo/echo_note", json!({ "text": "n", "message": 2 })).await)
-      .contains("does not hold bmo_room:-5#notes")
+    text(&through(&host, &token, "act", "notes/echo_note", json!({ "text": "n" })).await)
+      .contains("the session holds no grant for notes.echo")
   );
   assert_eq!(
-    text(&through(&host, &token, "act", "bmo/echo_note", json!({ "text": "n", "message": 1 })).await),
-    "search:n"
+    text(&through(&host, &keeper, "act", "notes/echo_note", json!({ "text": "n" })).await),
+    "seeker:n"
   );
 
   // Its call-back socket reaches what the session could, and the entries for the system alone.
@@ -1576,12 +1422,12 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
         &host,
         &token,
         "call",
-        "worker/echo_back",
-        via("worker/echo_hidden", json!({ "text": "h" }))
+        "garden/echo_back",
+        via("garden/echo_hidden", json!({ "text": "h" }))
       )
       .await
     ),
-    "search:a via ERROR: Tool worker/echo_hidden not found"
+    "seeker:a via ERROR: Tool garden/echo_hidden not found"
   );
   assert_eq!(
     text(
@@ -1589,12 +1435,12 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
         &host,
         &token,
         "call",
-        "worker/echo_back",
-        via("worker/echo_quiet", json!({ "text": "q" }))
+        "garden/echo_back",
+        via("garden/echo_quiet", json!({ "text": "q" }))
       )
       .await
     ),
-    "search:a via search:q"
+    "seeker:a via seeker:q"
   );
   assert!(
     text(
@@ -1602,12 +1448,12 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
         &host,
         &token,
         "call",
-        "worker/echo_back",
-        via("bmo/echo_note", json!({ "text": "b", "message": 2 }))
+        "garden/echo_back",
+        via("notes/echo_note", json!({ "text": "b" }))
       )
       .await
     )
-    .contains("does not hold bmo_room:-5#notes")
+    .contains("the session holds no grant for notes.echo")
   );
   assert_eq!(
     text(
@@ -1615,87 +1461,86 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
         &host,
         &token,
         "call",
-        "worker/echo_back",
+        "garden/echo_back",
         json!({ "text": "c", "claim": "https://www.example.org/p" })
       )
       .await
     ),
-    r#"search:c claimed {"arguments": {"page": "https://www.example.org/p"}, "entry": "web/echo_page"}"#
+    r#"seeker:c claimed {"arguments": {"page": "https://www.example.org/p"}, "entry": "web/echo_page"}"#
   );
 
   // A call past its timeout, and one that ends badly, fail saying so.
   let started = std::time::Instant::now();
 
   assert!(
-    text(&through(&host, &token, "call", "worker/echo_slow", json!({ "text": "s" })).await)
+    text(&through(&host, &token, "call", "garden/echo_slow", json!({ "text": "s" })).await)
       .contains("did not answer within 1 seconds")
   );
   assert!(started.elapsed() < Duration::from_secs(10));
   assert_eq!(
-    text(&through(&host, &token, "call", "worker/echo_broken", json!({ "text": "b" })).await),
-    "ERROR: worker/echo_broken failed: it ended with code 3: it broke"
+    text(&through(&host, &token, "call", "garden/echo_broken", json!({ "text": "b" })).await),
+    "ERROR: garden/echo_broken failed: it ended with code 3: it broke"
   );
   assert_eq!(readings(), read_before_calls, "{}", scratch.log());
 
-  // Its namespace's listing and facts carry what its manifest says, and the catalogue names its folder.
-  assert!(listing(&host, "web").await.1.ends_with("echo_page: a page of example.org"));
+  // Its namespace's tools and facts carry what its manifest says.
+  let page = issued_ask(&host, Method::GET, "/namespaces/web/tools/echo_page").await;
 
-  let facts = request(&host.control, Method::GET, "/facts/bmo", None).await.unwrap().json().unwrap();
+  assert_eq!(page["listing"]["line"], "echo_page: a page of example.org");
+
+  let notes = issued_ask(&host, Method::GET, "/namespaces/notes").await;
 
   assert!(
-    facts["icons"]
+    notes["facts"]["icons"]
       .as_array()
       .unwrap()
       .contains(&json!({ "name": "echo_note", "icon": "i-lucide-notebook" }))
   );
-  // The digest is reckoned over every entry of the namespace, so an entry placed beside those standing moves it,
-  // and a namespace no owner says anything of still has its digest once it holds an entry.
-  assert_ne!(facts["digest"], standing["digest"]);
-
-  let worker: Value = request(&host.control, Method::GET, "/facts/worker", None)
-    .await
-    .unwrap()
-    .json()
-    .unwrap();
-
-  assert_eq!(worker["digest"].as_str().unwrap().len(), 64);
+  // The digest is reckoned over every entry of the namespace the token sees, so an entry placed beside those
+  // standing moves it, and a namespace none of whose entries says anything still has its digest once it holds an entry.
+  assert_ne!(notes["facts"]["digest"], standing["facts"]["digest"]);
+  assert_eq!(
+    issued_ask(&host, Method::GET, "/namespaces/garden").await["facts"]["digest"]
+      .as_str()
+      .unwrap()
+      .len(),
+    64
+  );
 
   // An item a placed entry adds to a list of its namespace's facts stands headed with its name.
-  let web: Value = request(&host.control, Method::GET, "/facts/web", None).await.unwrap().json().unwrap();
+  let web = issued_ask(&host, Method::GET, "/namespaces/web").await;
 
   assert_eq!(
-    web["sites"].as_array().unwrap().last().unwrap(),
+    web["facts"]["sites"].as_array().unwrap().last().unwrap(),
     &json!({ "name": "echo_page", "site": "example.org", "reads": ["example.org"] })
   );
 
-  let catalogue = request(&host.control, Method::GET, "/catalogue", None).await.unwrap().json().unwrap();
+  let tools = issued_ask(&host, Method::GET, "/namespaces/garden/tools").await;
 
   assert!(
-    catalogue
+    tools["items"]
       .as_array()
       .unwrap()
       .iter()
-      .any(|entry| entry["name"] == "worker/echo_back" && entry["placed"] == "echo")
+      .any(|tool| tool["name"] == "echo_quiet" && tool["system"] == true)
   );
 
-  let system = request(
-    &host.control,
-    Method::POST,
-    "/calls",
-    Some(&json!({ "session": record(scratch.data.path(), &[], json!({})), "tool": "worker/echo_quiet", "arguments": { "text": "s" } })),
-  )
-  .await
-  .unwrap()
-  .json()
-  .unwrap();
+  // An entry for the system alone of the record's namespaces is called through the control socket.
+  let quiet = json!({ "namespace": "garden", "name": "echo_quiet", "input": { "text": "s" } });
+  let system = control(&host, Method::POST, "/tool-calls", Some(&token), Some(&quiet))
+    .await
+    .json()
+    .unwrap();
 
-  assert_eq!(system["content"][0]["text"], "worker:s");
+  assert_eq!(system["result"]["content"][0]["text"], "seeker:s");
 
-  // A system call whose caller hangs up before it answers has every process it started ended.
+  // A call whose caller hangs up before it answers has every process it started ended.
   let held = scratch.data.path().join("held.pid");
-  let asked = json!({ "session": record(scratch.data.path(), &[], json!({})), "tool": "worker/echo_quiet", "arguments": { "text": "h", "hold": held.to_string_lossy() } });
-  let control = host.control.clone();
-  let hanging = tokio::spawn(async move { request(&control, Method::POST, "/calls", Some(&asked)).await });
+  let asked = json!({ "namespace": "garden", "name": "echo_quiet", "input": { "text": "h", "hold": held.to_string_lossy() } });
+  let (socket, bearer) = (host.control.clone(), token.clone());
+  let hanging = tokio::spawn(async move {
+    request(&socket, Method::POST, "/tool-calls", Some(&bearer), Some(&asked)).await
+  });
 
   until("the held process", || {
     let held = held.clone();
@@ -1718,19 +1563,27 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
 
   // The control socket names the entry that claims an address, asked as the call-back socket asks, and none for
   // one no entry claims.
-  let control = &host.control;
   let claimed = |address: &str| {
-    let asked =
-      json!({ "session": record(scratch.data.path(), &["graph.read"], json!({})), "address": address });
+    let asked = json!({ "resource": address });
+    let (host, token) = (&host, token.clone());
 
-    async move { request(control, Method::POST, "/claims", Some(&asked)).await.unwrap().json().unwrap() }
+    async move { control(host, Method::POST, "/claims", Some(&token), Some(&asked)).await.json().unwrap() }
   };
 
   assert_eq!(
     claimed("https://www.example.org/p").await,
-    json!({ "entry": "web/echo_page", "arguments": { "page": "https://www.example.org/p" } })
+    json!({
+      "resource": "https://www.example.org/p", "granted": true, "reason": null, "namespace": "web",
+      "toolName": "echo_page", "arguments": { "page": "https://www.example.org/p" },
+    })
   );
-  assert_eq!(claimed("https://example.com/p").await, json!({ "entry": null }));
+  assert_eq!(
+    claimed("https://example.com/p").await,
+    json!({
+      "resource": "https://example.com/p", "granted": false, "reason": "no tool the session holds claims it",
+      "namespace": null, "toolName": null, "arguments": null,
+    })
+  );
 
   // A folder that does not read is said in the log and leaves the rest served.
   place(&scratch.tools(), "broken", &[("tool.toml", "[tool]\nname = \"broken\"\n")]);
@@ -1741,8 +1594,8 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
   })
   .await;
   assert_eq!(
-    text(&through(&host, &token, "call", "worker/echo_back", json!({ "text": "on" })).await),
-    "search:on"
+    text(&through(&host, &token, "call", "garden/echo_back", json!({ "text": "on" })).await),
+    "seeker:on"
   );
 
   take_away(&scratch.tools(), "echo");
@@ -1751,8 +1604,8 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
   until("the tool gone", move || async move { !book(at, held).await.contains("echo_back") }).await;
 
   assert_eq!(
-    text(&through(&host, &token, "call", "worker/echo_back", json!({ "text": "x" })).await),
-    "ERROR: Tool worker/echo_back not found"
+    text(&through(&host, &token, "call", "garden/echo_back", json!({ "text": "x" })).await),
+    "ERROR: Tool garden/echo_back not found"
   );
   assert_eq!(
     rpc(&host, Some(&token), "echoes", "tools/list", json!({})).await.0,
@@ -1769,7 +1622,7 @@ import json, os, socket, sys
 
 handed = json.load(sys.stdin)
 record = handed["session"]
-open(os.path.join(record["dataRoot"], "helper-" + record["line"] + ".pid"), "w").write(str(os.getpid()))
+open(os.path.join(os.environ["PIDS"], "helper-" + record["holderName"] + ".pid"), "w").write(str(os.getpid()))
 listener = socket.socket(socket.AF_UNIX)
 listener.bind(handed["socket"])
 listener.listen()
@@ -1783,7 +1636,7 @@ while True:
     asked.close()
 "#;
 
-const TALLY_MANIFEST: &str = "[tool]\nname = \"tally\"\nprotocol = 1\nrun = [\"python3\", \"tally.py\"]\ntimeout = 10\nshared = [\"counter\"]\n\n[[entry]]\nnamespace = \"worker\"\nname = \"tally\"\ndescription = \"Counts this record's calls.\"\ninput = \"any.json\"\ncapabilities = [\"graph.read\"]\nhints = { read_only = true }\n";
+const TALLY_MANIFEST: &str = "[tool]\nname = \"tally\"\nprotocol = 1\nrun = [\"python3\", \"tally.py\"]\ntimeout = 10\nshared = [\"counter\"]\n\n[[entry]]\nnamespace = \"garden\"\nname = \"tally\"\ndescription = \"Counts this record's calls.\"\ninput = \"any.json\"\ncapabilities = [\"garden.read\"]\nhints = { read_only = true }\n";
 
 const TALLY_SCRIPT: &str = r#"
 import json, socket, sys
@@ -1797,7 +1650,7 @@ with socket.socket(socket.AF_UNIX) as line:
 print(json.dumps({"content": [{"type": "text", "text": count}]}))
 "#;
 
-const CHATTY_MANIFEST: &str = "[tool]\nname = \"chatty\"\nprotocol = 1\nrun = [\"python3\", \"chatty.py\"]\nmode = \"server\"\ntimeout = 10\n\n[[entry]]\nnamespace = \"worker\"\nname = \"chatty\"\ndescription = \"Says which server answered.\"\ninput = \"any.json\"\ncapabilities = [\"graph.read\"]\nhints = { read_only = true }\n";
+const CHATTY_MANIFEST: &str = "[tool]\nname = \"chatty\"\nprotocol = 1\nrun = [\"python3\", \"chatty.py\"]\nmode = \"server\"\ntimeout = 10\n\n[[entry]]\nnamespace = \"garden\"\nname = \"chatty\"\ndescription = \"Says which server answered.\"\ninput = \"any.json\"\ncapabilities = [\"garden.read\"]\nhints = { read_only = true }\n";
 
 // A server speaking MCP over its standard input and output, as little of it as a call needs.
 const CHATTY_SCRIPT: &str = r#"
@@ -1816,7 +1669,7 @@ for line in sys.stdin:
         result = {"protocolVersion": message["params"]["protocolVersion"], "capabilities": {"tools": {}}, "serverInfo": {"name": "chatty", "version": "1"}}
     elif message["method"] == "tools/call":
         calls += 1
-        result = {"content": [{"type": "text", "text": f"{start['session']['line']}:{os.getpid()}:{calls}"}]}
+        result = {"content": [{"type": "text", "text": f"{start['session']['holderName']}:{os.getpid()}:{calls}"}]}
     else:
         result = {}
 
@@ -1834,8 +1687,17 @@ async fn a_shared_helper_serves_one_records_calls_and_ends_with_it_and_a_server_
   let scratch = Scratch::new();
   let host = scratch.start();
   let any = r#"{ "type": "object" }"#;
-  let one = issue(&host, &record(scratch.data.path(), &["graph.read"], json!({ "line": "one" }))).await;
-  let two = issue(&host, &record(scratch.data.path(), &["graph.read"], json!({ "line": "two" }))).await;
+  let pids = scratch.data.path().to_string_lossy().into_owned();
+  let one = issue(
+    &host,
+    &record(&["garden.read"], json!({ "holderName": "one", "variables": { "PIDS": pids } })),
+  )
+  .await;
+  let two = issue(
+    &host,
+    &record(&["garden.read"], json!({ "holderName": "two", "variables": { "PIDS": pids } })),
+  )
+  .await;
 
   // A shared helper is registered like any tool, through the registry's command.
   let helper = scratch.data.path().join("counter-source");
@@ -1867,33 +1729,34 @@ async fn a_shared_helper_serves_one_records_calls_and_ends_with_it_and_a_server_
 
   until(
     "the placed tools",
-    move || async move { book(at, held).await.contains("worker/chatty") },
+    move || async move { book(at, held).await.contains("garden/chatty") },
   )
   .await;
 
-  assert_eq!(text(&through(&host, &one, "call", "worker/tally", json!({})).await), "1");
-  assert_eq!(text(&through(&host, &one, "call", "worker/tally", json!({})).await), "2");
-  assert_eq!(text(&through(&host, &two, "call", "worker/tally", json!({})).await), "1");
+  assert_eq!(text(&through(&host, &one, "call", "garden/tally", json!({})).await), "1");
+  assert_eq!(text(&through(&host, &one, "call", "garden/tally", json!({})).await), "2");
+  assert_eq!(text(&through(&host, &two, "call", "garden/tally", json!({})).await), "1");
 
-  let first = text(&through(&host, &one, "call", "worker/chatty", json!({})).await);
+  let first = text(&through(&host, &one, "call", "garden/chatty", json!({})).await);
   let (served, count) = first.rsplit_once(':').unwrap();
 
   assert!(served.starts_with("one:") && count == "1", "{first}");
   assert_eq!(
-    text(&through(&host, &one, "call", "worker/chatty", json!({})).await),
+    text(&through(&host, &one, "call", "garden/chatty", json!({})).await),
     format!("{served}:2")
   );
-  assert!(text(&through(&host, &two, "call", "worker/chatty", json!({})).await).starts_with("two:"));
+  assert!(text(&through(&host, &two, "call", "garden/chatty", json!({})).await).starts_with("two:"));
 
   // Revoked, the record's helper ends; the other record's goes on.
   let helper_one = fs::read_to_string(scratch.data.path().join("helper-one.pid")).unwrap();
   let helper_two = fs::read_to_string(scratch.data.path().join("helper-two.pid")).unwrap();
-  let revoked = request(&host.control, Method::DELETE, &format!("/sessions/{one}"), None).await.unwrap();
+  let revoked =
+    control(&host, Method::DELETE, &format!("/tool-sessions/{one}"), Some(&host.issuer), None).await;
 
   assert_eq!(revoked.status, StatusCode::NO_CONTENT);
   let ended = helper_one.as_str();
 
   until("the helper's end", move || async move { !alive(ended) }).await;
   assert!(alive(&helper_two));
-  assert_eq!(text(&through(&host, &two, "call", "worker/tally", json!({})).await), "2");
+  assert_eq!(text(&through(&host, &two, "call", "garden/tally", json!({})).await), "2");
 }

@@ -1,0 +1,1891 @@
+{
+  "components": {
+    "schemas": {
+      "Claim": {
+        "description": "The answer to a claim: the entry that claims the address and the arguments it reads it with, where the\nsession holds the entry and its grant; why not, where it does not.",
+        "properties": {
+          "arguments": true,
+          "granted": {
+            "type": "boolean"
+          },
+          "namespace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "description": "Why the claim is not granted; null where it is.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource": {
+            "type": "string"
+          },
+          "toolName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "resource",
+          "granted",
+          "reason",
+          "namespace",
+          "toolName",
+          "arguments"
+        ],
+        "type": "object"
+      },
+      "ClaimRequest": {
+        "additionalProperties": false,
+        "description": "Whether the token's session may have an address read, and by which entry.",
+        "properties": {
+          "resource": {
+            "description": "The address.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "description": "A stable code a caller decides on, each answered with one status.",
+        "oneOf": [
+          {
+            "const": "bad-request",
+            "description": "The body or the query is not the shape the route takes.",
+            "type": "string"
+          },
+          {
+            "const": "unauthorized",
+            "description": "The token is missing, or names neither the issuer nor a tool session.",
+            "type": "string"
+          },
+          {
+            "const": "forbidden",
+            "description": "The token is right but may not do this.",
+            "type": "string"
+          },
+          {
+            "const": "not-found",
+            "description": "The route is right, but nothing the token sees stands at the key it names.",
+            "type": "string"
+          },
+          {
+            "const": "no-route",
+            "description": "No route answers the method and path.",
+            "type": "string"
+          },
+          {
+            "const": "arguments-misfit",
+            "description": "The input does not fit the tool's schema in the form held.",
+            "type": "string"
+          },
+          {
+            "const": "failed",
+            "description": "The host failed.",
+            "type": "string"
+          },
+          {
+            "const": "tool-failed",
+            "description": "The tool exited uncleanly, answered what is not a tool result, or ran past its timeout.",
+            "type": "string"
+          }
+        ]
+      },
+      "Granted": {
+        "additionalProperties": false,
+        "description": "One grant a session holds: a resource it may act on, an opaque name its issuer and its tools agree on.",
+        "properties": {
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource"
+        ],
+        "type": "object"
+      },
+      "Health": {
+        "description": "What `GET /health` answers: whether the host is ready, why not where it is not, and its version.",
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ready",
+          "reason",
+          "version"
+        ],
+        "type": "object"
+      },
+      "Listing": {
+        "description": "The line a tool adds to its namespace's listing, and its place among the namespace's lines.",
+        "properties": {
+          "line": {
+            "type": "string"
+          },
+          "order": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "line",
+          "order"
+        ],
+        "type": "object"
+      },
+      "Namespace": {
+        "description": "One namespace and what it says of itself.",
+        "properties": {
+          "facts": {
+            "additionalProperties": true,
+            "description": "Its digest, and the verbs, records, icons and lists its entries add, as `docs/mcp-host.md` states them.",
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "toolCount": {
+            "description": "How many of its entries the token sees.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "facts",
+          "toolCount"
+        ],
+        "type": "object"
+      },
+      "NamespacePage": {
+        "description": "A page of namespaces, in order of name.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Namespace"
+            },
+            "type": "array"
+          },
+          "more": {
+            "description": "Whether anything stands past the last item.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object"
+      },
+      "NamespacesInput": {
+        "additionalProperties": false,
+        "description": "`pocket_namespaces`: a page of the namespaces.",
+        "properties": {
+          "after": {
+            "description": "The last namespace's name a page answered: the namespaces after it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "At most this many namespaces.",
+            "format": "uint32",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "Schedule": {
+        "description": "One schedule an entry declares, and where it stands in the host.",
+        "properties": {
+          "arguments": {
+            "additionalProperties": true,
+            "description": "The arguments each scheduled call is handed.",
+            "type": "object"
+          },
+          "cron": {
+            "description": "The cron pattern its manifest declares.",
+            "type": "string"
+          },
+          "lastAt": {
+            "description": "When its last call was made since the host started, in epoch milliseconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lastError": {
+            "description": "Why its last call failed, where it did.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "nextAt": {
+            "description": "When it is next due, in epoch milliseconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "running": {
+            "description": "Whether a call of it is running now.",
+            "type": "boolean"
+          },
+          "toolName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "toolName",
+          "cron",
+          "arguments",
+          "nextAt",
+          "lastAt",
+          "lastError",
+          "running"
+        ],
+        "type": "object"
+      },
+      "SchedulePage": {
+        "description": "A page of schedules, in order of when each is next due.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Schedule"
+            },
+            "type": "array"
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object"
+      },
+      "SessionRequest": {
+        "additionalProperties": false,
+        "description": "What an issuer asks a session to be issued with: the record less the times the host answers, and how long\nit stands.",
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/Granted"
+            },
+            "type": "array"
+          },
+          "holderName": {
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "shown": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "ttlMs": {
+            "default": null,
+            "description": "How long the session stands, in milliseconds; none stands until it is revoked.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "variables": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "variablesFile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "holderName",
+          "namespaces",
+          "capabilities",
+          "grants",
+          "ttlMs"
+        ],
+        "type": "object"
+      },
+      "Tool": {
+        "description": "One tool of a namespace, in the form the token holds it.",
+        "properties": {
+          "capabilities": {
+            "description": "What a session must hold to be shown it whole.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "grant": {
+            "description": "The resource a session's grants must hold for a call of it to run.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hints": {
+            "$ref": "#/components/schemas/ToolHints"
+          },
+          "icon": {
+            "description": "The icon its manifest declares for it, a name its readers know.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input": {
+            "description": "Its input schema, in the form the token holds it."
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Listing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "output": {
+            "description": "The schema of what it answers with, where it declares one."
+          },
+          "system": {
+            "description": "Whether it is for the system alone, shown to no session.",
+            "type": "boolean"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "title",
+          "description",
+          "input",
+          "output",
+          "icon",
+          "capabilities",
+          "grant",
+          "hints",
+          "listing",
+          "system"
+        ],
+        "type": "object"
+      },
+      "ToolCall": {
+        "description": "A call made, and the tool's result as the tool answered it.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ToolResult"
+          },
+          "spentMs": {
+            "description": "How long the call took, in milliseconds.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "result",
+          "spentMs"
+        ],
+        "type": "object"
+      },
+      "ToolCallRequest": {
+        "additionalProperties": false,
+        "description": "A call of one tool under the token's session.",
+        "properties": {
+          "input": {
+            "additionalProperties": true,
+            "description": "The tool's own arguments.",
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "input"
+        ],
+        "type": "object"
+      },
+      "ToolHints": {
+        "description": "What a tool says of how it behaves.",
+        "properties": {
+          "destructive": {
+            "type": "boolean"
+          },
+          "idempotent": {
+            "description": "Whether calling it twice with the same arguments does what calling it once does; null where it says nothing.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "openWorld": {
+            "type": "boolean"
+          },
+          "readOnly": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "readOnly",
+          "destructive",
+          "idempotent",
+          "openWorld"
+        ],
+        "type": "object"
+      },
+      "ToolInput": {
+        "additionalProperties": false,
+        "description": "`pocket_tool`: one tool.",
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "toolName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "toolName"
+        ],
+        "type": "object"
+      },
+      "ToolPage": {
+        "description": "A page of a namespace's tools, in order of name.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Tool"
+            },
+            "type": "array"
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object"
+      },
+      "ToolResult": {
+        "additionalProperties": true,
+        "description": "An MCP tool result, as the tool answered it.",
+        "properties": {
+          "content": {
+            "items": true,
+            "type": "array"
+          },
+          "isError": {
+            "description": "Whether the tool says it failed.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "structuredContent": true
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "ToolSession": {
+        "description": "A tool session as `POST /tool-sessions` answers it: its token and the record it was issued with.",
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "createdAt": {
+            "description": "When it was issued, in epoch milliseconds.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expiresAt": {
+            "description": "When the session lapses, in epoch milliseconds; null where it stands until revoked.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/Granted"
+            },
+            "type": "array"
+          },
+          "holderName": {
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "shown": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "token": {
+            "type": "string"
+          },
+          "variables": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "variablesFile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "token",
+          "holderName",
+          "namespaces",
+          "capabilities",
+          "grants",
+          "shown",
+          "variables",
+          "variablesFile",
+          "labels",
+          "expiresAt",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ToolsInput": {
+        "additionalProperties": false,
+        "description": "`pocket_tools`: a page of one namespace's tools.",
+        "properties": {
+          "after": {
+            "description": "The last tool's name a page answered: the tools after it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "description": "At most this many tools.",
+            "format": "uint32",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace"
+        ],
+        "type": "object"
+      },
+      "WireError": {
+        "additionalProperties": false,
+        "description": "The body of every failure and refusal.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "error": {
+            "description": "Why, as an English sentence.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "error"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, tool and schedule, or a tool session's token, which sees the namespaces its record names and the tools it holds there, and calls and claims under that record. Bodies are JSON both ways. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own protocol and is not stated here.",
+    "title": "bmo-pocket",
+    "version": "0.1.0-rev.2"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/claims": {
+      "post": {
+        "operationId": "createClaim",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Claim"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          }
+        },
+        "summary": "Whether the token's tool session may have an address read, by the entries and grants it holds.",
+        "tags": [
+          "claims"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "forbidden"
+        ],
+        "x-token": "session"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "listHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          }
+        },
+        "summary": "Readiness and version.",
+        "tags": [
+          "health"
+        ],
+        "x-codes": [
+          "unauthorized"
+        ],
+        "x-token": "either"
+      }
+    },
+    "/namespaces": {
+      "get": {
+        "operationId": "listNamespaces",
+        "parameters": [
+          {
+            "description": "The last namespace's name a page answered: the members whose names sort after it.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many members; every one where absent.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamespacePage"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          }
+        },
+        "summary": "A page of the namespaces the token sees, in order of name.",
+        "tags": [
+          "namespaces"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request"
+        ],
+        "x-token": "either"
+      }
+    },
+    "/namespaces/{namespace}": {
+      "get": {
+        "operationId": "readNamespace",
+        "parameters": [
+          {
+            "description": "The namespace's name.",
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Namespace"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          }
+        },
+        "summary": "One namespace and its facts.",
+        "tags": [
+          "namespaces"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "not-found"
+        ],
+        "x-token": "either"
+      }
+    },
+    "/namespaces/{namespace}/tools": {
+      "get": {
+        "operationId": "listNamespaceTools",
+        "parameters": [
+          {
+            "description": "The namespace's name.",
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The last tool's name a page answered: the members whose names sort after it.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many members; every one where absent.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolPage"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          }
+        },
+        "summary": "A page of one namespace's tools the token sees, in order of name, with their icons.",
+        "tags": [
+          "namespaces"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "not-found"
+        ],
+        "x-token": "either"
+      }
+    },
+    "/namespaces/{namespace}/tools/{toolName}": {
+      "get": {
+        "operationId": "readNamespaceTool",
+        "parameters": [
+          {
+            "description": "The namespace's name.",
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The tool's name in the namespace.",
+            "in": "path",
+            "name": "toolName",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tool"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          }
+        },
+        "summary": "One tool, its schemas with it.",
+        "tags": [
+          "namespaces"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "not-found"
+        ],
+        "x-token": "either"
+      }
+    },
+    "/schedules": {
+      "get": {
+        "operationId": "listSchedules",
+        "parameters": [
+          {
+            "description": "A time in epoch milliseconds: the schedules next due after it.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "At most this many members; every one where absent.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulePage"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          }
+        },
+        "summary": "A page of the tool calls the host makes at the times each tool's own manifest declares, in order of when each is next due; a page never ends inside a run of equal times.",
+        "tags": [
+          "schedules"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request"
+        ],
+        "x-token": "either"
+      }
+    },
+    "/tool-calls": {
+      "post": {
+        "operationId": "createToolCall",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolCall"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "arguments-misfit"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: arguments-misfit."
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "tool-failed"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: tool-failed."
+          }
+        },
+        "summary": "Call one tool under the token's tool session; answered with its result. A tool's own failed result is answered 200.",
+        "tags": [
+          "tool-calls"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "forbidden",
+          "not-found",
+          "arguments-misfit",
+          "tool-failed"
+        ],
+        "x-token": "session"
+      }
+    },
+    "/tool-sessions": {
+      "post": {
+        "operationId": "createToolSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolSession"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "failed"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: failed."
+          }
+        },
+        "summary": "Issue a tool session for a holder, carrying the namespaces, capabilities and grants it allows.",
+        "tags": [
+          "tool-sessions"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "forbidden",
+          "failed"
+        ],
+        "x-token": "issuer"
+      }
+    },
+    "/tool-sessions/{token}": {
+      "delete": {
+        "operationId": "deleteToolSession",
+        "parameters": [
+          {
+            "description": "The token the session was issued with.",
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done; no body."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "failed"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: failed."
+          }
+        },
+        "summary": "Revoke a tool session and end what its tools kept.",
+        "tags": [
+          "tool-sessions"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "forbidden",
+          "not-found",
+          "failed"
+        ],
+        "x-token": "issuer"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "the control socket",
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Whether the host is ready.",
+      "name": "health"
+    },
+    {
+      "description": "Every namespace with its tools: the catalogue.",
+      "name": "namespaces"
+    },
+    {
+      "description": "Calls made under a tool session.",
+      "name": "tool-calls"
+    },
+    {
+      "description": "Which entry a tool session may have an address read by.",
+      "name": "claims"
+    },
+    {
+      "description": "The tool sessions a harness is handed tools through.",
+      "name": "tool-sessions"
+    },
+    {
+      "description": "The calls the host makes at the times each tool declares.",
+      "name": "schedules"
+    }
+  ],
+  "x-harness": {
+    "entry": "A harness starts the MCP server with a tool session token and gets every hosted tool of the namespaces the session allows, plus pocket_namespaces, pocket_tools, pocket_tool and pocket_call.",
+    "mcp": "bmo-pocket mcp",
+    "plugin": "ahas-pocket"
+  },
+  "x-tools": [
+    {
+      "description": "Every namespace with its tools: the catalogue.",
+      "input": {
+        "$ref": "#/components/schemas/NamespacesInput"
+      },
+      "name": "pocket_namespaces",
+      "output": {
+        "$ref": "#/components/schemas/NamespacePage"
+      },
+      "route": "GET /namespaces"
+    },
+    {
+      "description": "The tools of one namespace, with their icons.",
+      "input": {
+        "$ref": "#/components/schemas/ToolsInput"
+      },
+      "name": "pocket_tools",
+      "output": {
+        "$ref": "#/components/schemas/ToolPage"
+      },
+      "route": "GET /namespaces/{namespace}/tools"
+    },
+    {
+      "description": "One tool's entry and schemas.",
+      "input": {
+        "$ref": "#/components/schemas/ToolInput"
+      },
+      "name": "pocket_tool",
+      "output": {
+        "$ref": "#/components/schemas/Tool"
+      },
+      "route": "GET /namespaces/{namespace}/tools/{toolName}"
+    },
+    {
+      "description": "Call one tool under a tool session; answered with its result.",
+      "input": {
+        "$ref": "#/components/schemas/ToolCallRequest"
+      },
+      "name": "pocket_call",
+      "output": {
+        "$ref": "#/components/schemas/ToolCall"
+      },
+      "route": "POST /tool-calls"
+    }
+  ]
+}
