@@ -228,6 +228,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-pocket-plugin"
+version = "0.1.0-rev.2"
+dependencies = [
+ "axum",
+ "bmo-pocket-client",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "bmo-tool"
 version = "0.1.0-rev.2"
 dependencies = [
@@ -1118,6 +1131,7 @@ version = "0.1.0-rev.2"
 dependencies = [
  "axum",
  "bmo-pocket-client",
+ "bmo-pocket-plugin",
  "bmo-tool",
  "chrono",
  "clap",

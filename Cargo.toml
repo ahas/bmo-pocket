@@ -1,8 +1,8 @@
 # The workspace: the tool host under `host/`, the tool contract every Rust tool is written to under
-# `sdk/contract/`, the control socket's client under `client/`, and the repository's own package at the root,
-# which holds the checks that span the repository in `tests/`.
+# `sdk/contract/`, the control socket's client under `client/`, the harness plugin under `plugin/`, and the
+# repository's own package at the root, which holds the checks that span the repository in `tests/`.
 [workspace]
-members = ["client", "host", "sdk/contract"]
+members = ["client", "host", "plugin", "sdk/contract"]
 resolver = "3"
 
 [workspace.package]
