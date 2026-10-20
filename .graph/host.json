@@ -21,8 +21,8 @@
       "registry/pointers",
       "sdk/contract"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228387
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535202
   },
   {
     "id": "host/namespaces",
@@ -50,8 +50,8 @@
       "host/session-records",
       "host/problem-details"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228397
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535221
   },
   {
     "id": "host/problem-details",
@@ -91,8 +91,8 @@
       "host/namespaces",
       "sdk/contract"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228420
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535239
   },
   {
     "id": "host/server",
@@ -124,8 +124,8 @@
       "host/tool-runner",
       "client/socket"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228432
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535258
   },
   {
     "id": "host/session-grants",
@@ -144,8 +144,8 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228444
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535277
   },
   {
     "id": "host/session-records",
@@ -166,8 +166,8 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228455
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535296
   },
   {
     "id": "host/tool-runner",
@@ -192,8 +192,8 @@
       "host/catalogue",
       "sdk/contract"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228467
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535315
   },
   {
     "id": "host/toolbook",
@@ -217,7 +217,7 @@
     "needs": [
       "host/namespaces"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228479
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535336
   }
 ]

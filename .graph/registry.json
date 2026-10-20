@@ -27,8 +27,8 @@
       "client/socket",
       "plugin/mcp"
     ],
-    "base": "f3f59f69a9a126b5cd0d971a081fefec3a24d486",
-    "changed": 1792518228507
+    "base": "a8fb5079b141e981d8d82d3404e200d359e65f55",
+    "changed": 1792530535356
   },
   {
     "id": "registry/pointers",
