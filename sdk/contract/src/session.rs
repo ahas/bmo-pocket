@@ -107,7 +107,7 @@ pub struct SessionRequest {
   #[serde(default, skip_serializing_if = "Map::is_empty")]
   pub labels: Map<String, Value>,
   /// How long the session stands, in milliseconds; none stands until it is revoked.
-  #[serde(default)]
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   pub ttl_ms: Option<u64>,
 }
 

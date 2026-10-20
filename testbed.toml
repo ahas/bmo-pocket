@@ -5,12 +5,14 @@ name = "pocket"
 
 [test]
 # The Cargo workspace's crates; the TypeScript tool kit's tests, which run from its own folder and hold the
-# Python kit to the same cases; and the host's contract with an installed CLI, which runs where
+# Python kit to the same cases; the TypeScript client's, which run against the workspace's build of the host and
+# hold its types to docs/openapi.json; and the host's contract with an installed CLI, which runs where
 # BMO_LIVE_CLAUDE names one.
 languages = ["cargo", "bun"]
-files = ["sdk/ts-kit/tests/**/*.test.ts", "tests/host-contract/**/*.test.ts"]
+files = ["sdk/ts-kit/tests/**/*.test.ts", "client/tests/**/*.test.ts", "tests/host-contract/**/*.test.ts"]
 setup = [
   "cd sdk/ts-kit && bun install --frozen-lockfile",
+  "cd client && bun install --frozen-lockfile",
   "cd tests/host-contract && bun install --frozen-lockfile",
 ]
 

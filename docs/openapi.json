@@ -334,7 +334,6 @@
             "uniqueItems": true
           },
           "ttlMs": {
-            "default": null,
             "description": "How long the session stands, in milliseconds; none stands until it is revoked.",
             "format": "uint64",
             "minimum": 0,
@@ -360,8 +359,7 @@
           "holderName",
           "namespaces",
           "capabilities",
-          "grants",
-          "ttlMs"
+          "grants"
         ],
         "type": "object"
       },

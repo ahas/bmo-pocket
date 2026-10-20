@@ -1,0 +1,3 @@
+[test]
+# The client's tests stand under tests/.
+root = "tests"
