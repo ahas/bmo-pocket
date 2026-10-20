@@ -3,19 +3,18 @@
 //! that call. Where each stands is kept in the host's process alone, and the catalogue answers it.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use bmo_pocket_client::ScheduleState;
-use bmo_tool::Session;
+use bmo_tool::{Granted, Session};
 use chrono::{Local, TimeZone};
 use serde_json::{Map, Value};
 
 use crate::handler::{Entry, Host};
 
-/// The line a scheduled call's record names.
-pub const LINE: &str = "schedule";
+/// The holder a scheduled call's record names.
+pub const HOLDER: &str = "schedule";
 
 /// A schedule's place: its entry's full name, and its position among that entry's schedules.
 pub type Key = (String, usize);
@@ -74,20 +73,24 @@ fn failure_text(result: &Value) -> String {
     .filter_map(|item| item["text"].as_str())
     .collect();
 
-  if said.is_empty() { "the tool answered a failed result".to_owned() } else { said.join("\n") }
+  if said.is_empty() {
+    "the tool answered a failed result".to_owned()
+  } else {
+    said.join("\n")
+  }
 }
 
-/// The record a scheduled call of an entry is made under: the line `schedule`, the entry's own capabilities, the
-/// host's data root, and a turn no person's message opened, due at `at`.
-pub fn record(entry: &Entry, data_root: &Path, at: i64) -> Session {
+/// The record a scheduled call of an entry is made under, due at `at`: the holder `schedule`, the entry's own
+/// namespace, capabilities and grant, and the time it was due as `BMO_SCHEDULED_AT`. The host's variables
+/// `--pass-env` names reach it as they reach every call.
+pub fn record(entry: &Entry, at: i64) -> Session {
   Session {
-    line: LINE.to_owned(),
+    holder_name: HOLDER.to_owned(),
+    namespaces: BTreeSet::from([entry.namespace().to_owned()]),
     capabilities: entry.capabilities().into_iter().collect(),
-    data_root: data_root.to_path_buf(),
-    run_variables: BTreeMap::from([
-      ("BMO_TURN_PRIVILEGED".to_owned(), "1".to_owned()),
-      ("BMO_SCHEDULED_AT".to_owned(), at.to_string()),
-    ]),
+    grants: entry.grant().into_iter().map(|resource| Granted { resource }).collect(),
+    variables: BTreeMap::from([("BMO_SCHEDULED_AT".to_owned(), at.to_string())]),
+    created_at: u64::try_from(at).unwrap_or_default(),
     ..Session::default()
   }
 }
@@ -199,8 +202,8 @@ impl Schedules {
 
 /// One scheduled call made: dispatched as a call through the control socket is, under its own record, which ends as
 /// it answers; a failure, the host's refusal or the tool's own failed result, kept and said in the log.
-pub async fn call(host: Arc<Host>, schedules: Arc<Schedules>, due: Due, data_root: PathBuf) {
-  let session = record(&due.entry, &data_root, due.at);
+pub async fn call(host: Arc<Host>, schedules: Arc<Schedules>, due: Due) {
+  let session = record(&due.entry, due.at);
   let error = match host.attempt(&due.entry, &session, Value::Object(due.arguments)).await {
     Ok(result) if result["isError"] == true => Some(failure_text(&result)),
     Ok(_) => None,
@@ -218,10 +221,10 @@ pub async fn call(host: Arc<Host>, schedules: Arc<Schedules>, due: Due, data_roo
 
 /// The schedules kept for as long as the host serves: a beat every `every`, each schedule it finds due called on
 /// a task of its own.
-pub async fn keep(host: Arc<Host>, schedules: Arc<Schedules>, data_root: PathBuf, every: Duration) {
+pub async fn keep(host: Arc<Host>, schedules: Arc<Schedules>, every: Duration) {
   loop {
     for due in schedules.beat(&host.every(), now_ms()) {
-      tokio::spawn(call(host.clone(), schedules.clone(), due, data_root.clone()));
+      tokio::spawn(call(host.clone(), schedules.clone(), due));
     }
 
     tokio::time::sleep(every).await;

@@ -45,45 +45,23 @@ impl Hints {
   };
 }
 
-/// The room relation a requester must hold for a tool that acts to run: what the tool does, as the account
-/// service's rules name it. The host checks it against the
-/// sender of the message the call names, in the running turn's room (docs/mcp-host.md, 「The grant
-/// lock」).
+/// The resource a session's grants must hold for a tool that acts to run: an opaque name the tool and the
+/// session's issuer agree on, which the host compares whole and never reads (docs/mcp-host.md, 「Grants」).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Grant {
-  Search,
-  Notes,
-  Memories,
-  Reminders,
-  FileTodo,
-  Approve,
-  Launch,
-  Watch,
-  RoomRules,
-  Deploy,
-  WorkerTalk,
-}
+pub struct Grant(&'static str);
 
 impl Grant {
-  /// The relation the account service's rules name it by.
-  pub fn relation(self) -> &'static str {
-    match self {
-      Grant::Search => "search",
-      Grant::Notes => "notes",
-      Grant::Memories => "memories",
-      Grant::Reminders => "reminders",
-      Grant::FileTodo => "file_todo",
-      Grant::Approve => "approve",
-      Grant::Launch => "launch",
-      Grant::Watch => "watch",
-      Grant::RoomRules => "room_rules",
-      Grant::Deploy => "deploy",
-      Grant::WorkerTalk => "worker_talk",
-    }
+  pub const fn new(resource: &'static str) -> Self {
+    Self(resource)
+  }
+
+  /// The resource it names.
+  pub fn resource(self) -> &'static str {
+    self.0
   }
 }
 
-/// A smaller form of a tool shown where a session holds a role's bundle and not the tool's whole
+/// A smaller form of a tool shown where a session holds a bundle's capability and not the tool's whole
 /// capabilities: the bundle's capability, the arguments of the tool's own schema it shows, and those it
 /// must give where they differ from the schema's own (docs/mcp-host.md, 「Namespaces and capabilities」).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -140,7 +118,7 @@ pub trait Tool: Send + Sync + 'static {
   const CAPABILITIES: &'static [&'static str];
   /// The grant a requester must hold for it to run, for a tool that acts.
   const GRANT: Option<Grant> = None;
-  /// The narrower form a role's bundle holds it in, where one does; such a form acts under no grant.
+  /// The narrower form a bundle holds it in, where one does; such a form acts under no grant.
   const BUNDLE: Option<Bundle> = None;
   /// Whether it is for the system alone: never shown to a session, and reached through the host's control
   /// socket or another tool's call-back socket.
@@ -186,9 +164,10 @@ pub trait Served: Send + Sync {
   fn output_schema(&self) -> Option<Value>;
 
   /// The form a session holds it in: whole where the session holds its every capability, its bundle's where
-  /// it holds that bundle alone, and none otherwise or for a tool for the system alone.
+  /// it holds that bundle alone, and none otherwise, outside the session's namespaces or for a tool for the
+  /// system alone.
   fn held(&self, session: &Session) -> Option<Held> {
-    if self.system() {
+    if self.system() || !session.uses(self.namespace()) {
       return None;
     }
 

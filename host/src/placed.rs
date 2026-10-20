@@ -323,7 +323,7 @@ impl Placed {
     }
 
     let links = self.dir.as_deref().map(links_on).unwrap_or_default();
-    let rooms: Vec<PathBuf> =
+    let folders: Vec<PathBuf> =
       links.iter().filter_map(|link| link.parent().map(Path::to_path_buf)).collect();
     let mut real = match &self.dir {
       Some(dir) => Some(std::fs::canonicalize(dir).map_err(notify::Error::io)?),
@@ -331,10 +331,10 @@ impl Placed {
     };
     let (changed, mut changes) = tokio::sync::mpsc::unbounded_channel::<()>();
     let mut watcher: RecommendedWatcher = {
-      let (links, rooms) = (links.clone(), rooms.clone());
+      let (links, folders) = (links.clone(), folders.clone());
 
       notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        if event.is_ok_and(|event| moves(&event.kind) && concerns(&event.paths, &links, &rooms)) {
+        if event.is_ok_and(|event| moves(&event.kind) && concerns(&event.paths, &links, &folders)) {
           let _ = changed.send(());
         }
       })?
@@ -344,8 +344,8 @@ impl Placed {
       watcher.watch(real, RecursiveMode::Recursive)?;
     }
 
-    for room in &rooms {
-      watcher.watch(room, RecursiveMode::NonRecursive)?;
+    for folder in &folders {
+      watcher.watch(folder, RecursiveMode::NonRecursive)?;
     }
 
     if let Some(registry) = &self.registry {
@@ -412,9 +412,10 @@ fn links_on(dir: &Path) -> Vec<PathBuf> {
 /// Whether a change concerns a watched folder: one under it, or one in a directory a link on its way stands in
 /// that touches the link itself. The rest of such a directory — the deploy tree's neighbours — is no reason to
 /// read.
-pub fn concerns(paths: &[PathBuf], links: &[PathBuf], rooms: &[PathBuf]) -> bool {
+pub fn concerns(paths: &[PathBuf], links: &[PathBuf], folders: &[PathBuf]) -> bool {
   paths.is_empty()
     || paths.iter().any(|path| {
-      links.contains(path) || !path.parent().is_some_and(|parent| rooms.iter().any(|room| room == parent))
+      links.contains(path)
+        || !path.parent().is_some_and(|parent| folders.iter().any(|folder| folder == parent))
     })
 }

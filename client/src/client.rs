@@ -4,7 +4,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use bmo_tool::Session;
+use bmo_tool::SessionRequest;
 use http::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -14,7 +14,8 @@ use url::Url;
 use crate::error::WireError;
 use crate::transport::{Reply, request};
 use crate::wire::{
-  CallRequest, CatalogueEntry, CatalogueQuery, ClaimRequest, Claimed, DescribedEntry, Facts, Issued, ToolResult,
+  CallRequest, CatalogueEntry, CatalogueQuery, ClaimRequest, Claimed, DescribedEntry, Facts, Issued,
+  ToolResult,
 };
 
 /// Why a call answered no body of its route.
@@ -113,7 +114,9 @@ fn json<T: serde::Serialize>(value: &T) -> Result<Value, Failure> {
 impl Pocket {
   /// The control socket at this path.
   pub fn at(socket: impl Into<PathBuf>) -> Self {
-    Self { socket: socket.into() }
+    Self {
+      socket: socket.into(),
+    }
   }
 
   /// The control socket at its default path.
@@ -130,7 +133,7 @@ impl Pocket {
   }
 
   /// `POST /sessions`: a record issued, answered with its token.
-  pub async fn issue(&self, session: &Session) -> Result<String, Failure> {
+  pub async fn issue(&self, session: &SessionRequest) -> Result<String, Failure> {
     let reply = self.ask(Method::POST, "/sessions", Some(&json(session)?)).await?;
 
     body::<Issued>(reply, StatusCode::OK).map(|issued| issued.token)
@@ -172,7 +175,10 @@ impl Pocket {
 
   /// `GET /catalogue/{namespace}/{name}`: one entry described.
   pub async fn entry(&self, namespace: &str, name: &str) -> Result<DescribedEntry, Failure> {
-    body(self.ask(Method::GET, &route(&["catalogue", namespace, name], &[]), None).await?, StatusCode::OK)
+    body(
+      self.ask(Method::GET, &route(&["catalogue", namespace, name], &[]), None).await?,
+      StatusCode::OK,
+    )
   }
 
   /// `POST /calls`: an entry called under the record the request carries.

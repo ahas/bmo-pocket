@@ -13,7 +13,7 @@ fn a_claims_answer_carries_its_arguments_or_none() {
 fn a_call_is_bounded_by_its_entry_else_its_tool_and_not_at_all_where_unbounded() {
   let entry = |part: &str| {
     let text = format!(
-      "[tool]\nname = \"launch\"\nprotocol = 1\nrun = [\"launch\"]\ntimeout = 180\n\n[[entry]]\nnamespace = \"room\"\nname = \"search\"\ndescription = \"A search.\"\ninput = \"in.json\"\ncapabilities = [\"room.tools\"]\n{part}"
+      "[tool]\nname = \"launch\"\nprotocol = 1\nrun = [\"launch\"]\ntimeout = 180\n\n[[entry]]\nnamespace = \"garden\"\nname = \"search\"\ndescription = \"A search.\"\ninput = \"in.json\"\ncapabilities = [\"garden.read\"]\n{part}"
     );
 
     bmo_tool::manifest::Manifest::parse(&text, "launch").unwrap().entries.remove(0)

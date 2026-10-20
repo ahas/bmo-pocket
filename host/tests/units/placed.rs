@@ -28,22 +28,22 @@ fn place(tools: &Path, folder: &str, manifest: &str) {
 
 fn manifest(name: &str, entry: &str) -> String {
   format!(
-    "[tool]\nname = \"{name}\"\nprotocol = 1\nrun = [\"run\"]\ntimeout = 5\n\n[[entry]]\nnamespace = \"worker\"\nname = \"{entry}\"\ndescription = \"It does.\"\ninput = \"in.json\"\ncapabilities = [\"graph.read\"]\n"
+    "[tool]\nname = \"{name}\"\nprotocol = 1\nrun = [\"run\"]\ntimeout = 5\n\n[[entry]]\nnamespace = \"garden\"\nname = \"{entry}\"\ndescription = \"It does.\"\ninput = \"in.json\"\ncapabilities = [\"graph.read\"]\n"
   )
 }
 
 #[test]
 fn a_change_beside_the_link_is_no_reason_to_read_and_one_to_the_link_or_under_tools_is() {
-  let room = PathBuf::from("/srv/tools");
-  let links = [room.join("deploy")];
-  let rooms = [room.clone()];
-  let concerned = |path: &str| concerns(&[PathBuf::from(path)], &links, &rooms);
+  let folder = PathBuf::from("/srv/tools");
+  let links = [folder.join("deploy")];
+  let folders = [folder.clone()];
+  let concerned = |path: &str| concerns(&[PathBuf::from(path)], &links, &folders);
 
   assert!(concerned("/srv/tools/deploy"));
   assert!(concerned("/srv/tools/deploy-releases/0123456789ab/tools/echo/.placed"));
   assert!(!concerned("/srv/tools/deploy.incoming"));
   assert!(!concerned("/srv/tools/cargo-target"));
-  assert!(concerns(&[], &links, &rooms));
+  assert!(concerns(&[], &links, &folders));
 }
 
 // The tools served, by folder.
@@ -118,7 +118,7 @@ fn each_placed_folder_is_read_and_one_that_does_not_read_or_takes_a_placed_name_
 
   assert_eq!(folders, ["alpha"]);
   assert!(catalogue.helpers.is_empty());
-  assert_eq!(catalogue.namespaces(), BTreeSet::from(["worker".to_owned()]));
+  assert_eq!(catalogue.namespaces(), BTreeSet::from(["garden".to_owned()]));
   assert_eq!(faults.len(), 3, "{faults:?}");
   assert!(
     faults
@@ -128,7 +128,7 @@ fn each_placed_folder_is_read_and_one_that_does_not_read_or_takes_a_placed_name_
   assert!(
     faults
       .iter()
-      .any(|fault| fault == "tools/beta: worker/alpha_one is another tool's already")
+      .any(|fault| fault == "tools/beta: garden/alpha_one is another tool's already")
   );
   assert!(faults.iter().any(|fault| fault.starts_with("tools/gamma: its name `other`")));
 }

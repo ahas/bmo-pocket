@@ -1,35 +1,34 @@
 use bmo_tool::Session;
 use mcp_host::residency::shows;
 
-fn session(line: &str, role: Option<&str>, shown: &[&str]) -> Session {
+fn session(holder: &str, shown: &[&str]) -> Session {
   serde_json::from_value(serde_json::json!({
-    "line": line,
-    "role": role,
+    "holderName": holder,
+    "namespaces": ["garden", "notes"],
     "capabilities": [],
+    "grants": [],
     "shown": shown,
-    "checkout": "/nowhere",
-    "dataRoot": "/nowhere",
   }))
   .unwrap()
 }
 
 #[test]
-fn an_entry_is_resident_where_the_sessions_record_shows_it_whatever_its_line_or_role() {
-  let shown = ["bmo/say", "worker/graph_get"];
+fn an_entry_is_resident_where_the_sessions_record_shows_it_whoever_holds_it() {
+  let shown = ["notes/say", "garden/look"];
 
-  assert!(shows(&session("chat", Some("chat"), &shown), "bmo/say"));
-  assert!(shows(&session("search", None, &shown), "worker/graph_get"));
-  assert!(!shows(&session("worker", Some("worker"), &["bmo/say"]), "worker/graph_get"));
+  assert!(shows(&session("first", &shown), "notes/say"));
+  assert!(shows(&session("second", &shown), "garden/look"));
+  assert!(!shows(&session("third", &["notes/say"]), "garden/look"));
 }
 
 #[test]
 fn a_record_naming_no_shown_entry_lists_none_by_name() {
   let bare: Session = serde_json::from_value(serde_json::json!({
-    "line": "worker", "role": "worker", "capabilities": ["graph.read"], "dataRoot": "/nowhere",
+    "holderName": "first", "namespaces": ["garden"], "capabilities": ["garden.read"], "grants": [],
   }))
   .unwrap();
 
   assert!(bare.shown.is_empty());
-  assert!(!shows(&bare, "worker/graph_impact"));
-  assert!(!shows(&session("worker", Some("worker"), &[]), "worker/graph_get"));
+  assert!(!shows(&bare, "garden/water"));
+  assert!(!shows(&session("first", &[]), "garden/look"));
 }

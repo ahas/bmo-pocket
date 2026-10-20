@@ -1,5 +1,5 @@
 //! The session records the host serves by (docs/mcp-host.md, 「The session record」): one file per
-//! record, readable by the owner alone and named by the SHA-256 of its token, read back at start so
+//! record, readable by the host's user alone and named by the SHA-256 of its token, read back at start so
 //! a restart costs no session its tools. The token itself is never written down.
 
 use std::collections::HashMap;
@@ -27,14 +27,13 @@ fn digest(token: &str) -> String {
   Sha256::digest(token.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// The present moment, in epoch milliseconds, which a record's deadline is held to.
+/// The present moment, in epoch milliseconds, which a record's `expiresAt` is held to.
 pub fn now_ms() -> u64 {
   SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_millis() as u64)
 }
 
-// Whether a run's record has outlived its run.
 fn lapsed(session: &Session, now: u64) -> bool {
-  session.deadline.is_some_and(|deadline| deadline <= now)
+  session.lapsed(now)
 }
 
 impl Records {

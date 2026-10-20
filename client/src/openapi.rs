@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use bmo_tool::Session;
+use bmo_tool::SessionRequest;
 use schemars::generate::{SchemaGenerator, SchemaSettings};
 use schemars::{JsonSchema, Schema};
 use serde_json::{Map, Value, json};
@@ -61,7 +61,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       tag: "sessions",
       summary: "Issue a session record and answer the token it is known by.",
       parameters: Vec::new(),
-      request: Some(schema::<Session>(generator)),
+      request: Some(schema::<SessionRequest>(generator)),
       answer: Answer::Json(200, schema::<Issued>(generator)),
       refusals: &[ErrorCode::MalformedRecord, ErrorCode::UnwritableRecord],
     },

@@ -32,7 +32,7 @@ pub enum HostError {
   /// The arguments do not fit the entry's schema; the sentence is the dispatch's own.
   #[error("{0}")]
   ArgumentsMisfit(String),
-  /// The grant lock refused the call; the sentence is the lock's own.
+  /// The session's grants do not hold the entry's grant; the sentence names it.
   #[error("{0}")]
   GrantRefused(String),
   /// The tool failed before it answered a tool result; the sentence names how.

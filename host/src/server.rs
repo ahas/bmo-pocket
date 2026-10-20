@@ -14,7 +14,7 @@ use axum::{Json, Router};
 use bmo_pocket_client::{
   CallRequest, CatalogueEntry, CatalogueQuery, ClaimRequest, Claimed, DescribedEntry, Issued,
 };
-use bmo_tool::Session;
+use bmo_tool::{Session, SessionRequest};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use serde_json::Value;
@@ -116,11 +116,15 @@ struct Control {
   schedules: Arc<Schedules>,
 }
 
-async fn issue(State(Control { records, .. }): State<Control>, body: Bytes) -> Result<Json<Issued>, HostError> {
-  let session: Session = serde_json::from_slice(&body).map_err(|why| {
+async fn issue(
+  State(Control { records, .. }): State<Control>,
+  body: Bytes,
+) -> Result<Json<Issued>, HostError> {
+  let asked: SessionRequest = serde_json::from_slice(&body).map_err(|why| {
     eprintln!("mcp-host: a session record was refused: {why}");
     HostError::MalformedRecord(why.to_string())
   })?;
+  let session = asked.issued_at(crate::records::now_ms());
   let token = records.issue(session).map_err(|why| HostError::Unwritable(why.to_string()))?;
 
   Ok(Json(Issued { token }))
@@ -257,7 +261,10 @@ async fn call(State(Control { host, .. }): State<Control>, body: Bytes) -> Resul
 }
 
 // Which entry the record it carries holds claims an address, as the call-back socket's claim is answered.
-async fn claim(State(Control { host, .. }): State<Control>, body: Bytes) -> Result<Json<Claimed>, HostError> {
+async fn claim(
+  State(Control { host, .. }): State<Control>,
+  body: Bytes,
+) -> Result<Json<Claimed>, HostError> {
   let claimed: ClaimRequest =
     serde_json::from_slice(&body).map_err(|why| HostError::MalformedRequest(why.to_string()))?;
   let answer = host.claim(&claimed.session, &claimed.address).await;

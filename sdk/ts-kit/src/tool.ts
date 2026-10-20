@@ -10,13 +10,16 @@ export const PROTOCOL = 1;
 
 /** The session record a call is made under, as the host hands it. */
 export interface Session {
-  line: string;
-  role?: string;
+  holderName: string;
+  namespaces: string[];
   capabilities: string[];
+  grants: { resource: string }[];
   shown?: string[];
-  dataRoot: string;
-  archive?: string;
-  [field: string]: unknown;
+  variables?: Record<string, string>;
+  variablesFile?: string;
+  labels?: Record<string, unknown>;
+  expiresAt?: number | null;
+  createdAt?: number;
 }
 
 /** One piece of an answer. */

@@ -47,7 +47,7 @@ writeFileSync(
   `import { answer, structured, text } from ${JSON.stringify(resolve(import.meta.dir, "../src/tool.ts"))};
 
 await answer({
-  "test/echo": (call) => structured({ said: call.arguments.said, line: call.session.line }),
+  "test/echo": (call) => structured({ said: call.arguments.said, holder: call.session.holderName }),
   "test/relay": async (call) => text(\`\${(await call.callBack("test/other", { a: 1 })).content[0].text}; \${(await call.claim("https://a.test/x")).entry}\`),
   "test/broken": () => { throw new Error("it broke"); },
 });
@@ -70,14 +70,14 @@ def broken(call):
 
 
 bmo_tool.answer({
-    "test/echo": lambda call: bmo_tool.structured({"said": call.arguments["said"], "line": call.session["line"]}),
+    "test/echo": lambda call: bmo_tool.structured({"said": call.arguments["said"], "holder": call.session["holderName"]}),
     "test/relay": relay,
     "test/broken": broken,
 })
 `,
 );
 
-const session = { line: "chat", capabilities: [], dataRoot: "/d", archive: "/d/bmo.db" };
+const session = { holderName: "tester", namespaces: ["test"], capabilities: [], grants: [] };
 
 // Run apart, since the stand-in host answers its call-backs on this process's own event loop.
 async function run(command: string[], input: string): Promise<{ answer: any; code: number; stderr: string }> {
@@ -97,8 +97,8 @@ for (const [language, command] of [["TypeScript", ["bun", typescriptTool]], ["Py
 
       expect(code).toBe(0);
       expect(answer.isError).toBe(false);
-      expect(answer.structuredContent).toEqual({ said: "café ☕", line: "chat" });
-      expect(JSON.parse(answer.content[0].text)).toEqual({ said: "café ☕", line: "chat" });
+      expect(answer.structuredContent).toEqual({ said: "café ☕", holder: "tester" });
+      expect(JSON.parse(answer.content[0].text)).toEqual({ said: "café ☕", holder: "tester" });
     });
 
     test("asks the host for another entry and a claim, one line each, under the call's socket", async () => {

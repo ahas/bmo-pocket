@@ -11,14 +11,14 @@ run = ["python3", "echo.py"]
 timeout = 30
 
 [[entry]]
-namespace = "worker"
+namespace = "garden"
 name = "echo_back"
 description = "Says the text back."
 input = "echo.json"
 capabilities = ["graph.read"]
 hints = { read_only = true }
 
-[entry.bundle."room.chat"]
+[entry.bundle."garden.brief"]
 shown = ["text"]
 
 [entry.listing]
@@ -34,9 +34,9 @@ fn a_manifest_reads_with_its_entries_bundles_listing_and_card() {
   let manifest = Manifest::parse(MANIFEST_TEXT, "echo").unwrap();
   let entry = &manifest.entries[0];
 
-  assert_eq!(entry.full_name(), "worker/echo_back");
+  assert_eq!(entry.full_name(), "garden/echo_back");
   assert!(Hints::from(entry.hints).read_only);
-  assert_eq!(entry.bundle["room.chat"].shown, ["text"]);
+  assert_eq!(entry.bundle["garden.brief"].shown, ["text"]);
   assert_eq!(entry.listing.as_ref().unwrap().order, 2);
   assert_eq!(manifest.card.as_ref().unwrap()["service"].as_str(), Some("echo"));
   assert_eq!(manifest.named_files(), ["echo.json", "tool.toml"]);
@@ -60,7 +60,7 @@ fn a_manifest_breaking_a_rule_is_refused_with_why() {
     refused(&MANIFEST_TEXT.replace("hints =", "unbounded = true\ntimeout = 5\nhints ="), "echo")
       .contains("unbounded and has a timeout")
   );
-  assert!(refused(&MANIFEST_TEXT.replace(r#""worker""#, r#""toolbook""#), "echo").contains("namespace"));
+  assert!(refused(&MANIFEST_TEXT.replace(r#""garden""#, r#""toolbook""#), "echo").contains("namespace"));
   assert_eq!(
     refused(&format!("{MANIFEST_TEXT}\n[helper]\ndescription = \"x\"\n"), "echo"),
     "a shared helper's manifest has entries"
@@ -97,9 +97,9 @@ fn a_helper_has_no_entries_and_a_system_entry_needs_no_capability() {
 #[test]
 fn a_tool_serving_resources_alone_needs_no_entry_and_one_serving_nothing_is_refused() {
   let bare = "[tool]\nname = \"papers\"\nprotocol = 1\nrun = [\"papers\"]\ntimeout = 5\n";
-  let served = format!("{bare}\n[resources]\nnamespace = \"bmo\"\ncapabilities = [\"room.tools\"]\n");
+  let served = format!("{bare}\n[resources]\nnamespace = \"papers\"\ncapabilities = [\"papers.read\"]\n");
 
-  assert_eq!(Manifest::parse(&served, "papers").unwrap().resources.unwrap().namespace, "bmo");
+  assert_eq!(Manifest::parse(&served, "papers").unwrap().resources.unwrap().namespace, "papers");
   assert_eq!(Manifest::parse(bare, "papers").unwrap_err(), "it has neither an entry nor resources");
 }
 
@@ -125,12 +125,12 @@ struct EchoInput {
 
 impl Tool for EchoBack {
   const NAME: &'static str = "echo_back";
-  const NAMESPACE: &'static str = "worker";
+  const NAMESPACE: &'static str = "garden";
   const DESCRIPTION: &'static str = "Says the text back.";
   const HINTS: Hints = Hints::READ_ONLY;
   const CAPABILITIES: &'static [&'static str] = &["graph.read"];
   const BUNDLE: Option<Bundle> = Some(Bundle {
-    capability: "room.chat",
+    capability: "garden.brief",
     shown: &["text"],
     required: None,
   });
@@ -160,15 +160,15 @@ fn a_manifest_is_held_to_the_rust_tools_answering_its_entries() {
 
   let differ = Manifest::read(dir.path(), "echo").unwrap().differences(&[&EchoBack]);
 
-  assert_eq!(differ[0], "worker/echo_back: its description differs from its tool's");
+  assert_eq!(differ[0], "garden/echo_back: its description differs from its tool's");
   assert_eq!(
     differ[1],
-    format!("worker/echo_back: echo.json is not its input type's schema, which is {schema}")
+    format!("garden/echo_back: echo.json is not its input type's schema, which is {schema}")
   );
   assert_eq!(differ.len(), 2);
   assert_eq!(
     Manifest::read(dir.path(), "echo").unwrap().differences(&[]),
-    ["worker/echo_back: no tool answers it"]
+    ["garden/echo_back: no tool answers it"]
   );
 }
 

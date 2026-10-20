@@ -17,7 +17,7 @@ struct ShoutInput {
 
 impl Tool for Shout {
   const NAME: &'static str = "shout";
-  const NAMESPACE: &'static str = "worker";
+  const NAMESPACE: &'static str = "garden";
   const DESCRIPTION: &'static str = "Says the text louder.";
   const HINTS: Hints = Hints::READ_ONLY;
   const CAPABILITIES: &'static [&'static str] = &["graph.read"];
@@ -29,12 +29,12 @@ impl Tool for Shout {
   }
 
   async fn call(&self, session: &Session, input: ShoutInput) -> Answer {
-    Answer::text(format!("{}:{}", session.line, input.text.to_uppercase()))
+    Answer::text(format!("{}:{}", session.holder_name, input.text.to_uppercase()))
   }
 }
 
 fn handed(asked: Value) -> Handed {
-  let mut said = json!({ "protocol": 1, "session": { "line": "worker", "capabilities": [], "dataRoot": "/d", "archive": "/d/bmo.db" }, "callback": "/run/c.sock" });
+  let mut said = json!({ "protocol": 1, "session": { "holderName": "garden", "namespaces": ["garden"], "capabilities": [], "grants": [] }, "callback": "/run/c.sock" });
 
   said.as_object_mut().unwrap().extend(asked.as_object().unwrap().clone());
   serde_json::from_value(said).unwrap()
@@ -42,12 +42,12 @@ fn handed(asked: Value) -> Handed {
 
 #[test]
 fn what_a_call_is_handed_reads_as_the_host_writes_it() {
-  let read = handed(json!({ "kind": "call", "entry": "worker/shout", "arguments": { "text": "a" } }));
+  let read = handed(json!({ "kind": "call", "entry": "garden/shout", "arguments": { "text": "a" } }));
 
   assert_eq!(
     read.asked,
     Asked::Call {
-      entry: "worker/shout".into(),
+      entry: "garden/shout".into(),
       arguments: json!({ "text": "a" })
     }
   );
@@ -62,13 +62,13 @@ fn what_a_call_is_handed_reads_as_the_host_writes_it() {
 
 #[tokio::test]
 async fn a_rust_tool_answers_the_entry_it_is_asked_for_and_says_which_it_does_not_hold() {
-  let asked = handed(json!({ "kind": "call", "entry": "worker/shout", "arguments": { "text": "a" } }));
+  let asked = handed(json!({ "kind": "call", "entry": "garden/shout", "arguments": { "text": "a" } }));
 
-  assert_eq!(answer_call(&[&Shout], asked).await, Ok(Answer::text("worker:A")));
+  assert_eq!(answer_call(&[&Shout], asked).await, Ok(Answer::text("garden:A")));
 
-  let other = handed(json!({ "kind": "call", "entry": "worker/whisper", "arguments": {} }));
+  let other = handed(json!({ "kind": "call", "entry": "garden/whisper", "arguments": {} }));
 
-  assert!(answer_call(&[&Shout], other).await.unwrap().plain().contains("no entry worker/whisper"));
+  assert!(answer_call(&[&Shout], other).await.unwrap().plain().contains("no entry garden/whisper"));
 }
 
 // Asks the call-back socket it was handed which entry claims the address, and answers what it was told.
@@ -81,7 +81,7 @@ struct AskInput {
 
 impl Tool for Ask {
   const NAME: &'static str = "ask";
-  const NAMESPACE: &'static str = "worker";
+  const NAMESPACE: &'static str = "garden";
   const DESCRIPTION: &'static str = "Asks the host back.";
   const HINTS: Hints = Hints::READ_ONLY;
   const CAPABILITIES: &'static [&'static str] = &["graph.read"];
@@ -126,7 +126,7 @@ async fn a_tool_reaches_the_sockets_its_call_was_handed_one_line_each_way() {
   });
 
   let mut asked =
-    handed(json!({ "kind": "call", "entry": "worker/ask", "arguments": { "address": "https://x" } }));
+    handed(json!({ "kind": "call", "entry": "garden/ask", "arguments": { "address": "https://x" } }));
 
   asked.callback = Some(socket);
   asked.shared = BTreeMap::from([("web".to_owned(), PathBuf::from("/run/web.sock"))]);
@@ -137,7 +137,7 @@ async fn a_tool_reaches_the_sockets_its_call_was_handed_one_line_each_way() {
 
   // A socket nobody listens on is said to be out of reach rather than waited on.
   let gone =
-    handed(json!({ "kind": "call", "entry": "worker/ask", "arguments": { "address": "https://x" } }));
+    handed(json!({ "kind": "call", "entry": "garden/ask", "arguments": { "address": "https://x" } }));
 
   assert!(answer_call(&[&Ask], gone).await.unwrap().plain().contains("could not be reached"));
 }
@@ -145,7 +145,7 @@ async fn a_tool_reaches_the_sockets_its_call_was_handed_one_line_each_way() {
 #[tokio::test]
 async fn a_call_read_from_its_input_is_answered_on_its_output_as_a_tool_result() {
   let asked = |arguments: Value| {
-    serde_json::to_vec(&handed(json!({ "kind": "call", "entry": "worker/shout", "arguments": arguments })))
+    serde_json::to_vec(&handed(json!({ "kind": "call", "entry": "garden/shout", "arguments": arguments })))
       .unwrap()
   };
   let mut written = Vec::new();
@@ -153,7 +153,7 @@ async fn a_call_read_from_its_input_is_answered_on_its_output_as_a_tool_result()
   answer_read(&[&Shout], None, asked(json!({ "text": "a" })).as_slice(), &mut written)
     .await
     .unwrap();
-  assert_eq!(serde_json::from_slice::<Answer>(&written).unwrap(), Answer::text("worker:A"));
+  assert_eq!(serde_json::from_slice::<Answer>(&written).unwrap(), Answer::text("garden:A"));
 
   written.clear();
   answer_read(&[&Shout], None, asked(json!({ "words": "a" })).as_slice(), &mut written)
@@ -189,14 +189,14 @@ async fn a_claim_request_is_answered_with_the_arguments_the_entry_reads_the_addr
   };
 
   assert_eq!(
-    claimed("worker/shout", "https://shout.test/hey").await,
+    claimed("garden/shout", "https://shout.test/hey").await,
     json!({ "arguments": { "text": "/hey" } })
   );
-  assert_eq!(claimed("worker/shout", "https://other.test/").await, json!({ "arguments": null }));
-  assert_eq!(claimed("worker/whisper", "https://shout.test/").await, json!({ "arguments": null }));
+  assert_eq!(claimed("garden/shout", "https://other.test/").await, json!({ "arguments": null }));
+  assert_eq!(claimed("garden/whisper", "https://shout.test/").await, json!({ "arguments": null }));
 }
 
-// One document, `paper://one`, read as the line of the session that reads it.
+// One document, `paper://one`, read as the holder of the session that reads it.
 struct Papers;
 
 impl Resources for Papers {
@@ -207,7 +207,7 @@ impl Resources for Papers {
   fn read<'a>(&'a self, session: &'a Session, uri: &'a str) -> Pending<'a, Result<Value, String>> {
     Box::pin(async move {
       match uri {
-        "paper://one" => Ok(json!({ "contents": [{ "uri": uri, "text": session.line }] })),
+        "paper://one" => Ok(json!({ "contents": [{ "uri": uri, "text": session.holder_name }] })),
         _ => Err(format!("no paper {uri}")),
       }
     })
@@ -237,7 +237,7 @@ async fn a_resource_request_is_answered_by_the_resources_the_executable_serves_a
   );
   assert_eq!(
     asked(Some(&Papers), json!({ "kind": "resources_read", "uri": "paper://one" })).await,
-    json!({ "contents": [{ "uri": "paper://one", "text": "worker" }] })
+    json!({ "contents": [{ "uri": "paper://one", "text": "garden" }] })
   );
   assert_eq!(
     asked(Some(&Papers), json!({ "kind": "resources_read", "uri": "paper://two" })).await,

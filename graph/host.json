@@ -17,25 +17,9 @@
     "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
   },
   {
-    "id": "host/grant-lock",
-    "title": "Grant lock",
-    "what": "Beneath the agent, a tool that acts runs only where the sender holds the room relation it declares, and a job for another user only where that user holds its capabilities, asked of bmo-web. Lives in host/src/lock.rs.",
-    "files": [
-      "host/src/lock.rs",
-      "host/src/unix_http.rs",
-      "docs/mcp-host.md"
-    ],
-    "symbols": [],
-    "aliases": [],
-    "needs": [
-      "sdk/contract"
-    ],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
-  },
-  {
     "id": "host/namespaces",
     "title": "Namespace serving",
-    "what": "One namespace of tools as the MCP protocol serves it to a session: entries the record names in shown listed by name, the rest booked into the toolbook, each call checked by the grant lock. Lives in host/src/handler.rs and residency.rs.",
+    "what": "One namespace of tools as the MCP protocol serves it to a session whose record names it: entries the record names in shown listed by name, the rest booked into the toolbook, each call checked against the session grants. Lives in host/src/handler.rs and residency.rs.",
     "files": [
       "host/src/handler.rs",
       "host/src/residency.rs",
@@ -48,11 +32,11 @@
     "needs": [
       "host/catalogue",
       "host/tool-runner",
-      "host/grant-lock",
+      "host/session-grants",
       "host/session-records",
       "host/problem-details"
     ],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
   },
   {
     "id": "host/problem-details",
@@ -66,6 +50,24 @@
     "aliases": [],
     "needs": [],
     "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+  },
+  {
+    "id": "host/schedules",
+    "title": "Tool schedules",
+    "what": "The calls the host makes at the times each entry manifest declares in [[entry.schedule]], each under a record of its own, with where each schedule stands kept in the host process. Lives in host/src/schedule.rs.",
+    "files": [
+      "host/src/schedule.rs",
+      "host/tests/units/schedule.rs",
+      "host/tests/units/fixture.rs",
+      "docs/mcp-host.md"
+    ],
+    "symbols": [],
+    "aliases": [],
+    "needs": [
+      "host/namespaces",
+      "sdk/contract"
+    ],
+    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
   },
   {
     "id": "host/server",
@@ -92,9 +94,28 @@
     "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
   },
   {
+    "id": "host/session-grants",
+    "title": "Session grants",
+    "what": "A call runs only within the namespaces, capabilities and grants its tool session record carries: an entry declaring a grant resource runs where the record grants it, and the host asks no other unit. Lives in host/src/handler.rs.",
+    "files": [
+      "host/src/handler.rs",
+      "host/tests/units/handler.rs",
+      "docs/mcp-host.md"
+    ],
+    "symbols": [
+      "ungranted",
+      "Refusal"
+    ],
+    "aliases": [],
+    "needs": [
+      "sdk/contract"
+    ],
+    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
+  },
+  {
     "id": "host/session-records",
     "title": "Session records",
-    "what": "The records sessions are served by, issued and revoked on the control socket, one owner-only file each named by its token hash and read back at start. Lives in host/src/records.rs.",
+    "what": "The tool session records calls are served by, issued and revoked on the control socket with their expiry, one file each readable by the host user alone, named by its token hash and read back at start. Lives in host/src/records.rs.",
     "files": [
       "host/src/records.rs",
       "host/tests/units/records.rs",
@@ -105,12 +126,12 @@
     "needs": [
       "sdk/contract"
     ],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
   },
   {
     "id": "host/tool-runner",
     "title": "Tool runner",
-    "what": "How a placed tool is run: a process per call handed its call on standard input, or one MCP server per record, each in a clean environment with its own call-back socket and its shared helpers. Lives in host/src/running.rs.",
+    "what": "How a placed tool is run: a process per call handed its call on standard input, or one MCP server per record, each in a clean environment laid from the host, the record variables and its variables file, with its own call-back socket and shared helpers. Lives in host/src/running.rs.",
     "files": [
       "host/src/running.rs",
       "host/tests/units/running.rs"
@@ -121,7 +142,7 @@
       "host/catalogue",
       "sdk/contract"
     ],
-    "base": "1172a9b34ca16ab479b22d98eb1b4ba3574639b8"
+    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
   },
   {
     "id": "host/toolbook",

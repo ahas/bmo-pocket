@@ -1,11 +1,12 @@
 //! The tool host's binary (docs/mcp-host.md). Its verbs:
 //!
 //! - `serve`: the host itself — every namespace on the loopback port, behind each session's bearer
-//!   token, and the control socket the launchers issue and revoke tokens on.
+//!   token, and the control socket tool sessions are issued and revoked on.
 //! - `call <namespace> <tool>`: one call of one placed tool as a session would make it, the
-//!   session record and the arguments read from standard input as `{"session": …, "arguments": …}`
-//!   and the answer written to standard output as the protocol writes it. It is how a person or a
-//!   test asks the tools without a session, and it reaches exactly what the host serves.
+//!   session record as an issuer asks for it and the arguments read from standard input as
+//!   `{"session": …, "arguments": …}` and the answer written to standard output as the protocol writes
+//!   it. It is how a person or a test asks the tools without a session, and it reaches exactly what the
+//!   host serves.
 
 use std::fs;
 use std::io::{self, Read, Write};
@@ -15,12 +16,11 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bmo_tool::Session;
+use bmo_tool::SessionRequest;
 use clap::{Args, Parser, Subcommand};
 use mcp_host::handler::Host;
-use mcp_host::lock::{Accounts, Lock};
 use mcp_host::placed::Placed;
-use mcp_host::records::Records;
+use mcp_host::records::{Records, now_ms};
 use mcp_host::registry::Registry;
 use mcp_host::running::sockets_beside;
 use mcp_host::schedule::{self, Schedules};
@@ -40,18 +40,9 @@ struct Cli {
   verb: Verb,
 }
 
-/// What a call reaches beyond the tool: the grant lock's account service and the variables passed on.
+/// What a call reaches beyond the tool and its record: the variables of the host's own passed on.
 #[derive(Args)]
 struct Reach {
-  /// The account service's base address, which the grant lock asks; with none, nothing is checked.
-  #[arg(long, env = "BMO_ACCOUNTS_URL")]
-  accounts: Option<String>,
-  /// The file holding the bearer token the account service is asked with.
-  #[arg(long, env = "BMO_ACCOUNTS_TOKEN_FILE")]
-  accounts_token_file: Option<PathBuf>,
-  /// The grant lock's switch: `off` turns it off.
-  #[arg(long, env = "BMO_GRANT_LOCK", default_value = "on")]
-  grant_lock: String,
   /// A variable of the host's own environment every call is handed beside its own; given again for each.
   #[arg(long = "pass-env")]
   pass_env: Vec<String>,
@@ -104,7 +95,7 @@ enum Verb {
 
 #[derive(Deserialize)]
 struct Asked {
-  session: Session,
+  session: SessionRequest,
   #[serde(default)]
   arguments: Value,
 }
@@ -115,30 +106,11 @@ fn refused(why: impl std::fmt::Display) -> ExitCode {
 }
 
 impl Reach {
-  // The lock and the variables passed on, the account service's token read from its file.
-  fn host(self, placed: Arc<Placed>) -> Result<Host, String> {
-    let token = match &self.accounts_token_file {
-      Some(file) => Some(
-        fs::read_to_string(file)
-          .map_err(|why| {
-            format!("the account service's token {} could not be read: {why}", file.display())
-          })?
-          .trim()
-          .to_owned(),
-      ),
-      None => None,
-    };
-    let lock = Lock {
-      accounts: self.accounts.map(|base| Accounts { base, token }),
-      off: self.grant_lock.trim() == "off",
-      client: reqwest::Client::new(),
-    };
-
-    Ok(Host {
-      lock,
+  fn host(self, placed: Arc<Placed>) -> Host {
+    Host {
       placed,
       pass_env: self.pass_env,
-    })
+    }
   }
 }
 
@@ -157,10 +129,7 @@ fn main() -> ExitCode {
       let data_root = data_root.unwrap_or_else(default_data_root);
       let control = control.unwrap_or_else(|| runtime_dir().join("bmo/mcp-host.sock"));
       let placed = Arc::new(placed(tools, &data_root, &control));
-      let host = match reach.host(placed) {
-        Ok(host) => Arc::new(host),
-        Err(why) => return refused(why),
-      };
+      let host = Arc::new(reach.host(placed));
 
       match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
         Ok(runtime) => runtime.block_on(serve(
@@ -188,11 +157,7 @@ fn main() -> ExitCode {
       let placed = placed(tools, &data_root, &runtime_dir().join("bmo/mcp-host.sock"));
 
       placed.reread();
-
-      match reach.host(Arc::new(placed)) {
-        Ok(host) => call(&namespace, &tool, Arc::new(host)),
-        Err(why) => refused(why),
-      }
+      call(&namespace, &tool, Arc::new(reach.host(Arc::new(placed))))
     }
   }
 }
@@ -290,8 +255,8 @@ async fn serve(port: u16, data_root: &Path, control: &Path, beats: Beats, host: 
   let pruning = records.clone();
   let sweeping = host.clone();
 
-  // Lapsed records dropped on every beat, and what each kept ended, so a run that ended without its
-  // record being taken back holds its browser no longer than one beat past its deadline; and every retired
+  // Lapsed records dropped on every beat, and what each kept ended, so a session whose issuer never took its
+  // record back holds what its tools keep no longer than one beat past its `expiresAt`; and every retired
   // version nothing holds any longer taken away.
   tokio::spawn(async move {
     loop {
@@ -306,13 +271,13 @@ async fn serve(port: u16, data_root: &Path, control: &Path, beats: Beats, host: 
   // Every schedule of the catalogue kept, those due called by the host itself.
   let schedules = Arc::new(Schedules::default());
 
-  tokio::spawn(schedule::keep(host.clone(), schedules.clone(), data_root.to_path_buf(), beats.schedule));
+  tokio::spawn(schedule::keep(host.clone(), schedules.clone(), beats.schedule));
 
   let sessions =
     axum::serve(tcp, server::tools(records.clone(), host.clone())).with_graceful_shutdown(stopped());
-  let launchers =
+  let issuers =
     axum::serve(unix, server::control(records, host, schedules)).with_graceful_shutdown(stopped());
-  let (served, controlled) = tokio::join!(sessions, launchers);
+  let (served, controlled) = tokio::join!(sessions, issuers);
   let _ = fs::remove_file(control);
 
   match served.and(controlled) {
@@ -332,8 +297,9 @@ fn call(namespace: &str, tool: &str, host: Arc<Host>) -> ExitCode {
     Ok(asked) => asked,
     Err(why) => return refused(format!("what was handed is not a session and its arguments: {why}")),
   };
-  // The grant lock holds here as it holds for a session's call.
-  let Some(entry) = host.find(&asked.session, namespace, tool) else {
+  let session = asked.session.issued_at(now_ms());
+  // The record's namespaces, capabilities and grants hold here as they hold for a session's call.
+  let Some(entry) = host.find(&session, namespace, tool) else {
     return refused(format!("unknown tool `{tool}` in `{namespace}` for this session"));
   };
   let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
@@ -341,9 +307,9 @@ fn call(namespace: &str, tool: &str, host: Arc<Host>) -> ExitCode {
     Err(why) => return refused(why),
   };
   let answered = runtime.block_on(async {
-    let answer = host.answer(&entry, &asked.session, asked.arguments).await;
+    let answer = host.answer(&entry, &session, asked.arguments).await;
 
-    asked.session.kept.close().await;
+    session.kept.close().await;
     answer
   });
 

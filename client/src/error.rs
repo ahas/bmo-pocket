@@ -46,7 +46,9 @@ impl ErrorCode {
   pub fn status(self) -> StatusCode {
     match self {
       Self::NoToken | Self::UnknownToken => StatusCode::UNAUTHORIZED,
-      Self::UnknownNamespace | Self::NoListing | Self::UnknownEntry | Self::UnknownRoute => StatusCode::NOT_FOUND,
+      Self::UnknownNamespace | Self::NoListing | Self::UnknownEntry | Self::UnknownRoute => {
+        StatusCode::NOT_FOUND
+      }
       Self::MalformedRecord | Self::MalformedRequest => StatusCode::BAD_REQUEST,
       Self::ArgumentsMisfit => StatusCode::UNPROCESSABLE_ENTITY,
       Self::GrantRefused => StatusCode::FORBIDDEN,

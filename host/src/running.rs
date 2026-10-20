@@ -49,9 +49,10 @@ fn fresh(prefix: &str) -> String {
 const KEPT: [&str; 3] = ["PATH", "HOME", "XDG_RUNTIME_DIR"];
 
 /// The command a placed tool's run words name: started in its placed folder, the first word read there where a
-/// file of that name stands in it, in a clean environment — the host's path, home and runtime directory and each
-/// variable the host is told to pass on, where it holds them, the record's data root, its archive where it names
-/// one, and its turn — its own process group, ended with the host.
+/// file of that name stands in it, in a clean environment, each layer laid over the one before it — the host's
+/// path, home and runtime directory and each variable the host is told to pass on, where it holds them; the
+/// record's variables; and those its variables file holds, read afresh — its own process group, ended with the
+/// host.
 fn command(host: &Host, tool: &PlacedTool, session: &Session) -> Command {
   let run = &tool.manifest.tool.run;
   let own = tool.dir.join(&run[0]);
@@ -62,19 +63,22 @@ fn command(host: &Host, tool: &PlacedTool, session: &Session) -> Command {
     .args(&run[1..])
     .current_dir(&tool.dir)
     .env_clear()
-    .env("BMO_DATA_DIR", &session.data_root)
-    .envs(session.turn_environment())
     .process_group(0)
     .kill_on_drop(true);
-
-  if let Some(archive) = &session.archive {
-    command.env("BMO_ARCHIVE_URL", archive);
-  }
 
   for kept in KEPT.iter().copied().chain(host.pass_env.iter().map(String::as_str)) {
     if let Some(value) = std::env::var_os(kept) {
       command.env(kept, value);
     }
+  }
+
+  command.envs(&session.variables);
+
+  match session.file_variables() {
+    Ok(variables) => {
+      command.envs(variables);
+    }
+    Err(why) => eprintln!("mcp-host: {} adds nothing: {why}", tool.folder),
   }
 
   // SAFETY: the closure runs in the child between fork and exec and calls `prctl` alone, which is

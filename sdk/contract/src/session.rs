@@ -1,4 +1,4 @@
-//! The session record a call is made under, issued by the launcher with the token (docs/api.md, 「The
+//! The session record a call is made under, issued with its token on the control socket (docs/api.md, 「The
 //! session record」).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -6,47 +6,48 @@ use std::path::PathBuf;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
-/// One session's record. Its field names are camel case on the wire. A field the record does not know is
-/// refused rather than dropped, so a launcher that hands something new is told rather than ignored.
+/// One grant a session holds: a resource it may act on, an opaque name its issuer and its tools agree on.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Granted {
+  pub resource: String,
+}
+
+/// One session's record, as the host keeps it and hands it to every call. Its field names are camel case on the
+/// wire. A field the record does not know is refused rather than dropped, so an issuer that hands something new is
+/// told rather than ignored.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Session {
-  /// The run line the session belongs to, a name a tool may read.
-  pub line: String,
-  /// The role of the agent the session is issued for, where it has one, a name a tool may read.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub role: Option<String>,
+  /// Who holds the session, a name a tool may read and the host never interprets.
+  pub holder_name: String,
+  /// The namespaces the session may use.
+  pub namespaces: BTreeSet<String>,
   /// What the session may be shown, by the names the manifests declare, as the issuer resolved them.
   pub capabilities: BTreeSet<String>,
+  /// The resources the session may act on.
+  pub grants: Vec<Granted>,
   /// The full names of the entries its namespaces list by name, as the issuer resolved them; every other entry
   /// the session holds stands in its toolbook.
   #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
   pub shown: BTreeSet<String>,
-  /// The checkout the run works in, whose graph is read on every call.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub checkout: Option<PathBuf>,
-  /// The data root the run reads.
-  pub data_root: PathBuf,
-  /// The archive address its tools read, where the issuer names one.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub archive: Option<PathBuf>,
-  /// A resident program's place, where each call reads which run is going.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub place: Option<PathBuf>,
-  /// The run's own variables, for a run spawned for itself: its name, the job runner's marker, the
-  /// work-order step and every `BMO_TURN_` variable.
+  /// Variables handed to every call's environment.
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-  pub run_variables: BTreeMap<String, String>,
-  /// The fragment desk an editor's batch opened.
+  pub variables: BTreeMap<String, String>,
+  /// A file holding a JSON object of strings, read afresh at every call and laid over `variables`.
   #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub fragment_desk: Option<PathBuf>,
-  /// What a search, a browse or a branch is held to.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub research: Option<Research>,
-  /// When a run's record lapses, in epoch milliseconds; a resident program's has none.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub deadline: Option<u64>,
+  pub variables_file: Option<PathBuf>,
+  /// The issuer's own metadata, handed to every call and never read by the host.
+  #[serde(default, skip_serializing_if = "Map::is_empty")]
+  pub labels: Map<String, Value>,
+  /// When the session lapses, in epoch milliseconds; none stands until it is revoked.
+  #[serde(default)]
+  pub expires_at: Option<u64>,
+  /// When it was issued, in epoch milliseconds.
+  #[serde(default)]
+  pub created_at: u64,
   /// What the session's tools keep for it while its record stands, ended when the record goes; never written
   /// down.
   #[serde(skip)]
@@ -59,81 +60,72 @@ impl Session {
     wanted.iter().all(|one| self.capabilities.contains(one.as_ref()))
   }
 
-  /// Every variable of the turn a call is made in, read afresh as [`Session::turn_variable`] reads one:
-  /// the run's own variables, overlaid by those of the run its resident program's place names.
-  pub fn turn_environment(&self) -> BTreeMap<String, String> {
-    let mut turn = self.run_variables.clone();
-    let from_place = self.place.as_ref().and_then(|place| {
-      let run: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(place.join("run.json")).ok()?).ok()?;
-
-      if run.get("person").and_then(serde_json::Value::as_bool) == Some(true) {
-        return None;
-      }
-
-      run.get("env")?.as_object().cloned()
-    });
-
-    for (name, value) in from_place.into_iter().flatten() {
-      let ours = ["BMO_RUN_NAME", "BMO_TASK_LOCKED", "BMO_WORK_ORDER_STEP"].contains(&name.as_str())
-        || name.starts_with("BMO_TURN_");
-
-      if let (true, Some(value)) = (ours, value.as_str()) {
-        turn.insert(name, value.to_owned());
-      }
-    }
-
-    turn
+  /// Whether the session may use this namespace.
+  pub fn uses(&self, namespace: &str) -> bool {
+    self.namespaces.contains(namespace)
   }
 
-  /// One variable of the turn a call is made in, read afresh: the run its resident program's place names —
-  /// none for a person's turn — or the run's own variables for a run spawned for itself (docs/api.md,
-  /// 「The session record」).
-  pub fn turn_variable(&self, name: &str) -> Option<String> {
-    let from_place = self.place.as_ref().and_then(|place| {
-      let run: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(place.join("run.json")).ok()?).ok()?;
+  /// Whether the session's grants hold this resource, compared whole.
+  pub fn granted(&self, resource: &str) -> bool {
+    self.grants.iter().any(|grant| grant.resource == resource)
+  }
 
-      if run.get("person").and_then(serde_json::Value::as_bool) == Some(true) {
-        return None;
-      }
+  /// Whether the session has lapsed at `now`, in epoch milliseconds.
+  pub fn lapsed(&self, now: u64) -> bool {
+    self.expires_at.is_some_and(|expires| expires <= now)
+  }
 
-      run.get("env")?.get(name)?.as_str().map(str::to_owned)
-    });
+  /// The variables its `variablesFile` holds, read afresh: none where it names no file, and why where the file
+  /// does not stand or does not read as an object of strings.
+  pub fn file_variables(&self) -> Result<BTreeMap<String, String>, String> {
+    let Some(file) = &self.variables_file else {
+      return Ok(BTreeMap::new());
+    };
+    let text = std::fs::read_to_string(file)
+      .map_err(|why| format!("its variables file {}: {why}", file.display()))?;
 
-    from_place.or_else(|| self.run_variables.get(name).cloned())
+    serde_json::from_str(&text)
+      .map_err(|why| format!("its variables file {} is no object of strings: {why}", file.display()))
   }
 }
 
-/// What a research run's web tools are held to: when it closes, whose it is, how it fetches and how
-/// many branches it may open.
+/// What an issuer asks a session to be issued with: the record less the times the host answers, and how long
+/// it stands.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Research {
-  /// When research closes, in epoch milliseconds.
+pub struct SessionRequest {
+  pub holder_name: String,
+  pub namespaces: BTreeSet<String>,
+  pub capabilities: BTreeSet<String>,
+  pub grants: Vec<Granted>,
+  #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+  pub shown: BTreeSet<String>,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  pub variables: BTreeMap<String, String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub closes_at: Option<u64>,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub owner: Option<String>,
-  /// `search` or `browse`.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub source: Option<String>,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub role: Option<String>,
-  /// How many branches the run may open.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub branches: Option<u32>,
-  /// The room the research answers.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub chat: Option<i64>,
-  /// How pages are fetched: directly, through a browser first, or directly only.
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub strategy: Option<String>,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub host_interval_ms: Option<u64>,
-  #[serde(default, skip_serializing_if = "Option::is_none")]
-  pub engine_interval_ms: Option<u64>,
-  /// The rulebooks `read_rulebook` hands out.
-  #[serde(default, skip_serializing_if = "Vec::is_empty")]
-  pub rulebooks: Vec<String>,
+  pub variables_file: Option<PathBuf>,
+  #[serde(default, skip_serializing_if = "Map::is_empty")]
+  pub labels: Map<String, Value>,
+  /// How long the session stands, in milliseconds; none stands until it is revoked.
+  #[serde(default)]
+  pub ttl_ms: Option<u64>,
+}
+
+impl SessionRequest {
+  /// The record it asks for, issued at `now`, in epoch milliseconds.
+  pub fn issued_at(self, now: u64) -> Session {
+    Session {
+      holder_name: self.holder_name,
+      namespaces: self.namespaces,
+      capabilities: self.capabilities,
+      grants: self.grants,
+      shown: self.shown,
+      variables: self.variables,
+      variables_file: self.variables_file,
+      labels: self.labels,
+      expires_at: self.ttl_ms.map(|ttl| now.saturating_add(ttl)),
+      created_at: now,
+      kept: Default::default(),
+    }
+  }
 }

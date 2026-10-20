@@ -2,7 +2,7 @@
   {
     "id": "sdk/contract",
     "title": "Tool contract (bmo-tool)",
-    "what": "The crate every tool and the host are written to: the tool.toml manifest, the call protocol on standard input and the call-back socket, the session record, answers and their ceiling. Lives in sdk/contract.",
+    "what": "The crate every tool and the host are written to: the tool.toml manifest, the call protocol on standard input and the call-back socket, the session record with its namespaces, capabilities and grants, answers and their ceiling. Lives in sdk/contract.",
     "files": [
       "sdk/contract/src/lib.rs",
       "sdk/contract/src/manifest.rs",
@@ -17,10 +17,17 @@
       "sdk/contract/tests/contract/main.rs",
       "docs/api.md"
     ],
-    "symbols": [],
+    "symbols": [
+      "Session",
+      "SessionRequest",
+      "Granted",
+      "Grant",
+      "Tool",
+      "Served"
+    ],
     "aliases": [],
     "needs": [],
-    "base": "8b71da4dfad3a9bd1855218459e6d9bdb5623cf6"
+    "base": "cf540cde363a33e587ab33e259024e77ab20fcfe"
   },
   {
     "id": "sdk/py-kit",

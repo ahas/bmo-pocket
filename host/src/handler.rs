@@ -21,14 +21,12 @@ use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::lock::Lock;
 use crate::placed::{Placed, PlacedTool};
 use crate::residency;
 use crate::running::{ask, claim_answer, claimed, failed};
 
 /// What every namespace's handler stands on.
 pub struct Host {
-  pub lock: Lock,
   /// The placed tools' catalogue, and where their sockets are bound.
   pub placed: Arc<Placed>,
   /// The variables of the host's own environment a call's clean environment is handed beside its own.
@@ -42,7 +40,7 @@ pub struct Handler {
   pub host: Arc<Host>,
 }
 
-/// One entry of a placed tool a session holds, in the form it holds it: whole, or narrowed to a role bundle's
+/// One entry of a placed tool a session holds, in the form it holds it: whole, or narrowed to a bundle's
 /// arguments, which acts under no grant.
 #[derive(Clone)]
 pub struct Entry {
@@ -146,8 +144,7 @@ impl Entry {
     self.declared().output_schema.clone()
   }
 
-  /// What a session must hold of it, which a job run for another user is checked against: the entry's own
-  /// capabilities, or the bundle's that shows it.
+  /// What a session must hold of it: the entry's own capabilities, or the bundle's that shows it.
   pub fn capabilities(&self) -> Vec<String> {
     match self.held {
       Held::Bundle => self.bundle.clone().into_iter().collect(),
@@ -155,8 +152,7 @@ impl Entry {
     }
   }
 
-  /// The grant its requester must hold: a bundle's form acts only in the rooms its agent answers, under that
-  /// agent's own name, and carries none.
+  /// The resource a session's grants must hold for a call of it to run: a bundle's form acts under none.
   pub fn grant(&self) -> Option<String> {
     match self.held {
       Held::Bundle => None,
@@ -188,9 +184,9 @@ impl Entry {
   }
 }
 
-/// Why the host did not hand a call's answer on: the arguments do not fit, the grant lock refused, or the tool
-/// failed before answering a tool result. A session's model reads each as a failed tool result; the control socket
-/// answers each by its status.
+/// Why the host did not hand a call's answer on: the arguments do not fit, the session's grants do not hold the
+/// entry's grant, or the tool failed before answering a tool result. A session's model reads each as a failed
+/// tool result; the control socket answers each by its status.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
   Misfit(String),
@@ -208,9 +204,9 @@ impl Refusal {
 }
 
 // The form a session holds a placed entry in, and the bundle's capability where it is a bundle's: none for an
-// entry for the system alone.
+// entry for the system alone or outside the session's namespaces.
 fn placed_held(declared: &Declared, session: &Session) -> Option<(Held, Option<String>)> {
-  if declared.system {
+  if declared.system || !session.uses(&declared.namespace) {
     return None;
   }
 
@@ -223,6 +219,13 @@ fn placed_held(declared: &Declared, session: &Session) -> Option<(Held, Option<S
     .keys()
     .find(|bundle| session.holds(&[bundle]))
     .map(|bundle| (Held::Bundle, Some(bundle.clone())))
+}
+
+/// Why the session may not call an entry: the grant it declares, where the session's grants do not hold it.
+pub fn ungranted(entry: &Entry, session: &Session) -> Option<String> {
+  let grant = entry.grant()?;
+
+  (!session.granted(&grant)).then(|| format!("the session holds no grant for {grant}"))
 }
 
 /// The words a call of a tool the session is not shown is refused with, by its own name or through the
@@ -379,12 +382,12 @@ impl Host {
   }
 
   /// The entry a full name names among those the session holds, or, where `system` says so, among the
-  /// entries for the system alone too, which the system and other tools reach.
+  /// entries for the system alone of the session's namespaces too, which the system and other tools reach.
   pub fn find_full(&self, session: &Session, full: &str, system: bool) -> Option<Entry> {
     let (namespace, name) = full.split_once('/')?;
 
     self.find(session, namespace, name).or_else(|| {
-      system
+      (system && session.uses(namespace))
         .then(|| self.every().into_iter().find(|entry| entry.system() && entry.full_name() == full))
         .flatten()
     })
@@ -395,9 +398,9 @@ impl Host {
     self.placed.current().namespaces()
   }
 
-  /// One call of a tool the session holds: its arguments checked against its schema in the form held, the grant
-  /// its requester must hold, then the tool, whose tool result goes back unchanged; or why the host did not hand
-  /// one on.
+  /// One call of a tool the session holds: its arguments checked against its schema in the form held, its grant
+  /// against the session's grants, then the tool, whose tool result goes back unchanged; or why the host did not
+  /// hand one on.
   pub async fn attempt(
     self: &Arc<Self>,
     entry: &Entry,
@@ -416,14 +419,9 @@ impl Host {
       )));
     }
 
-    let capabilities = entry.capabilities();
-    let named: Vec<&str> = capabilities.iter().map(String::as_str).collect();
-
-    self
-      .lock
-      .permits(session, entry.grant().as_deref(), &named, &arguments)
-      .await
-      .map_err(Refusal::Denied)?;
+    if let Some(why) = ungranted(entry, session) {
+      return Err(Refusal::Denied(format!("{} was not called: {why}", entry.full_name())));
+    }
 
     let asked = Asked::Call {
       entry: entry.full_name(),
@@ -444,7 +442,12 @@ impl Host {
     session: &Session,
     arguments: Value,
   ) -> Result<Value, ErrorData> {
-    Ok(self.attempt(entry, session, arguments).await.unwrap_or_else(|refusal| failed(refusal.said())))
+    Ok(
+      self
+        .attempt(entry, session, arguments)
+        .await
+        .unwrap_or_else(|refusal| failed(refusal.said())),
+    )
   }
 
   /// One call of a tool the session holds, as the protocol answers it.
@@ -458,12 +461,13 @@ impl Host {
   }
 
   /// Which entry the session holds claims an address, and the arguments it reads that page with: each entry
-  /// claiming the address's host asked in turn, the first that claims it answering.
+  /// claiming the address's host whose grant the session holds asked, one after another, the first that claims
+  /// it answering.
   pub async fn claim(self: &Arc<Self>, session: &Session, address: &str) -> Value {
     for entry in self.held(session) {
       let declared = entry.declared();
 
-      if !declared.claims(address) {
+      if !declared.claims(address) || ungranted(&entry, session).is_some() {
         continue;
       }
 
@@ -568,7 +572,7 @@ impl Host {
     Some(lines.into_iter().map(|(_, _, line)| line).collect::<Vec<_>>().join("\n"))
   }
 
-  /// What a namespace says of itself: each entry's chat verb, record and icon in the sending verbs, records
+  /// What a namespace says of itself: each entry's verb, record and icon in the sending verbs, records
   /// and icons, each item it adds to a list of the facts, headed with its name, and the digest of every entry
   /// it holds; none where it holds no entry.
   pub fn facts(&self, namespace: &str) -> Option<Value> {

@@ -34,8 +34,6 @@ jsonschema.workspace = true
 libc.workspace = true
 notify.workspace = true
 rand.workspace = true
-# The account service the grant lock asks, over HTTP.
-reqwest.workspace = true
 rmcp = { workspace = true, features = ["client", "transport-child-process"] }
 schemars.workspace = true
 serde.workspace = true

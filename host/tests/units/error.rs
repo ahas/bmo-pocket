@@ -14,20 +14,23 @@ async fn answered(error: HostError) -> (StatusCode, String, serde_json::Value) {
 }
 
 #[tokio::test]
-async fn an_unknown_token_is_refused_as_unauthorised_in_problem_details() {
+async fn an_unknown_token_is_refused_as_unauthorised_in_the_common_error_shape() {
   let (status, kind, body) = answered(HostError::UnknownToken).await;
 
   assert_eq!(status, StatusCode::UNAUTHORIZED);
-  assert_eq!(kind, "application/problem+json");
-  assert_eq!(body["code"], "mcp-host.unknown-token");
-  assert_eq!(body["status"], 401);
-  assert_eq!(body["type"], "urn:sumida:error:mcp-host.unknown-token");
-  assert_eq!(body["title"], "Unauthorized");
+  assert_eq!(kind, "application/json");
+  assert_eq!(body.as_object().unwrap().len(), 2, "{body}");
+  assert_eq!(body["code"], "unknown-token");
+  assert_eq!(body["error"], "the token names no session");
 }
 
 #[tokio::test]
 async fn each_case_answers_its_own_status() {
   assert_eq!(answered(HostError::NoToken).await.0, StatusCode::UNAUTHORIZED);
-  assert_eq!(answered(HostError::UnknownNamespace("graph".into())).await.0, StatusCode::NOT_FOUND);
-  assert_eq!(answered(HostError::MalformedRecord("no line".into())).await.0, StatusCode::BAD_REQUEST);
+  assert_eq!(answered(HostError::UnknownNamespace("garden".into())).await.0, StatusCode::NOT_FOUND);
+  assert_eq!(
+    answered(HostError::MalformedRecord("no holder".into())).await.0,
+    StatusCode::BAD_REQUEST
+  );
+  assert_eq!(answered(HostError::GrantRefused("no grant".into())).await.0, StatusCode::FORBIDDEN);
 }

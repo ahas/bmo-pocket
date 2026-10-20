@@ -1,23 +1,16 @@
-//! A stand-in tool placed under a tools root, the host serving it in this process, and its control socket served
-//! on a socket of the test's own, for the control socket's and the schedules' tests.
+//! A stand-in tool placed under a tools root and the host serving it in this process, for the schedules' tests.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use bmo_tool::Session;
 use bmo_tool::manifest::{MANIFEST, PLACED};
+use bmo_tool::{Granted, Session};
 use mcp_host::handler::Host;
-use mcp_host::lock::Lock;
 use mcp_host::placed::Placed;
-use mcp_host::records::Records;
-use mcp_host::schedule::Schedules;
-use mcp_host::server;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tempfile::TempDir;
-use tokio::net::UnixListener;
 
-// The stand-in's executable: it keeps what each call was handed in the data root, then breaks for `broken`, answers
-// a failed result for the text `fail`, and says the text back otherwise.
+// The stand-in's executable: it keeps what each call was handed beside itself, then breaks for `broken`, answers a
+// failed result for the text `fail`, and says the text back otherwise.
 const SCRIPT: &str = r#"
 import json, os, sys
 
@@ -25,12 +18,13 @@ handed = json.load(sys.stdin)
 kept = {
     "entry": handed["entry"],
     "arguments": handed["arguments"],
-    "line": handed["session"]["line"],
+    "holderName": handed["session"]["holderName"],
     "capabilities": handed["session"]["capabilities"],
+    "grants": handed["session"]["grants"],
     "scheduledAt": os.environ.get("BMO_SCHEDULED_AT"),
 }
 
-with open(os.path.join(os.environ["BMO_DATA_DIR"], "handed.jsonl"), "a") as kept_file:
+with open("handed.jsonl", "a") as kept_file:
     kept_file.write(json.dumps(kept) + "\n")
 
 if handed["entry"] == "notes/broken":
@@ -47,8 +41,8 @@ else:
 
 const SCHEMA: &str = r#"{ "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"], "additionalProperties": false }"#;
 
-/// The stand-in's manifest: a read-only entry with an icon, a listing line and a schedule; an acting one; and one for
-/// the system alone that breaks.
+/// The stand-in's manifest: a read-only entry with an icon, a listing line and a schedule; an acting one under a
+/// grant; and one for the system alone that breaks.
 pub const MANIFEST_TEXT: &str = r#"
 [tool]
 name = "almanac"
@@ -80,6 +74,7 @@ name = "write_note"
 description = "Keeps a note."
 input = "note.json"
 capabilities = ["notes.write"]
+grant = "notes.keep"
 
 [[entry]]
 namespace = "notes"
@@ -91,9 +86,9 @@ hints = { read_only = true }
 "#;
 
 pub struct Fixture {
-  pub dir: TempDir,
-  // Sockets are bound under a short path of their own.
-  pub sockets: TempDir,
+  dir: TempDir,
+  // Sockets are bound under a short path of their own, which stands as long as the fixture.
+  _sockets: TempDir,
   pub host: Arc<Host>,
 }
 
@@ -105,7 +100,6 @@ impl Fixture {
     let placed = dir.path().join("tools/almanac").join(PLACED);
 
     std::fs::create_dir_all(&placed).unwrap();
-    std::fs::create_dir_all(dir.path().join("data")).unwrap();
     std::fs::write(placed.join(MANIFEST), manifest).unwrap();
     std::fs::write(placed.join("note.json"), SCHEMA).unwrap();
     std::fs::write(placed.join("almanac.py"), SCRIPT).unwrap();
@@ -115,45 +109,43 @@ impl Fixture {
     placed.reread();
 
     let host = Arc::new(Host {
-      lock: Lock::default(),
       placed: Arc::new(placed),
       pass_env: Vec::new(),
     });
 
-    Self { dir, sockets, host }
+    Self {
+      dir,
+      _sockets: sockets,
+      host,
+    }
   }
 
   pub fn new() -> Self {
     Self::with(MANIFEST_TEXT)
   }
 
-  pub fn data(&self) -> PathBuf {
-    self.dir.path().join("data")
-  }
-
-  /// A record holding these capabilities.
-  pub fn session(&self, capabilities: &[&str]) -> Session {
-    serde_json::from_value(json!({ "line": "worker", "capabilities": capabilities, "dataRoot": self.data() }))
-      .unwrap()
+  /// A record of the namespace `notes` holding these capabilities and grants.
+  pub fn session(&self, capabilities: &[&str], grants: &[&str]) -> Session {
+    Session {
+      holder_name: "tester".to_owned(),
+      namespaces: ["notes".to_owned()].into(),
+      capabilities: capabilities.iter().map(|one| (*one).to_owned()).collect(),
+      grants: grants
+        .iter()
+        .map(|one| Granted {
+          resource: (*one).to_owned(),
+        })
+        .collect(),
+      ..Session::default()
+    }
   }
 
   /// What each call of the stand-in was handed, in order.
   pub fn handed(&self) -> Vec<Value> {
-    std::fs::read_to_string(self.data().join("handed.jsonl"))
+    std::fs::read_to_string(self.dir.path().join("tools/almanac").join(PLACED).join("handed.jsonl"))
       .unwrap_or_default()
       .lines()
       .map(|line| serde_json::from_str(line).unwrap())
       .collect()
-  }
-
-  /// The control socket served in this process, on a socket of its own; it ends with the test's runtime.
-  pub fn serve(&self, schedules: Arc<Schedules>) -> PathBuf {
-    let socket = self.sockets.path().join("control.sock");
-    let listener = UnixListener::bind(&socket).unwrap();
-    let records = Arc::new(Records::load(&self.data().join("tool-host/sessions")).unwrap());
-    let router = server::control(records, self.host.clone(), schedules);
-
-    tokio::spawn(async move { axum::serve(listener, router).await });
-    socket
   }
 }

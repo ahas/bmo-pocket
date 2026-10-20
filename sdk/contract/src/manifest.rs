@@ -82,7 +82,7 @@ impl From<HintsPart> for Hints {
   }
 }
 
-/// The narrower form a role bundle shows an entry in.
+/// The narrower form a bundle shows an entry in.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BundlePart {
@@ -104,7 +104,7 @@ pub struct ListingPart {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FactsPart {
-  /// The chat verb a sending entry needs.
+  /// The verb a sending entry needs, a name its readers know.
   #[serde(default)]
   pub verb: Option<String>,
   /// The record a recording entry leaves.
@@ -159,7 +159,7 @@ pub struct Entry {
   pub hints: HintsPart,
   #[serde(default)]
   pub capabilities: Vec<String>,
-  /// The room relation a requester must hold for it to run.
+  /// The resource a session's grants must hold for a call of it to run.
   #[serde(default)]
   pub grant: Option<String>,
   #[serde(default)]
@@ -460,7 +460,7 @@ impl Manifest {
           "capabilities",
           entry.capabilities.iter().map(String::as_str).collect::<BTreeSet<_>>() == capabilities,
         ),
-        ("grant", entry.grant.as_deref() == tool.grant().map(|grant| grant.relation())),
+        ("grant", entry.grant.as_deref() == tool.grant().map(|grant| grant.resource())),
         ("system", entry.system == tool.system()),
         (
           "bundle",

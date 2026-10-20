@@ -16,16 +16,21 @@ impl Kept for Browser {
   }
 }
 
-fn session(deadline: Option<u64>) -> Session {
-  serde_json::from_value(
-    json!({ "line": "search", "capabilities": ["web.read"], "dataRoot": "/", "deadline": deadline }),
-  )
+fn session(expires_at: Option<u64>) -> Session {
+  serde_json::from_value(json!({
+    "holderName": "reader",
+    "namespaces": ["web"],
+    "capabilities": ["web.read"],
+    "grants": [],
+    "expiresAt": expires_at,
+    "createdAt": now_ms(),
+  }))
   .unwrap()
 }
 
-// A record past its deadline loses what it keeps at the next sweep, and every one goes when the host stops.
+// A record past its `expiresAt` loses what it keeps at the next sweep, and every one goes when the host stops.
 #[tokio::test]
-async fn a_record_past_its_deadline_is_dropped_at_the_next_sweep_and_its_kept_values_end() {
+async fn a_record_past_its_expiry_is_dropped_at_the_next_sweep_and_its_kept_values_end() {
   let place = tempfile::tempdir().unwrap();
   let records = Records::load(place.path()).unwrap();
   let ended = Arc::new(AtomicUsize::new(0));
