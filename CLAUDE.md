@@ -29,8 +29,9 @@ name; it reads their manifests.
   manifests at the root**: the root `Cargo.toml` is the workspace and the repository's own package.
 - **Documents state what is true now**: no change history, no quoted source and no file-and-line pins.
 - **`.graph/` is the code dependency graph**, written only by `bmo graph` in this checkout. `settings.toml`
-  declares the repository's name and coverage; a commit that moves a feature's files, symbols or edges brings its
-  node along in the same commit.
+  declares the repository's name and coverage and stays tracked; a change that moves a feature's files, symbols
+  or edges brings its node up to date in the checkout. The area files are generated and untracked, so a fresh
+  checkout builds them again.
 
 ## Checks
 
