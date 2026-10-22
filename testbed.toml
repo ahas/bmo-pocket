@@ -44,5 +44,6 @@ root = "~/.local/share/bmo-pocket"
 link = "deploy"
 data_root = "~/.local/share/bmo/data"
 units = ["deploy/*.service"]
-# Answers 0 once the host answers on its control socket.
-health = 'curl -sf --unix-socket "${XDG_RUNTIME_DIR:-/tmp}/bmo/mcp-host.sock" http://localhost/health'
+# Answers 0 once the host answers on its control socket, under the issuer token the host writes
+# under the data root at its first start.
+health = 'curl -sf -H "Authorization: Bearer $(cat "${BMO_DATA_DIR:-$HOME/.local/share/bmo/data}/tool-host/issuer-token")" --unix-socket "${XDG_RUNTIME_DIR:-/tmp}/bmo/mcp-host.sock" http://localhost/health'
