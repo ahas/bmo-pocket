@@ -235,6 +235,8 @@ flowchart TD
 - **The control socket answers its refusals by status,** in the common error shape: a call the host refuses or
   that fails before the tool answers is a non-2xx status naming why, where a session's call on the tools face is
   answered the same refusal as a failed tool result for its model to read.
+- **It serves the paragraph on finding and using tools** that a session's system prompt carries, as text on
+  `GET /discipline` (`docs/toolbook.md`, 「The rules a prompt carries」).
 - **Each tool member carries its icon,** and `GET /schedules` where each schedule stands, so a reader needs no
   second route for either.
 

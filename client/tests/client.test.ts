@@ -134,6 +134,14 @@ describe("the TypeScript client", () => {
     expect(health.version).toBe(JSON.parse(readFileSync(resolve(import.meta.dir, "../package.json"), "utf8")).version);
   });
 
+  test("answers the discipline as text to either token", async () => {
+    const said = await issuer.discipline();
+
+    expect(said.startsWith("# Finding and using tools\n")).toBe(true);
+    expect(said).toBe(readFileSync(resolve(import.meta.dir, "../../prompts/tool-use.md"), "utf8"));
+    expect(await (await session()).discipline()).toBe(said);
+  });
+
   test("issues a session, and a session's token issues nothing", async () => {
     const reader = await session();
     const refused = await refusal(reader.issue({ holderName: "x", namespaces: [], capabilities: [], grants: [] }));

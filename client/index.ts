@@ -92,6 +92,11 @@ export function pocketClient(options: PocketOptions) {
       return answered(await client.GET("/health"));
     },
 
+    /** `GET /discipline`: the paragraph on finding and using tools that a session's system prompt carries. */
+    async discipline(): Promise<string> {
+      return answered(await client.GET("/discipline", { parseAs: "text" }));
+    },
+
     /** `GET /namespaces`: a page of the namespaces the token sees, in order of name. */
     async namespaces(query: NameQuery = {}): Promise<NamespacePage> {
       return answered(await client.GET("/namespaces", { params: { query } }));

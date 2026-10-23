@@ -138,6 +138,20 @@ impl Pocket {
     body(self.ask(Method::GET, "/health", None).await?, StatusCode::OK)
   }
 
+  /// `GET /discipline`: the paragraph on finding and using tools that a session's system prompt carries.
+  pub async fn discipline(&self) -> Result<String, Failure> {
+    let reply = self.ask(Method::GET, "/discipline", None).await?;
+
+    if reply.status != StatusCode::OK {
+      return Err(refusal(&reply));
+    }
+
+    String::from_utf8(reply.body.to_vec()).map_err(|why| Failure::Unreadable {
+      status: reply.status,
+      why: why.to_string(),
+    })
+  }
+
   /// `GET /namespaces`: a page of the namespaces the token sees, in order of name.
   pub async fn namespaces(&self, page: &NameQuery) -> Result<NamespacePage, Failure> {
     let query = paged(page.after.clone(), page.limit);

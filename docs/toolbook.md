@@ -41,6 +41,24 @@
   warm prefix or a request's prompt, so a session's cached prefix never moves for it. The `list` and `describe`
   answers stand in the session like any other result.
 
+## The rules a prompt carries
+
+- **The toolbook's descriptions say how one booked tool is reached; a session's instructions say how tools are
+  found and used at all.** The host owns that paragraph, since the toolbook is its own, and serves it as text on
+  the control socket's `GET /discipline` (`docs/api.md`, 「Discipline」). An issuer writes it whole into the system
+  prompt of each session it hands the toolbook to, and writes nothing of its own about the toolbook beside it.
+- **What it tells the session:**
+  - an unknown tool is found with `list`, read with `describe` before its arguments are filled, and called by its
+    full name: a read through `call`, an action through `act`;
+  - the tools reached through the toolbook change while the session runs, so a tool's name is never taken from
+    memory or guessed, but found again;
+  - long work is not waited on: where a tool answers that it has started something, its result comes back as a
+    message, and the session goes on rather than calling again to see whether it is done;
+  - a refusal of the arguments carries the tool's schema, so the session mends them and calls once more.
+- **It is one English paragraph under a heading,** kept as `prompts/tool-use.md` and built into the host, so the
+  text a host serves is the text of the version it runs. It moves no running session's prefix: an issuer reads it
+  when it builds a session's prompt.
+
 ## Which tools are resident
 
 - **The record's issuer names them.** A session record carries `shown`, the full names of the entries its

@@ -1,6 +1,6 @@
 # The boundary
 
-**Fixed API, version 0.1.0-rev.2.** This document is the tool host's fixed API: every contract it exposes to another
+**Fixed API, version 0.1.0-rev.3.** This document is the tool host's fixed API: every contract it exposes to another
 unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
 served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
 tables, its files or its process. The host calls no other unit. How the host behaves behind these contracts is
@@ -111,7 +111,8 @@ tables, its files or its process. The host calls no other unit. How the host beh
 ## The control socket
 
 - **HTTP/1.1 over a Unix socket,** at the path `--control` names, or `bmo/mcp-host.sock` under the user's runtime
-  directory; a client finds it at `BMO_MCP_HOST_SOCKET` where it stands elsewhere. Bodies are JSON both ways.
+  directory; a client finds it at `BMO_MCP_HOST_SOCKET` where it stands elsewhere. Bodies are JSON both ways,
+  but for `GET /discipline`, which answers text (「Discipline」).
 - **Every route takes a bearer token** in `Authorization: Bearer <token>`, of one of two kinds:
   - **the issuer token,** the one the host keeps in `tool-host/issuer-token` under the data root, or in the file
     `--issuer-token-file` names, readable by the host's user alone and made by the host at its first start where
@@ -127,6 +128,14 @@ tables, its files or its process. The host calls no other unit. How the host beh
 | Route | Token | Answer |
 |---|---|---|
 | `GET /health` | either | 200 `{ready, reason, version}`: `ready` true and `reason` null once the catalogue is read, and `version` the repository's |
+
+### Discipline
+
+| Route | Token | Answer |
+|---|---|---|
+| `GET /discipline` | either | 200 `text/plain`: the paragraph on finding and using tools that an issuer writes into the system prompt of a session it hands the toolbook to (`docs/toolbook.md`, 「The rules a prompt carries」) |
+
+- **The one route that answers no JSON:** its body is the prompt text itself, in UTF-8, written as it stands.
 
 ### Namespaces
 

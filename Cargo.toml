@@ -6,7 +6,7 @@ members = ["client", "host", "plugin", "sdk/contract"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0-rev.2"
+version = "0.1.0-rev.3"
 edition = "2024"
 license = "MIT"
 publish = false

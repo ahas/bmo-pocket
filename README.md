@@ -20,6 +20,7 @@ helpers tools written in TypeScript or Python import.
 | `.graph/` | the code dependency graph: one node per feature with its files and what it reads or calls, and boundary nodes for the APIs exposed and called, written only by `bmo graph` |
 | `host/` | the tool host, `mcp-host`, and the command `bmo-pocket` (the registry's verbs and `mcp`), with their tests in `host/tests/` |
 | `plugin/` | the harness plugin, `bmo-pocket-plugin`: the MCP server `bmo-pocket mcp` serves and its `bmo-pocket` skill |
+| `prompts/` | the prompt text the host serves, `tool-use.md`: the paragraph on finding and using tools a session's system prompt carries |
 | `sdk/` | the tool SDK: `sdk/contract/`, the `bmo-tool` crate holding the call protocol and the manifest schema, which Rust tools link; `sdk/ts-kit/` and `sdk/py-kit/`, the helpers a TypeScript or Python tool imports |
 | `tests/` | the checks that span the repository, including the personal-data check over every tracked file (`PERSONAL-DATA.md`), and `tests/host-contract/`, the host held to what an installed CLI reads of it |
 

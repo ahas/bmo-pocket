@@ -281,6 +281,14 @@ async fn health() -> Json<Health> {
   })
 }
 
+/// The paragraph on finding and using tools a session's system prompt carries (docs/toolbook.md, 「The rules a
+/// prompt carries」), built into the host so the text served is the version's own.
+pub const DISCIPLINE: &str = include_str!("../../prompts/tool-use.md");
+
+async fn discipline() -> Response {
+  ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], DISCIPLINE).into_response()
+}
+
 async fn namespaces(
   State(control): State<Control>,
   Extension(caller): Extension<Caller>,
@@ -493,9 +501,9 @@ async fn method_not_allowed() -> HostError {
   HostError::MethodNotAllowed
 }
 
-/// The control socket, each route behind the issuer token or a tool session's: health; the namespaces, one of them,
-/// a namespace's tools and one tool; a call and a claim under a tool session; a tool session issued and revoked;
-/// and the schedules. Any other path or method is refused in the common error shape.
+/// The control socket, each route behind the issuer token or a tool session's: health; the discipline; the
+/// namespaces, one of them, a namespace's tools and one tool; a call and a claim under a tool session; a tool
+/// session issued and revoked; and the schedules. Any other path or method is refused in the common error shape.
 pub fn control(
   records: Arc<Records>,
   host: Arc<Host>,
@@ -511,6 +519,7 @@ pub fn control(
 
   Router::new()
     .route("/health", get(health))
+    .route("/discipline", get(discipline))
     .route("/namespaces", get(namespaces))
     .route("/namespaces/{namespace}", get(one_namespace))
     .route("/namespaces/{namespace}/tools", get(tool_page))

@@ -23,9 +23,9 @@ const SCHEMAS: &str = "/components/schemas";
 const DESCRIPTION: &str = "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer \
   token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, \
   tool and schedule, or a tool session's token, which sees the namespaces its record names and the tools it holds \
-  there, and calls and claims under that record. Bodies are JSON both ways. Every failure and refusal is a non-2xx \
-  status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own \
-  protocol and is not stated here.";
+  there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers \
+  text. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over \
+  HTTP on the loopback port, is MCP's own protocol and is not stated here.";
 
 /// Which token a route takes.
 #[derive(Clone, Copy)]
@@ -45,6 +45,16 @@ impl Token {
   }
 }
 
+/// What a route answers with where it succeeds.
+enum Answer {
+  /// A JSON body of this schema.
+  Json(Schema),
+  /// A body of plain UTF-8 text.
+  Text,
+  /// No body.
+  Empty,
+}
+
 /// One route of the control socket.
 struct Route {
   method: &'static str,
@@ -55,8 +65,8 @@ struct Route {
   token: Token,
   parameters: Vec<Value>,
   request: Option<Schema>,
-  /// The status it succeeds with, and the schema of its body where it answers one.
-  answer: (u16, Option<Schema>),
+  /// The status it succeeds with, and the body it answers with.
+  answer: (u16, Answer),
   codes: &'static [ErrorCode],
 }
 
@@ -101,7 +111,19 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       token: Token::Either,
       parameters: Vec::new(),
       request: None,
-      answer: (200, Some(schema::<Health>(generator))),
+      answer: (200, Answer::Json(schema::<Health>(generator))),
+      codes: &[Unauthorized],
+    },
+    Route {
+      method: "get",
+      path: "/discipline",
+      operation: "readDiscipline",
+      tag: "discipline",
+      summary: "The paragraph on finding and using tools that a session's system prompt carries, as text.",
+      token: Token::Either,
+      parameters: Vec::new(),
+      request: None,
+      answer: (200, Answer::Text),
       codes: &[Unauthorized],
     },
     Route {
@@ -113,7 +135,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       token: Token::Either,
       parameters: vec![after_name("namespace's"), limit()],
       request: None,
-      answer: (200, Some(schema::<NamespacePage>(generator))),
+      answer: (200, Answer::Json(schema::<NamespacePage>(generator))),
       codes: &[Unauthorized, BadRequest],
     },
     Route {
@@ -125,7 +147,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       token: Token::Either,
       parameters: vec![path_parameter("namespace", "The namespace's name.")],
       request: None,
-      answer: (200, Some(schema::<Namespace>(generator))),
+      answer: (200, Answer::Json(schema::<Namespace>(generator))),
       codes: &[Unauthorized, NotFound],
     },
     Route {
@@ -137,7 +159,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       token: Token::Either,
       parameters: vec![path_parameter("namespace", "The namespace's name."), after_name("tool's"), limit()],
       request: None,
-      answer: (200, Some(schema::<ToolPage>(generator))),
+      answer: (200, Answer::Json(schema::<ToolPage>(generator))),
       codes: &[Unauthorized, BadRequest, NotFound],
     },
     Route {
@@ -152,7 +174,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         path_parameter("toolName", "The tool's name in the namespace."),
       ],
       request: None,
-      answer: (200, Some(schema::<Tool>(generator))),
+      answer: (200, Answer::Json(schema::<Tool>(generator))),
       codes: &[Unauthorized, NotFound],
     },
     Route {
@@ -165,7 +187,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       token: Token::Session,
       parameters: Vec::new(),
       request: Some(schema::<ToolCallRequest>(generator)),
-      answer: (200, Some(schema::<ToolCall>(generator))),
+      answer: (200, Answer::Json(schema::<ToolCall>(generator))),
       codes: &[Unauthorized, BadRequest, Forbidden, NotFound, ArgumentsMisfit, ToolFailed],
     },
     Route {
@@ -177,7 +199,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       token: Token::Session,
       parameters: Vec::new(),
       request: Some(schema::<ClaimRequest>(generator)),
-      answer: (200, Some(schema::<Claim>(generator))),
+      answer: (200, Answer::Json(schema::<Claim>(generator))),
       codes: &[Unauthorized, BadRequest, Forbidden],
     },
     Route {
@@ -189,7 +211,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       token: Token::Issuer,
       parameters: Vec::new(),
       request: Some(schema::<SessionRequest>(generator)),
-      answer: (201, Some(schema::<ToolSession>(generator))),
+      answer: (201, Answer::Json(schema::<ToolSession>(generator))),
       codes: &[Unauthorized, BadRequest, Forbidden, Failed],
     },
     Route {
@@ -201,7 +223,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       token: Token::Issuer,
       parameters: vec![path_parameter("token", "The token the session was issued with.")],
       request: None,
-      answer: (204, None),
+      answer: (204, Answer::Empty),
       codes: &[Unauthorized, Forbidden, NotFound, Failed],
     },
     Route {
@@ -221,7 +243,7 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
         limit(),
       ],
       request: None,
-      answer: (200, Some(schema::<SchedulePage>(generator))),
+      answer: (200, Answer::Json(schema::<SchedulePage>(generator))),
       codes: &[Unauthorized, BadRequest],
     },
   ]
@@ -235,10 +257,14 @@ impl Route {
     responses.insert(
       status.to_string(),
       match answer {
-        Some(schema) => {
+        Answer::Json(schema) => {
           json!({ "description": "The route's answer.", "content": { "application/json": { "schema": schema } } })
         }
-        None => json!({ "description": "Done; no body." }),
+        Answer::Text => json!({
+          "description": "The route's answer, as text.",
+          "content": { "text/plain": { "schema": { "type": "string" } } },
+        }),
+        Answer::Empty => json!({ "description": "Done; no body." }),
       },
     );
 
@@ -324,6 +350,7 @@ pub fn openapi() -> Value {
     "security": [{ "bearer": [] }],
     "tags": [
       { "name": "health", "description": "Whether the host is ready." },
+      { "name": "discipline", "description": "The prompt text a session handed the toolbook carries." },
       { "name": "namespaces", "description": "Every namespace with its tools: the catalogue." },
       { "name": "tool-calls", "description": "Calls made under a tool session." },
       { "name": "claims", "description": "Which entry a tool session may have an address read by." },

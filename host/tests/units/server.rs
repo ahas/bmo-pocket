@@ -292,3 +292,32 @@ async fn the_schedules_are_paged_by_when_each_is_due_and_seen_where_their_entry_
     (StatusCode::BAD_REQUEST, ErrorCode::BadRequest)
   );
 }
+
+// The discipline (docs/toolbook.md, 「The rules a prompt carries」): the prompt paragraph, as text, to either token
+// and to no one without one.
+#[tokio::test]
+async fn the_discipline_answers_the_prompt_paragraph_as_text_to_either_token() {
+  let fixture = Fixture::new();
+  let socket = fixture.serve(Arc::new(Schedules::default()));
+  let issuer = Pocket::at(&socket, ISSUER);
+  let issued = issuer.issue(&asked(&["notes.read"], &[])).await.unwrap();
+  let session = Pocket::at(&socket, issued.token.clone());
+  let said = issuer.discipline().await.unwrap();
+
+  assert_eq!(said, mcp_host::server::DISCIPLINE);
+  assert_eq!(session.discipline().await.unwrap(), said);
+  assert!(said.starts_with("# Finding and using tools\n"), "{said}");
+
+  for rule in ["`list`", "`describe`", "`call`", "`act`", "never call a tool by a name"] {
+    assert!(said.contains(rule), "{rule}\n{said}");
+  }
+
+  let bare = request(&socket, Method::GET, "/discipline", Some(ISSUER), None).await.unwrap();
+
+  assert_eq!(bare.status, StatusCode::OK);
+  assert!(bare.json().is_none());
+  assert_eq!(
+    code(Pocket::at(&socket, "nobody's").discipline().await),
+    (StatusCode::UNAUTHORIZED, ErrorCode::Unauthorized)
+  );
+}

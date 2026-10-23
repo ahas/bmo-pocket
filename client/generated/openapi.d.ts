@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/discipline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The paragraph on finding and using tools that a session's system prompt carries, as text. */
+        get: operations["readDiscipline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -471,6 +488,38 @@ export interface operations {
                     "application/json": components["schemas"]["WireError"] & {
                         /** @enum {unknown} */
                         code?: "forbidden";
+                    };
+                };
+            };
+        };
+    };
+    readDiscipline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The route's answer, as text. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
                     };
                 };
             };
