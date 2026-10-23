@@ -425,6 +425,10 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 - **`bmo-pocket` carries two sets of words:** the registry verbs, which `bmo pocket <verb>` hands it by the
   `bmo-<command>` rule, and the `tool` nouns, which `bmo tool <verb>` hands it by the declared-noun rule.
   `bmo-pocket nouns` prints the four, one a line: `tool list`, `tool describe`, `tool call` and `tool sites`.
+- **Every deployment links `bmo-pocket` into the folder holding `bmo`,** the first folder `bmo` looks for unit
+  commands in, before the flip; the link names the deploy tree's own link, which stands across releases. So `bmo
+  pocket <verb>` and the `tool` nouns are served wherever `bmo` is, a service's own deployment running `bmo pocket
+  put` among them.
 - **Its registry verbs stand on the data root** `--data-root` or `BMO_DATA_DIR` names. It prints what it did on
   standard output and why it refused on standard error, and ends 0 where it did what was asked, 1 where it refused,
   and 2 where its words do not read. The `tool` nouns end the same way: 0 where the host answered, 1 where it

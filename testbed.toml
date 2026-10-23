@@ -47,3 +47,16 @@ units = ["deploy/*.service"]
 # Answers 0 once the host answers on its control socket, under the issuer token the host writes
 # under the data root at its first start.
 health = 'curl -sf -H "Authorization: Bearer $(cat "${BMO_DATA_DIR:-$HOME/.local/share/bmo/data}/tool-host/issuer-token")" --unix-socket "${XDG_RUNTIME_DIR:-/tmp}/bmo/mcp-host.sock" http://localhost/health'
+
+# The CLI, linked into the folder holding `bmo`, the first folder `bmo` looks for unit commands in, so `bmo
+# pocket <verb>` and the `tool` nouns are served wherever `bmo` is (docs/api.md, "The CLI"). The link names this
+# repository's deploy tree, whose own link stands across releases; a link made to the release being deployed
+# would dangle once a later deployment prunes that release.
+[[deploy.step]]
+id = "link-unit-command"
+phase = "before-flip"
+command = '''
+set -eu
+bmo_dir="$(dirname "$(command -v bmo)")"
+ln -sfn "$HOME/.local/share/bmo-pocket/deploy/bin/bmo-pocket" "$bmo_dir/bmo-pocket"
+'''
