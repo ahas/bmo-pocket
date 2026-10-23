@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use bmo_pocket_client::{Listing, Tool, ToolHints};
+use bmo_pocket_client::{Listing, ReachedBy, Tool, ToolHints};
 use bmo_tool::manifest::Entry as Declared;
 use bmo_tool::protocol::Asked;
 use bmo_tool::{Answer, Held, Hints, Session, narrowed};
@@ -89,6 +89,11 @@ impl Entry {
 
   pub fn read_only(&self) -> bool {
     self.hints().read_only
+  }
+
+  /// Which of the toolbook's two calling tools reaches it: `call` where it only reads.
+  pub fn reached_by(&self) -> ReachedBy {
+    if self.read_only() { ReachedBy::Call } else { ReachedBy::Act }
   }
 
   fn title(&self) -> Option<String> {
@@ -195,6 +200,8 @@ impl Entry {
         order: listing.order,
       }),
       system: self.system(),
+      manual: self.manual(),
+      reached_by: self.reached_by(),
     }
   }
 }

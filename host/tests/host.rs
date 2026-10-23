@@ -1069,7 +1069,8 @@ async fn the_toolbook_lists_describes_and_calls_what_the_namespaces_do_not_list(
   assert!(listed(&host, &seeker, "notes").await.is_empty());
   assert_eq!(listed(&host, &seeker, "toolbook").await, ["list", "describe", "call", "act"]);
 
-  let book = text(&called(&host, &seeker, "toolbook", "list", json!({})).await);
+  let listing = called(&host, &seeker, "toolbook", "list", json!({})).await;
+  let book = text(&listing);
 
   for line in [
     "notes/history · call — The history, newest first.",
@@ -1080,9 +1081,23 @@ async fn the_toolbook_lists_describes_and_calls_what_the_namespaces_do_not_list(
     assert!(book.lines().any(|listed| listed == line), "{line}\n{book}");
   }
 
+  // Beside its lines, the list answers each tool as an object a program reads.
+  let items = listing["result"]["structuredContent"]["items"].as_array().unwrap();
+
+  assert_eq!(items.len(), book.lines().count());
+  assert!(
+    items.contains(&json!({ "tool": "notes/note_add", "reachedBy": "act", "summary": "Files a row." })),
+    "{listing}"
+  );
+
+  let narrowed = called(&host, &seeker, "toolbook", "list", json!({ "query": "NEWEST" })).await;
+
+  assert_eq!(text(&narrowed), "notes/history · call — The history, newest first.");
   assert_eq!(
-    text(&called(&host, &seeker, "toolbook", "list", json!({ "query": "NEWEST" })).await),
-    "notes/history · call — The history, newest first."
+    narrowed["result"]["structuredContent"],
+    json!({
+      "items": [{ "tool": "notes/history", "reachedBy": "call", "summary": "The history, newest first." }]
+    })
   );
 
   let described =
@@ -1098,8 +1113,9 @@ async fn the_toolbook_lists_describes_and_calls_what_the_namespaces_do_not_list(
   assert!(!described.contains("Manual:"), "{described}");
 
   // A tool whose manifest names a manual is described with its full text after the description.
-  let manual =
-    text(&called(&host, &seeker, "toolbook", "describe", json!({ "tool": "garden/plant_list" })).await);
+  let planted =
+    called(&host, &seeker, "toolbook", "describe", json!({ "tool": "garden/plant_list" })).await;
+  let manual = text(&planted);
 
   assert!(
     manual.starts_with(
@@ -1108,6 +1124,18 @@ async fn the_toolbook_lists_describes_and_calls_what_the_namespaces_do_not_list(
     ),
     "{manual}"
   );
+
+  // The description is also the tool in the control socket's shape, as the session's token reads it there.
+  let shaped = &planted["result"]["structuredContent"];
+  let reply = control(&host, Method::GET, "/namespaces/garden/tools/plant_list", Some(&seeker), None).await;
+
+  assert_eq!(reply.status, StatusCode::OK, "{}", String::from_utf8_lossy(&reply.body));
+  assert_eq!(*shaped, reply.json().unwrap());
+  assert_eq!(shaped["reachedBy"], "call");
+  assert_eq!(shaped["manual"], PLANT_LIST_MANUAL);
+  let acting = called(&host, &seeker, "toolbook", "describe", json!({ "tool": "notes/note_add" })).await;
+
+  assert_eq!(acting["result"]["structuredContent"]["reachedBy"], "act");
 
   // A booked tool answers through the toolbook and by its own name alike.
   assert_eq!(

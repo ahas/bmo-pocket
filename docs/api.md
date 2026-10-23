@@ -1,6 +1,6 @@
 # The boundary
 
-**Fixed API, version 0.1.0-rev.4.** This document is the tool host's fixed API: every contract it exposes to another
+**Fixed API, version 0.1.0-rev.5.** This document is the tool host's fixed API: every contract it exposes to another
 unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
 served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
 tables, its files or its process. The host calls no other unit. How the host behaves behind these contracts is
@@ -101,6 +101,9 @@ tables, its files or its process. The host calls no other unit. How the host beh
   and `act` (`tool`, `arguments`), where `tool` is a full name, `<namespace>/<name>`, and `arguments` the inner
   tool's own arguments as one object (`docs/toolbook.md`). A reader of a session's calls reads a `call` or an `act`
   of the server `toolbook` as the inner call by these two arguments.
+- **`list` and `describe` answer structured content beside their text:** `list` `{items}`, each item
+  `{tool, reachedBy, summary}`, and `describe` the tool in the shape `GET /namespaces/{namespace}/tools/{toolName}`
+  answers it (「Tools」), for the token's session. A program reads these objects, never the text.
 - **A refusal a model reads is a tool result:** a call the session may not make, arguments that do not fit, a grant
   the session does not hold and a tool that failed are each answered as a tool result with `isError` true and an
   English text, since the protocol's caller is a model.
@@ -177,10 +180,13 @@ tables, its files or its process. The host calls no other unit. How the host beh
 | `hints` | object | `readOnly`, `destructive`, `idempotent` and `openWorld` |
 | `listing` | object or null | The line it adds to its namespace's listing, `{line, order}`, where it declares one |
 | `system` | boolean | Whether it is for the system alone, shown to no session |
+| `manual` | string or null | The full text of the manual its manifest names, where it names one |
+| `reachedBy` | string | Which of the toolbook's `call` and `act` reaches it: `call` where `hints.readOnly` holds, `act` otherwise |
 
 - **A tool's key in its namespace is its name,** so `after` answers the tools whose names sort after it, a string
   for the reason a namespace's cursor is one.
-- **A tool has one shape** wherever it is answered, in a page or alone.
+- **A tool has one shape** wherever it is answered, in a page or alone, and the toolbook's `describe` answers the
+  same shape as its structured content.
 
 ### Tool calls
 
@@ -361,7 +367,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | `name` | string, required | Lower-case letters, digits and `_` |
 | `title` | string | Its title |
 | `description` | string, required | What it does; its first sentence is its line in the toolbook's list |
-| `manual` | string | A Markdown file inside the tool's folder, named by its path relative to the folder: how to call the entry, its arguments and examples, which the toolbook's `describe` answers whole after the description |
+| `manual` | string | A Markdown file inside the tool's folder, named by its path relative to the folder: how to call the entry, its arguments and examples, which the toolbook's `describe` answers whole after the description, and a tool's `manual` field carries |
 | `input` | string, required | The input schema's file, beside the manifest |
 | `output` | string | The output schema's file, where it answers an object |
 | `hints` | table | `read_only`, `destructive`, `open_world` (booleans) and `idempotent`; a read-only entry is reached by `call`, any other by `act` |

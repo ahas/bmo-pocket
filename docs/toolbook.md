@@ -25,6 +25,12 @@
   - **`describe`:** one tool's description, then its manual's full text where its manifest names one, its input
     schema, its read-only hint and, where it declares one, the schema of what it answers with, and which of `call`
     and `act` reaches it.
+  - **`list` and `describe` answer twice in one result:** the text above, for a model, and the same answer as
+    structured content, for a program, so no program reads the text's wording. `list`'s object is `{items}`, each
+    item `{tool, reachedBy, summary}`: the full name, `call` or `act`, and the description's first sentence, every
+    listed tool whole where the text is cut to the answer's ceiling. `describe`'s object is the tool in the one shape
+    the control socket answers a tool in (`docs/api.md`, 「Tools」), whose `manual` and `reachedBy` carry its manual
+    and which of `call` and `act` reaches it.
   - **`call`:** calls one read-only tool with its arguments.
   - **`act`:** calls one tool that acts.
 - **The toolbook's own descriptions say how a booked tool is reached,** and nothing else need. `list`'s

@@ -105,6 +105,28 @@ pub struct Tool {
   pub listing: Option<Listing>,
   /// Whether it is for the system alone, shown to no session.
   pub system: bool,
+  /// The full text of the manual its manifest names, where it names one.
+  pub manual: Option<String>,
+  /// Which of the toolbook's calling tools reaches it.
+  pub reached_by: ReachedBy,
+}
+
+/// Which of the toolbook's two calling tools reaches a tool: `call` one that only reads, `act` any other.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ReachedBy {
+  Call,
+  Act,
+}
+
+impl ReachedBy {
+  /// The calling tool's name.
+  pub fn name(self) -> &'static str {
+    match self {
+      Self::Call => "call",
+      Self::Act => "act",
+    }
+  }
 }
 
 /// A page of a namespace's tools, in order of name.

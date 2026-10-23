@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use bmo_pocket_client::ReachedBy;
 use bmo_tool::{Answer, Session};
 use rmcp::model::{
   CallToolRequestParams, CallToolResponse, Implementation, InitializeResult, ListToolsResult,
@@ -13,7 +14,7 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::handler::{Entry, Host, answered, private, read, session, unknown};
@@ -91,11 +92,6 @@ pub fn tools() -> Vec<Value> {
   ]
 }
 
-// Which of the toolbook's two calling tools reaches an entry.
-fn reached_by(entry: &Entry) -> &'static str {
-  if entry.read_only() { "call" } else { "act" }
-}
-
 /// A description's first sentence, which a line of the list carries.
 pub fn first_sentence(text: &str) -> &str {
   let text = text.trim();
@@ -103,11 +99,29 @@ pub fn first_sentence(text: &str) -> &str {
   text.find(". ").map_or(text, |end| &text[..=end])
 }
 
-/// The list's lines: the booked tools the session holds, by full name, each narrowed by `query` where one
-/// is given.
-pub fn listed(held: &[Entry], query: Option<&str>) -> Vec<String> {
+/// One tool of the list, as its structured content carries it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Booked {
+  /// Its full name, `<namespace>/<name>`.
+  pub tool: String,
+  pub reached_by: ReachedBy,
+  /// Its description's first sentence.
+  pub summary: String,
+}
+
+impl Booked {
+  /// Its line in the list's text.
+  pub fn line(&self) -> String {
+    format!("{} · {} — {}", self.tool, self.reached_by.name(), self.summary)
+  }
+}
+
+/// The list: the booked tools the session holds, in order of full name, narrowed by `query` where one is
+/// given.
+pub fn listed(held: &[Entry], query: Option<&str>) -> Vec<Booked> {
   let query = query.map(str::trim).filter(|query| !query.is_empty()).map(str::to_lowercase);
-  let mut lines: Vec<(String, String)> = held
+  let mut booked: Vec<Booked> = held
     .iter()
     .filter(|entry| !entry.resident())
     .filter(|entry| {
@@ -116,23 +130,22 @@ pub fn listed(held: &[Entry], query: Option<&str>) -> Vec<String> {
           || entry.description().to_lowercase().contains(query)
       })
     })
-    .map(|entry| {
-      let full = entry.full_name();
-      let line = format!("{full} · {} — {}", reached_by(entry), first_sentence(&entry.description()));
-
-      (full, line)
+    .map(|entry| Booked {
+      tool: entry.full_name(),
+      reached_by: entry.reached_by(),
+      summary: first_sentence(&entry.description()).to_owned(),
     })
     .collect();
 
-  lines.sort();
-  lines.into_iter().map(|(_, line)| line).collect()
+  booked.sort_by(|one, other| one.tool.cmp(&other.tool));
+  booked
 }
 
 /// One entry described: what it does, its manual where it has one, how it is reached, whether it only reads,
 /// and its schemas.
 pub fn described(entry: &Entry) -> String {
   let mut said = vec![
-    format!("{} — reached with {}", entry.full_name(), reached_by(entry)),
+    format!("{} — reached with {}", entry.full_name(), entry.reached_by().name()),
     entry.description(),
   ];
 
@@ -170,21 +183,30 @@ fn input<T: serde::de::DeserializeOwned>(tool: &str, arguments: Value) -> Result
 impl Toolbook {
   async fn list(&self, session: &Session, asked: ListInput) -> Result<CallToolResponse, ErrorData> {
     let held = self.host.held(session);
-    let lines = listed(&held, asked.query.as_deref());
-
-    if lines.is_empty() {
-      return answered(&Answer::text(match asked.query {
+    let booked = listed(&held, asked.query.as_deref());
+    let mut answer = if booked.is_empty() {
+      Answer::text(match asked.query {
         Some(query) => format!("No toolbook tool matches '{query}'."),
         None => "No tool is reached through the toolbook in this session.".to_owned(),
-      }));
-    }
+      })
+    } else {
+      let lines: Vec<String> = booked.iter().map(Booked::line).collect();
 
-    answered(&Answer::lines(&lines, "narrow it with query"))
+      Answer::lines(&lines, "narrow it with query")
+    };
+
+    answer.structured = Some(json!({ "items": booked }));
+    answered(&answer)
   }
 
   async fn describe(&self, session: &Session, asked: DescribeInput) -> Result<CallToolResponse, ErrorData> {
     match named(self.host.held(session), &asked.tool) {
-      Ok(entry) => answered(&Answer::text(described(&entry))),
+      Ok(entry) => {
+        let mut answer = Answer::text(described(&entry));
+
+        answer.structured = Some(serde_json::to_value(entry.member()).unwrap_or(Value::Null));
+        answered(&answer)
+      }
       Err(why) => answered(&Answer::failure(why)),
     }
   }

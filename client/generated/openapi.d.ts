@@ -260,6 +260,11 @@ export interface components {
              */
             limit?: number | null;
         };
+        /**
+         * @description Which of the toolbook's two calling tools reaches a tool: `call` one that only reads, `act` any other.
+         * @enum {string}
+         */
+        ReachedBy: "call" | "act";
         /** @description One schedule an entry declares, and where it stands in the host. */
         Schedule: {
             /** @description The arguments each scheduled call is handed. */
@@ -326,10 +331,14 @@ export interface components {
             /** @description Its input schema, in the form the token holds it. */
             input: unknown;
             listing: components["schemas"]["Listing"] | null;
+            /** @description The full text of the manual its manifest names, where it names one. */
+            manual: string | null;
             name: string;
             namespace: string;
             /** @description The schema of what it answers with, where it declares one. */
             output: unknown;
+            /** @description Which of the toolbook's calling tools reaches it. */
+            reachedBy: components["schemas"]["ReachedBy"];
             /** @description Whether it is for the system alone, shown to no session. */
             system: boolean;
             title: string | null;

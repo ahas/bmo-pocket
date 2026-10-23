@@ -42,7 +42,7 @@ fn member(namespace: &str, name: &str) -> Value {
     "input": { "type": "object", "properties": { "text": { "type": "string" } } }, "output": null, "icon": null,
     "capabilities": [format!("{namespace}.use")], "grant": null,
     "hints": { "readOnly": name == "water", "destructive": false, "idempotent": null, "openWorld": false },
-    "listing": null, "system": false,
+    "listing": null, "system": false, "manual": null, "reachedBy": if name == "water" { "call" } else { "act" },
   })
 }
 
