@@ -12,9 +12,11 @@
   are handed (「The session record」).
 - **The host asks no other unit.** What a session may do is what its record carries, so no call waits on an
   account or permission service.
-- **Every tool is placed:** a folder holding a built tool and its manifest, in any language, which the host reads
-  at run time and whose own executable it runs for each call (「Placed tools」). No tool is linked into the host,
-  and no list of tools, namespaces, capabilities, grants or holders stands in its code.
+- **Every tool is placed or registered as an external server:** a folder holding a built tool and its manifest,
+  in any language, which the host reads at run time and whose own executable it runs for each call (「Placed
+  tools」), or an MCP server a registration names, which the host connects to and whose tools it lists and
+  forwards calls to (「External servers」). No tool is linked into the host, and no list of tools, namespaces,
+  capabilities, grants or holders stands in its code.
 - **Where a tool comes from is not the host's concern.** A standalone tool is a repository of its own; a tool
   bound to one service stands in that service's `tools/` folder. Both are placed the same way and both are
   registered the same way (`docs/registry.md`), and the host reads every placed manifest alike.
@@ -29,6 +31,7 @@ flowchart TD
   Host -->|a call, its record on standard input| Exe[a placed tool's executable]
   Exe -->|call-back socket of the call| Host
   Host -->|a schedule due, under a record of its own| Exe
+  Host -->|MCP, one connection per registration| External[an external server]
 ```
 
 ## Namespaces and capabilities
@@ -136,7 +139,8 @@ flowchart TD
 ### The catalogue
 
 - **Read from every placed folder the host is given:** the folders under the tools root `--tools` names — each
-  tool folder's `.placed/` — and the placed version of every tool the registry holds (`docs/registry.md`). A folder
+  tool folder's `.placed/` — and the placed version of every tool the registry holds (`docs/registry.md`); and
+  from the tools every external server the registry holds last listed (「External servers」). A folder
   under the tools root whose name starts with `_` is no tool. A registered manifest with a `[helper]` table is a
   shared helper (「Shared helpers」); one under the tools root is left out, since helpers are found through the
   registry alone.
@@ -164,7 +168,8 @@ flowchart TD
     not stand there;
   - an entry's full name is one another tool already holds; of two tools, the one read first keeps it, the tools
     root's in name order before the registry's in name order;
-  - a registered tool's version folder is gone.
+  - a registered tool's version folder is gone;
+  - an external server's registration does not read, or its tools are not yet listed.
 - **Each reading is said in the log,** with how many tools and helpers it placed.
 
 ### The manifest
@@ -227,6 +232,39 @@ flowchart TD
   and a helper ends with the host by the parent-death signal where the host itself is gone.
 - **A helper placed anew serves the records started after it;** a record's helper already running goes on as it
   is.
+
+### External servers
+
+- **An external server is an MCP server registered by configuration** (`docs/api.md`, 「The registration of an
+  external server」): a command the host starts and speaks to on standard input and output, or a streamable HTTP
+  address with its headers and token file; the namespace its tools are listed under, the capabilities a record
+  must hold to be shown them, which of `call` and `act` reaches a tool its annotations do not mark, the timeout,
+  and a manual for any of its tools. Nothing is built for it: `bmo-pocket put --mcp` places the registration and
+  the manuals it names (`docs/registry.md`).
+- **Its tools are entries like any placed tool's.** The host reads each listed tool as an entry under the
+  registration's namespace and capabilities (`docs/api.md`, 「How a listed tool reads as an entry」), so the
+  namespaces and the toolbook list, describe and call them through the same dispatch, under the same schema,
+  capability and residency rules, and `reachedBy` follows the read-only hint as it does for any entry.
+- **One connection per registration, shared by every record.** The host connects when it reads a registration
+  with no connection standing, asks `tools/list` for every page, and keeps the connection for the calls of every
+  record. So no record's variables, labels, call-back socket or shared helpers reach the server, and it holds
+  nothing of one record for that record alone.
+  - A stdio server is started in the registration's placed folder, in its own process group, with a clean
+    environment: the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`, and the registration's `env` laid over them. It
+    ends with the host by the parent-death signal, and what it writes on standard error goes to the host's log.
+  - A streamable HTTP server is sent the registration's headers and, where it names a token file, the file's text
+    as its bearer token, read afresh at each connection.
+- **Its tools join the catalogue once listed.** A listing that differs from the last one has the catalogue read
+  again; a server that says its tool list changed is listed again. A registration with no listing yet stands out
+  of the catalogue, said in the log with why, and is tried again at each reading and every 30 seconds while it
+  stays unlisted.
+- **A call is a `tools/call` of the tool's own name,** as the server listed it, on the registration's connection,
+  within the registration's timeout; its result is answered unchanged. A call that fails on the connection — the
+  server gone, unreachable, or past the timeout — ends the connection, and the next call or reading connects and
+  lists again, so a server that died is started again on demand. An error the server answers in the protocol
+  fails that call alone and leaves the connection standing.
+- **A registration taken or replaced** leaves the catalogue at the next reading, and its connection ends once no
+  call holds it, as a placed version is taken away once nothing holds it.
 
 ### The control socket
 
@@ -343,6 +381,13 @@ flowchart TD
   the host's process the same one throughout. A shared helper, registered, serves one record's calls and no
   other's and ends with the record; a server tool is spoken to over MCP and keeps one process across a record's
   calls. A manifest that does not read is said in the log and leaves the rest served.
+- **External servers:** a stand-in stdio MCP server, registered by configuration, has its tools listed by the
+  toolbook under the registration's namespace for a record holding its capability and for no other, a camel-cased
+  name made an entry's, a manual described, a read-only tool called through `call` and a tool its annotations do
+  not mark refused by `call` and called through `act` as the registration's default says; a server that dies is
+  started again by the next call; a streamable HTTP registration is sent its token file's text as its bearer
+  token; and a registration taken leaves no tool of it listed or callable. Each refusal of `put --mcp` names what
+  failed and places nothing.
 - **The registry:** a tool put from a folder, a git address or a bare name through the source template is placed
   as a version, pointed at and served from the next reading; each refusal names what failed and places nothing; a
   put and a service's registration never replace each other; an upgrade moves the pointer and a take removes it; a

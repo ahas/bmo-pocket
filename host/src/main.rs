@@ -318,13 +318,17 @@ fn call(namespace: &str, tool: &str, host: Arc<Host>) -> ExitCode {
     Err(why) => return refused(format!("what was handed is not a session and its arguments: {why}")),
   };
   let session = asked.session.issued_at(now_ms());
-  // The record's namespaces, capabilities and grants hold here as they hold for a session's call.
-  let Some(entry) = host.find(&session, namespace, tool) else {
-    return refused(format!("unknown tool `{tool}` in `{namespace}` for this session"));
-  };
   let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
     Ok(runtime) => runtime,
     Err(why) => return refused(why),
+  };
+
+  // The external servers' tools are listed first, as the running host lists them.
+  runtime.block_on(host.placed.refresh());
+
+  // The record's namespaces, capabilities and grants hold here as they hold for a session's call.
+  let Some(entry) = host.find(&session, namespace, tool) else {
+    return refused(format!("unknown tool `{tool}` in `{namespace}` for this session"));
   };
   let answered = runtime.block_on(async {
     let answer = host.answer(&entry, &session, asked.arguments).await;

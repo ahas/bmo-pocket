@@ -1,6 +1,6 @@
 # The boundary
 
-**Fixed API, version 0.1.0-rev.5.** This document is the tool host's fixed API: every contract it exposes to another
+**Fixed API, version 0.1.0-rev.6.** This document is the tool host's fixed API: every contract it exposes to another
 unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
 served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
 tables, its files or its process. The host calls no other unit. How the host behaves behind these contracts is
@@ -37,7 +37,7 @@ tables, its files or its process. The host calls no other unit. How the host beh
 | 404 | `no-route` | no route answers the method and path |
 | 422 | `arguments-misfit` | `POST /tool-calls`, where the input does not fit the entry's schema in the form the session holds; the sentence names each misfit and carries the schema |
 | 500 | `failed` | the host failed, as where a record could not be kept or taken back on disk; the sentence is the failure |
-| 502 | `tool-failed` | `POST /tool-calls`, where the tool exited uncleanly, answered what is not a tool result, or ran past its timeout |
+| 502 | `tool-failed` | `POST /tool-calls`, where the tool exited uncleanly, answered what is not a tool result, or ran past its timeout, or its external server could not be reached or failed the call |
 
 ## The OpenAPI document and the clients
 
@@ -180,7 +180,7 @@ tables, its files or its process. The host calls no other unit. How the host beh
 | `hints` | object | `readOnly`, `destructive`, `idempotent` and `openWorld` |
 | `listing` | object or null | The line it adds to its namespace's listing, `{line, order}`, where it declares one |
 | `system` | boolean | Whether it is for the system alone, shown to no session |
-| `manual` | string or null | The full text of the manual its manifest names, where it names one |
+| `manual` | string or null | The full text of the manual its manifest, or its external server's registration, names for it, where one does |
 | `reachedBy` | string | Which of the toolbook's `call` and `act` reaches it: `call` where `hints.readOnly` holds, `act` otherwise |
 
 - **A tool's key in its namespace is its name,** so `after` answers the tools whose names sort after it, a string
@@ -407,6 +407,51 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 - Resources naming no namespace or no capability; a server tool declaring claims or resources.
 - An entry whose full name another tool already holds.
 
+## The registration of an external server
+
+`server.toml`, the file `bmo-pocket put --mcp` takes: an MCP server the host connects to and whose tools it serves
+as entries, with no tool folder and no build (`docs/mcp-host.md`, 「External servers」). A key the schema does not
+name is refused, naming it.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `name` | string, required | Its name in the registry: lower-case letters, digits, `-` and `_` |
+| `namespace` | string, required | The namespace its tools are listed under, in an entry's namespace alphabet; never `toolbook` |
+| `capabilities` | array of strings, required | What a record must hold to be shown its tools; at least one |
+| `reached_by` | `call` or `act` | Which of the toolbook's `call` and `act` reaches a tool whose annotations carry no `readOnlyHint`; `act` where it is left out |
+| `timeout` | integer, required | In seconds, the bound on connecting and listing, and each call's timeout; more than 0 |
+
+- **`[stdio]`:** a server the host starts: `command`, the command as words, the first a path or a name found on
+  the path; `env`, a table of strings laid over the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`.
+- **`[http]`:** a streamable HTTP server the host connects to: `url`, an `http` or `https` address; `headers`, a
+  table of strings sent with every request; `token_file`, a file whose text, trimmed, is sent as the bearer token
+  of `Authorization`, read afresh at each connection.
+- **`[tools.<name>]`,** by a tool's name as the server lists it: `manual`, a Markdown file named by its path
+  relative to the registration's folder and inside it, which the toolbook's `describe` answers whole after the
+  description, and a tool's `manual` field carries.
+
+### How a listed tool reads as an entry
+
+- **Its name** is the server's name for it, made into an entry's alphabet: each upper-case letter lower-cased,
+  with `_` before it where it follows a lower-case letter or a digit, and every other character outside the
+  alphabet made `_`. Of two tools taking one name, the first listed keeps it and the other is left out.
+- **Its title** is the tool's title, else its annotations' title; **its description** the tool's description,
+  else its title, else its name.
+- **Its input and output schemas** are the server's, as it lists them; a tool whose schema is not a JSON Schema is
+  left out.
+- **Its hints:** `readOnly` from `readOnlyHint` where the annotations carry it, and from `reached_by` otherwise;
+  `destructive`, `idempotent` and `openWorld` from their hints where carried, and otherwise as MCP reads a hint
+  left out: destructive where it is not read-only, open-world always. So `reachedBy` is `call` exactly where the
+  server marks the tool read-only, or marks nothing and the registration says `call`.
+- **Its capabilities** are the registration's, and its manual the one the registration names for it. It declares
+  no grant, listing, facts, claims, bundle or schedule, and is never for the system alone.
+
+### What does not read
+
+- Neither `[stdio]` nor `[http]`, or both; a command naming nothing; an address that is not `http` or `https`.
+- A name or a namespace outside its alphabet, no capability or one with no name, or a timeout of 0.
+- A manual named by a path leaving the registration's folder, or one that does not stand there.
+
 ## Schedules
 
 - **An entry declaring a schedule is called by the host itself** at each time its pattern names, with the
@@ -464,8 +509,9 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | Verb | What it does |
 |---|---|
 | `put <tool> [--allow <name>]… [--service <repo>] [--placed] [--source <template>]` | Places a tool and registers it, or upgrades the tool registered under its name: `<tool>` is a local folder, a git address (one holding `://`, or `git@`, or ending in `.git`), cloned, or a bare name, made into the repository name `bmo-<name>` and put from the source template `--source` or `BMO_POCKET_SOURCE` names, `{repo}` in it standing for that repository name (a bare name is refused where none is configured) |
+| `put --mcp <registration> [--allow <name>]… [--service <repo>]` | Registers an external MCP server by its registration file (「The registration of an external server」), or replaces the registration under its name |
 | `take <name> [--service <repo>]` | Takes the tool registered under the name out of the registry; a service's own tool only with `--service` naming that service |
-| `list [--json]` | Every registered tool: its name, its version, where it was put from, the service it is registered for and its entries; `--json` prints the pointers (`docs/registry.md`, 「A pointer」) as a JSON array |
+| `list [--json]` | Every registered tool: its name, its version, where it was put from, the service it is registered for and its entries, or an external server's namespace and address; `--json` prints the pointers (`docs/registry.md`, 「A pointer」) as a JSON array |
 | `mcp [--socket <path>] [--token <token>]` | Serves the harness plugin on standard input and output (「The harness plugin」) |
 
 - **What `put` checks before anything is placed:** the manifest reads (「The manifest」); its name is no other
@@ -477,6 +523,11 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
   put there; with no `build`, or with `--placed` for a folder a service's deployment already built, it copies the
   folder whole. Then it points the registry at the new version in one step, and runs `after_deploy` where the
   manifest names one.
+- **What `put --mcp` checks and places:** the registration reads (「The registration of an external server」); its
+  name is no other kind's registration; and every capability it asks for is named by an `--allow`, each printed
+  and those not allowed named in the refusal. It copies the registration and the manuals it names into a version
+  of its own and points the registry at it in one step. Its tools are known only once the host lists them, so no
+  full name is checked against the other registrations': the host's catalogue settles a name two hold.
 - **`--service <repo>`** registers a service repository's own tool: put from a local folder, marked as that
   repository's. A tool put without `--service` never replaces one a service registered, and a service never
   replaces one put without it.

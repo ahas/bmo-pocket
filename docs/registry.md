@@ -3,11 +3,12 @@
 ## What it is
 
 - **The registry is the list of tools the host serves beside its tools root:** a standalone tool put by a person,
-  and a service repository's own tool registered by that service's deployment. Both go through the same verb,
-  `bmo-pocket put`, and the host reads both the same way (`docs/mcp-host.md`, 「The catalogue」).
+  a service repository's own tool registered by that service's deployment, and an external MCP server registered
+  by configuration. All go through the same verb, `bmo-pocket put`, and the host reads them from the same pointers
+  (`docs/mcp-host.md`, 「The catalogue」 and 「External servers」).
 - **It lives under the data root, in the host's own folder, `tool-host/`:**
   - `tool-host/registry/<name>.json`, one pointer per registered tool;
-  - `tool-host/tools/<name>/<version>/`, each placed version of a tool;
+  - `tool-host/tools/<name>/<version>/`, each placed version of a tool, or of an external server's registration;
   - `tool-host/registry.lock`, the lock every change to the registry is made under;
   - `tool-host/build/`, where a put clones and builds, and is cleared again.
 - **Only the host and `bmo-pocket` read or write these files.** Another unit registers, takes and lists tools
@@ -17,7 +18,7 @@
 
 - **One JSON object per tool, its keys in camelCase:** `name`, the tool's name, which is its manifest's; `version`,
   the placed version it points at; `dir`, that version's folder; `origin`, where it was put from (`path:<folder>`,
-  `git:<address>` or `name:<name>`); `service`, the repository whose own tool it is, where a service registered it;
+  `git:<address>`, `name:<name>`, or `path:<file>` for an external server's registration); `service`, the repository whose own tool it is, where a service registered it;
   and `putAt`, when, in epoch milliseconds. A pointer naming the time `put_at` reads as one naming it `putAt`, and
   is written as `putAt` at its next put.
 - **A pointer is written whole or not at all:** written beside its place under a name of its own, then renamed
@@ -70,17 +71,32 @@
 - **`after_deploy`,** where the manifest names one, is run from the placed version once its pointer stands; a
   failure is said and leaves the tool placed.
 
+## Put an external server
+
+- **`put --mcp <registration>`** registers an external MCP server by its registration file, `server.toml` in any
+  folder (`docs/api.md`, 「The registration of an external server」). Nothing is cloned or built.
+- **What is checked before anything is placed,** each refusal naming what failed: the registration reads, and each
+  manual it names stands inside its folder; its name is not another registration's of the other kind, as for a
+  tool; and every capability it asks for is printed and allowed by an `--allow`.
+- **No full name is checked against the other registrations':** the server's tools are known only once the host
+  lists them, and the catalogue settles a full name two hold, the one read first keeping it.
+- **What is placed:** the registration, as `server.toml`, and each manual at its path beside it, in a version of
+  its own; the staged version is read again as the host will read it, then renamed into place and the pointer
+  moved onto it, under the registry's lock. A put of the same name replaces the registration as an upgrade does.
+
 ## Take and list
 
 - **`take <name>`** removes the tool's pointer, under the lock; its versions are the host's to take away once
   nothing holds them. A tool a service registered is taken only with `--service` naming that service.
 - **`list`** prints every pointer: its name, its version, where it was put from, the service it is registered
-  for where one is, and its entries' full names; `--json` prints the pointers as they stand.
+  for where one is, and its entries' full names, or an external server's namespace and address; `--json` prints
+  the pointers as they stand.
 
 ## What the host does with it
 
 - **The host reads every pointer as it reads its catalogue,** beside the tools root: each pointer's version
-  folder is a placed tool named by the pointer, or a shared helper where its manifest has a `[helper]` table. A
+  folder is a placed tool named by the pointer, a shared helper where its manifest has a `[helper]` table, or an
+  external server where it holds `server.toml` in place of a manifest. A
   pointer whose folder is gone, or whose manifest does not read, is left out and said in the log, as a placed
   folder is.
 - **Shared helpers are found here alone:** a helper is registered like any tool, and a tool names the helpers it

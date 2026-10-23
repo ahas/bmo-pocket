@@ -261,21 +261,21 @@ pub struct Manifest {
   pub helper: Option<HelperPart>,
 }
 
-// A name a session calls an entry by: lower-case letters, digits and underscores.
-fn entry_name(name: &str) -> bool {
+/// A name a session calls an entry by: lower-case letters, digits and underscores.
+pub fn entry_name(name: &str) -> bool {
   !name.is_empty() && name.chars().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == '_')
 }
 
-// A namespace, which is a path segment of the host: a lower-case letter, then letters, digits, `_` and `-`.
-fn namespace_name(name: &str) -> bool {
+/// A namespace, which is a path segment of the host: a lower-case letter, then letters, digits, `_` and `-`.
+pub fn namespace_name(name: &str) -> bool {
   name.chars().next().is_some_and(|first| first.is_ascii_lowercase())
     && name
       .chars()
       .all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == '_' || one == '-')
 }
 
-// A path inside the tool's folder: relative, and made of folder and file names alone, so it never climbs out.
-fn inside(path: &str) -> bool {
+/// A path inside a folder: relative, and made of folder and file names alone, so it never climbs out.
+pub fn inside(path: &str) -> bool {
   !path.is_empty()
     && Path::new(path).components().all(|part| matches!(part, std::path::Component::Normal(_)))
 }
@@ -543,9 +543,9 @@ fn schema(dir: &Path, file: &str) -> Result<Value, String> {
   Ok(read)
 }
 
-// A manual's text, read from inside the folder: a link resolving outside it is refused as a path climbing out
-// would be.
-fn manual(dir: &Path, file: &str) -> Result<String, String> {
+/// A manual's text, read from inside the folder: a link resolving outside it is refused as a path climbing out
+/// would be.
+pub fn manual(dir: &Path, file: &str) -> Result<String, String> {
   let unread = |why: std::io::Error| format!("its manual {file}: {why}");
   let folder = dir.canonicalize().map_err(unread)?;
   let found = dir.join(file).canonicalize().map_err(unread)?;

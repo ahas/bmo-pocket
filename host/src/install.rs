@@ -1,6 +1,7 @@
 //! What `bmo-pocket` does to the registry (docs/registry.md): a tool put from a folder, a git address or a bare
 //! name, checked, built or copied into a version of its own and pointed at; a registration taken; the registry
-//! listed. Each verb writes what it did into `said`, a line each, and answers why it refused where it did.
+//! listed; and an external server's registration checked and placed the same way. Each verb writes what it did into
+//! `said`, a line each, and answers why it refused where it did.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -10,6 +11,7 @@ use std::process::Command;
 
 use bmo_tool::manifest::{MANIFEST, Manifest};
 
+use crate::external::{REGISTRATION, Registration};
 use crate::placed::schema_faults;
 use crate::records::now_ms;
 use crate::registry::{Pointer, Registry};
@@ -373,6 +375,92 @@ pub fn put(registry: &Registry, asked: &Put, said: &mut Vec<String>) -> Result<(
   Ok(())
 }
 
+/// An external server registered by its registration file: checked, its registration and the manuals it names
+/// staged as a version of their own and read again as the host reads them, then placed and pointed at under the
+/// registry's lock (docs/registry.md, 「Put an external server」).
+pub fn register_server(registry: &Registry, asked: &Put, said: &mut Vec<String>) -> Result<(), String> {
+  let file = fs::canonicalize(asked.tool.trim())
+    .map_err(|why| format!("{} could not be read: {why}", asked.tool.trim()))?;
+  let registration =
+    Registration::read_file(&file).map_err(|why| format!("its registration does not read: {why}"))?;
+  let name = registration.name.clone();
+  let origin = format!("path:{}", file.display());
+  let allowed: BTreeSet<&str> = asked.allow.iter().map(String::as_str).collect();
+  let capabilities: BTreeSet<&String> = registration.capabilities.iter().collect();
+
+  said.extend(capabilities.iter().map(|one| format!("{name} asks for the capability {one}")));
+
+  let missing: Vec<&str> = capabilities
+    .iter()
+    .map(|one| one.as_str())
+    .filter(|one| !allowed.contains(one))
+    .collect();
+
+  if !missing.is_empty() {
+    return Err(format!("{name} asks for what no --allow names: {}", missing.join(", ")));
+  }
+
+  if let Some(standing) = registry.get(&name) {
+    replaces(&standing, asked.service.as_deref())?;
+  }
+
+  let version = fresh();
+  let staged = registry.versions().join(&name).join(format!(".staging-{version}"));
+  let staging = Scratch(Some(staged.clone()));
+  let folder = file.parent().unwrap_or(Path::new("/"));
+
+  for named in std::iter::once(REGISTRATION.to_owned()).chain(registration.named_files()) {
+    let (from, to) = match named.as_str() {
+      REGISTRATION => (file.clone(), staged.join(REGISTRATION)),
+      _ => (folder.join(&named), staged.join(&named)),
+    };
+
+    if let Some(parent) = to.parent() {
+      fs::create_dir_all(parent).map_err(|why| format!("{} could not be made: {why}", parent.display()))?;
+    }
+
+    fs::copy(&from, &to).map_err(|why| format!("{named} could not be copied: {why}"))?;
+  }
+
+  Registration::read(&staged).map_err(|why| format!("{name}: its placed version does not read: {why}"))?;
+
+  let placed = registry.version_dir(&name, &version);
+  let locked = registry.lock().map_err(|why| format!("the registry could not be locked: {why}"))?;
+  // Read again under the lock: another put may have registered the name since.
+  let standing = registry.get(&name);
+
+  if let Some(standing) = &standing {
+    replaces(standing, asked.service.as_deref())?;
+  }
+
+  fs::rename(&staged, &placed).map_err(|why| format!("{} could not be placed: {why}", placed.display()))?;
+  staging.keep();
+
+  let pointer = Pointer {
+    name: name.clone(),
+    version: version.clone(),
+    dir: placed.clone(),
+    origin: origin.clone(),
+    service: asked.service.clone(),
+    put_at: now_ms(),
+  };
+
+  if let Err(why) = registry.point(&pointer) {
+    let _ = fs::remove_dir_all(&placed);
+
+    return Err(format!("the registry could not point at {name}: {why}"));
+  }
+
+  drop(locked);
+
+  said.push(match standing {
+    Some(was) => format!("upgraded {name} from {} to {version}", was.version),
+    None => format!("registered the external server {name} {version} from {origin}"),
+  });
+
+  Ok(())
+}
+
 /// A registration taken: its pointer removed under the registry's lock, its versions left for the host to take
 /// away once nothing holds them.
 pub fn take(
@@ -415,10 +503,17 @@ pub fn list(registry: &Registry, json: bool, said: &mut Vec<String>) -> Result<(
   }
 
   for pointer in &pointers {
-    let entries = Manifest::read(&pointer.dir, &pointer.name).map_or_else(
-      |why| format!("its manifest does not read: {why}"),
-      |manifest| manifest.entries.iter().map(|entry| entry.full_name()).collect::<Vec<_>>().join(", "),
-    );
+    let entries = if pointer.dir.join(REGISTRATION).exists() {
+      Registration::read(&pointer.dir).map_or_else(
+        |why| format!("its registration does not read: {why}"),
+        |server| format!("the external server {} under {}/", server.address(), server.namespace),
+      )
+    } else {
+      Manifest::read(&pointer.dir, &pointer.name).map_or_else(
+        |why| format!("its manifest does not read: {why}"),
+        |manifest| manifest.entries.iter().map(|entry| entry.full_name()).collect::<Vec<_>>().join(", "),
+      )
+    };
     let service = pointer
       .service
       .as_ref()

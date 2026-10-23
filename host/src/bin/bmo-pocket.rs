@@ -38,10 +38,15 @@ enum Verb {
     #[command(subcommand)]
     noun: command::Noun,
   },
-  /// Places a tool and registers it, or upgrades the tool registered under its name.
+  /// Places a tool and registers it, or upgrades the tool registered under its name; with `--mcp`, registers an
+  /// external MCP server by its registration file.
   Put {
     /// A local folder, a git address, or a bare tool name put from the source template.
-    tool: String,
+    #[arg(required_unless_present = "mcp", conflicts_with = "mcp")]
+    tool: Option<String>,
+    /// An external MCP server's registration file, registered in place of a tool.
+    #[arg(long, conflicts_with = "placed")]
+    mcp: Option<PathBuf>,
     /// A capability or grant the tool may ask for; given again for each.
     #[arg(long)]
     allow: Vec<String>,
@@ -162,20 +167,25 @@ fn main() -> ExitCode {
     Verb::Mcp { socket, token } => mcp(socket, token),
     Verb::Put {
       tool,
+      mcp,
       allow,
       service,
       placed,
       source,
     } => {
       let asked = Put {
-        tool,
+        tool: mcp.as_ref().map_or_else(|| tool.unwrap_or_default(), |file| file.display().to_string()),
         allow,
         service,
         placed,
         source,
       };
       let mut said = Vec::new();
-      let done = install::put(&Registry::of(&data_root), &asked, &mut said);
+      let registry = Registry::of(&data_root);
+      let done = match mcp {
+        Some(_) => install::register_server(&registry, &asked, &mut said),
+        None => install::put(&registry, &asked, &mut said),
+      };
 
       finish(done, &said)
     }

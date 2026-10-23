@@ -1,7 +1,9 @@
 //! The placed tools' catalogue (docs/mcp-host.md, 「The catalogue」): read from the tools root — each folder's
 //! `.placed/` alone — and from the registry's pointers (docs/registry.md), and read again whole once the changes
 //! under either settle, so a tool placed, replaced or taken away is served from the next call with nothing
-//! restarted. A registered version that has left the catalogue is taken away once nothing holds it.
+//! restarted. A registered version that has left the catalogue is taken away once nothing holds it. An external
+//! server's registration in the registry adds the tools its server last listed (docs/mcp-host.md, 「External
+//! servers」).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -13,14 +15,17 @@ use bmo_tool::manifest::{MANIFEST, Manifest};
 use notify::event::ModifyKind;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::external::{self, External, Externals, REGISTRATION, Registration};
 use crate::registry::Registry;
 
-/// A tool as it is placed: its folder's name, where it is placed, and its manifest.
+/// A tool as it is placed: its folder's name, where it is placed, and its manifest; for an external server, the
+/// manifest its listed tools read as and its link to the server.
 #[derive(Debug)]
 pub struct PlacedTool {
   pub folder: String,
   pub dir: PathBuf,
   pub manifest: Manifest,
+  pub external: Option<External>,
 }
 
 /// Every placed tool and shared helper, as one reading of the tools root and the registry found them.
@@ -57,12 +62,17 @@ pub fn schema_faults(manifest: &Manifest) -> Option<String> {
 impl Catalogue {
   /// The catalogue the tools root holds, and why each tool left out was left out.
   pub fn read(dir: &Path) -> (Self, Vec<String>) {
-    Self::read_all(Some(dir), None)
+    Self::read_all(Some(dir), None, None)
   }
 
   /// The catalogue the tools root and the registry hold together, the tools root's read first, and why each tool
-  /// left out was left out.
-  pub fn read_all(dir: Option<&Path>, registry: Option<&Registry>) -> (Self, Vec<String>) {
+  /// left out was left out. An external server's registration is read through `externals`, which keeps its link
+  /// and its last listing, and lets go of the links of registrations no longer read; with none, it is left out.
+  pub fn read_all(
+    dir: Option<&Path>,
+    registry: Option<&Registry>,
+    externals: Option<&Externals>,
+  ) -> (Self, Vec<String>) {
     let mut catalogue = Self::default();
     let mut faults = Vec::new();
     let mut held = BTreeSet::new();
@@ -79,7 +89,9 @@ impl Catalogue {
           faults.push(format!("tools/{folder}: a shared helper is found through the registry alone"));
         }
         Ok(manifest) => {
-          catalogue.take_in(format!("tools/{folder}"), folder, placed, manifest, &mut held, &mut faults)
+          let at = format!("tools/{folder}");
+
+          catalogue.take_in(at, folder, placed, (manifest, None), &mut held, &mut faults)
         }
         Err(why) => faults.push(format!("tools/{folder}: {why}")),
       }
@@ -89,8 +101,48 @@ impl Catalogue {
 
     faults.extend(unread);
 
+    let mut linked = BTreeSet::new();
+
     for pointer in pointers {
       let at = format!("registry/{}", pointer.name);
+
+      if pointer.dir.join(REGISTRATION).exists() {
+        match (Registration::read(&pointer.dir), externals) {
+          (Err(why), _) => faults.push(format!("{at}: {why}")),
+          (Ok(registration), _) if registration.name != pointer.name => {
+            faults.push(format!("{at}: its registration names `{}`", registration.name));
+          }
+          (Ok(_), None) => {
+            faults.push(format!("{at}: an external server is read by the running host alone"))
+          }
+          (Ok(registration), Some(externals)) => {
+            let link = externals.link(&pointer.dir, registration);
+
+            linked.insert(pointer.dir.clone());
+
+            let Some(listed) = link.listing() else {
+              let why = link.why().map_or_else(String::new, |why| format!(": {why}"));
+
+              faults.push(format!("{at}: its server's tools are not listed yet{why}"));
+              continue;
+            };
+            let (manifest, names, left) = external::entries(&link.registration, &listed);
+            let linked = External { link, names };
+
+            faults.extend(left.into_iter().map(|why| format!("{at}: {why}")));
+            catalogue.take_in(
+              at,
+              pointer.name,
+              pointer.dir,
+              (manifest, Some(linked)),
+              &mut held,
+              &mut faults,
+            );
+          }
+        }
+
+        continue;
+      }
 
       if !pointer.dir.join(MANIFEST).exists() {
         faults.push(format!("{at}: its placed folder {} is gone", pointer.dir.display()));
@@ -105,12 +157,19 @@ impl Catalogue {
               folder: pointer.name,
               dir: pointer.dir,
               manifest,
+              external: None,
             }),
           );
         }
-        Ok(manifest) => catalogue.take_in(at, pointer.name, pointer.dir, manifest, &mut held, &mut faults),
+        Ok(manifest) => {
+          catalogue.take_in(at, pointer.name, pointer.dir, (manifest, None), &mut held, &mut faults)
+        }
         Err(why) => faults.push(format!("{at}: {why}")),
       }
+    }
+
+    if let Some(externals) = externals {
+      externals.keep_only(&linked);
     }
 
     (catalogue, faults)
@@ -122,7 +181,7 @@ impl Catalogue {
     at: String,
     folder: String,
     dir: PathBuf,
-    manifest: Manifest,
+    (manifest, external): (Manifest, Option<External>),
     held: &mut BTreeSet<String>,
     faults: &mut Vec<String>,
   ) {
@@ -143,6 +202,7 @@ impl Catalogue {
       folder,
       dir,
       manifest,
+      external,
     }));
   }
 
@@ -182,6 +242,8 @@ pub struct Placed {
   pub registry: Option<Registry>,
   /// Where each call's call-back socket and each helper's socket are bound.
   pub sockets: PathBuf,
+  /// Every external server's link, by its registration's placed version.
+  pub externals: Externals,
   current: RwLock<Arc<Catalogue>>,
   /// The registered versions that have left the catalogue, each taken away once nothing else holds it.
   retired: Mutex<Vec<Arc<PlacedTool>>>,
@@ -193,6 +255,7 @@ impl Placed {
       dir,
       registry: None,
       sockets,
+      externals: Externals::default(),
       current: RwLock::new(Arc::new(Catalogue::default())),
       retired: Mutex::new(Vec::new()),
     }
@@ -216,7 +279,8 @@ impl Placed {
       return;
     }
 
-    let (catalogue, faults) = Catalogue::read_all(self.dir.as_deref(), self.registry.as_ref());
+    let (catalogue, faults) =
+      Catalogue::read_all(self.dir.as_deref(), self.registry.as_ref(), Some(&self.externals));
 
     for fault in &faults {
       eprintln!("mcp-host: left out {fault}");
@@ -250,6 +314,13 @@ impl Placed {
     drop(old);
     self.retired.lock().unwrap_or_else(std::sync::PoisonError::into_inner).extend(leaving);
     self.sweep();
+  }
+
+  /// Every external server wanting a listing listed, and the catalogue read again where a listing moved.
+  pub async fn refresh(&self) {
+    if self.externals.list().await {
+      self.reread();
+    }
   }
 
   // Whether a folder is one of the registry's placed versions, the only folders the host ever takes away.
@@ -312,7 +383,8 @@ impl Placed {
   /// The tools root and the registry read now and again once every run of changes under either has settled for
   /// `settle`, for as long as the host runs. A tools root taken away whole is made again and watched anew, and one
   /// whose real path moves — a link on its path flipped onto another release — is watched where it now lies and
-  /// read there.
+  /// read there. An external server not yet listed is tried again at each reading, and once `RETRY` passes with
+  /// nothing read.
   pub fn watch(self: &Arc<Self>, settle: Duration) -> notify::Result<()> {
     if self.dir.is_none() && self.registry.is_none() {
       return Ok(());
@@ -330,6 +402,8 @@ impl Placed {
       None => None,
     };
     let (changed, mut changes) = tokio::sync::mpsc::unbounded_channel::<()>();
+
+    self.externals.poke_with(changed.clone());
     let mut watcher: RecommendedWatcher = {
       let (links, folders) = (links.clone(), folders.clone());
 
@@ -360,7 +434,19 @@ impl Placed {
     let dir = self.dir.clone();
 
     tokio::spawn(async move {
-      while changes.recv().await.is_some() {
+      placed.refresh().await;
+
+      loop {
+        let woken = if placed.externals.wanting() {
+          tokio::time::timeout(external::RETRY, changes.recv()).await.unwrap_or(Some(()))
+        } else {
+          changes.recv().await
+        };
+
+        if woken.is_none() {
+          return;
+        }
+
         loop {
           match tokio::time::timeout(settle, changes.recv()).await {
             Ok(Some(())) => {}
@@ -392,6 +478,7 @@ impl Placed {
         }
 
         placed.reread();
+        placed.refresh().await;
       }
     });
 

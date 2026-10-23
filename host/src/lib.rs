@@ -3,6 +3,7 @@
 
 pub mod command;
 pub mod error;
+pub mod external;
 pub mod handler;
 pub mod install;
 pub mod placed;

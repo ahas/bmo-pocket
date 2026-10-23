@@ -2,6 +2,7 @@
 //! stand-in tool those that call one share.
 
 mod error;
+mod external;
 mod fixture;
 mod handler;
 mod placed;

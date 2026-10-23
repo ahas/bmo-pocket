@@ -46,7 +46,7 @@ fn fresh(prefix: &str) -> String {
 }
 
 /// The variables of the host's own environment every call is handed, where the host holds them.
-const KEPT: [&str; 3] = ["PATH", "HOME", "XDG_RUNTIME_DIR"];
+pub const KEPT: [&str; 3] = ["PATH", "HOME", "XDG_RUNTIME_DIR"];
 
 /// The command a placed tool's run words name: started in its placed folder, the first word read there where a
 /// file of that name stands in it, in a clean environment, each layer laid over the one before it — the host's
@@ -59,12 +59,7 @@ fn command(host: &Host, tool: &PlacedTool, session: &Session) -> Command {
   let program = if own.is_file() { own.into_os_string() } else { run[0].clone().into() };
   let mut command = Command::new(program);
 
-  command
-    .args(&run[1..])
-    .current_dir(&tool.dir)
-    .env_clear()
-    .process_group(0)
-    .kill_on_drop(true);
+  command.args(&run[1..]).current_dir(&tool.dir).env_clear();
 
   for kept in KEPT.iter().copied().chain(host.pass_env.iter().map(String::as_str)) {
     if let Some(value) = std::env::var_os(kept) {
@@ -81,6 +76,14 @@ fn command(host: &Host, tool: &PlacedTool, session: &Session) -> Command {
     Err(why) => eprintln!("mcp-host: {} adds nothing: {why}", tool.folder),
   }
 
+  ended_with_host(&mut command);
+  command
+}
+
+/// A command started in a process group of its own, ended when the host ends.
+pub fn ended_with_host(command: &mut Command) {
+  command.process_group(0).kill_on_drop(true);
+
   // SAFETY: the closure runs in the child between fork and exec and calls `prctl` alone, which is
   // async-signal-safe; it asks the kernel to end the child when the host ends.
   unsafe {
@@ -89,8 +92,6 @@ fn command(host: &Host, tool: &PlacedTool, session: &Session) -> Command {
       Ok(())
     });
   }
-
-  command
 }
 
 // The process group of one call, ended when it is dropped while still held.
@@ -194,8 +195,8 @@ impl Bound {
     Self(Some(Duration::from_secs(seconds)))
   }
 
-  // The work run to its end within the bound, or that it ran past it.
-  async fn on<T>(self, work: impl Future<Output = T>) -> Result<T, String> {
+  /// The work run to its end within the bound, or that it ran past it.
+  pub async fn on<T>(self, work: impl Future<Output = T>) -> Result<T, String> {
     match self.0 {
       Some(bound) => tokio::time::timeout(bound, work)
         .await
@@ -215,6 +216,15 @@ pub async fn ask(
   asked: Asked,
 ) -> Result<Value, String> {
   let bound = Bound::of(declared, tool.manifest.tool.timeout);
+
+  // An external server's tool is asked for its calls alone, on its registration's connection.
+  if let Some(external) = &tool.external {
+    return match asked {
+      Asked::Call { entry, arguments } => external.call(&entry, arguments, bound).await,
+      _ => Err("an external server's tool is asked for its calls alone".to_owned()),
+    };
+  }
+
   let keeping = session.kept.get_or_keep(Placements::default);
   // A claim reads the address alone, so no helper is started for it.
   let shared = match asked {
