@@ -18,7 +18,7 @@ tables, its files or its process. The host calls no other unit. How the host beh
 
 ## The wire format
 
-- **The common wire format of bmo-next,** as bmo-chat's `docs/conventions.md` states it: keys in camelCase, times as
+- **The common wire format of bmo,** as bmo-chat's `docs/conventions.md` states it: keys in camelCase, times as
   one integer of epoch milliseconds, error codes in kebab-case, and a list paged by one cursor and `limit` into
   `{"items": [...], "more": boolean}`. This document states only what the host serves in it.
 - **Every failure and every refusal is a non-2xx status** with a JSON body of two keys: `code`, a stable code a
