@@ -114,6 +114,67 @@ fn the_schemas_are_read_from_beside_the_manifest() {
   assert_eq!(Manifest::read(dir.path(), "echo").unwrap().entries[0].input_schema["type"], "object");
 }
 
+// The manifest naming a manual at this path.
+fn with_manual(path: &str) -> String {
+  MANIFEST_TEXT.replace("input = \"echo.json\"", &format!("manual = \"{path}\"\ninput = \"echo.json\""))
+}
+
+#[test]
+fn a_manual_is_read_from_inside_the_tools_folder_and_named_with_its_files() {
+  let dir = tempfile::tempdir().unwrap();
+
+  std::fs::write(dir.path().join(MANIFEST), with_manual("manuals/echo_back.md")).unwrap();
+  std::fs::write(dir.path().join("echo.json"), r#"{ "type": "object" }"#).unwrap();
+  assert!(Manifest::read(dir.path(), "echo").unwrap_err().contains("manuals/echo_back.md"));
+
+  std::fs::create_dir(dir.path().join("manuals")).unwrap();
+  std::fs::write(dir.path().join("manuals/echo_back.md"), "# echo_back\n\nPass `text`.\n").unwrap();
+
+  let manifest = Manifest::read(dir.path(), "echo").unwrap();
+
+  assert_eq!(manifest.entries[0].manual.as_deref(), Some("manuals/echo_back.md"));
+  assert_eq!(manifest.entries[0].manual_text.as_deref(), Some("# echo_back\n\nPass `text`.\n"));
+  assert_eq!(manifest.named_files(), ["echo.json", "manuals/echo_back.md", "tool.toml"]);
+}
+
+#[test]
+fn an_entry_without_a_manual_reads_with_none() {
+  let dir = tempfile::tempdir().unwrap();
+
+  std::fs::write(dir.path().join(MANIFEST), MANIFEST_TEXT).unwrap();
+  std::fs::write(dir.path().join("echo.json"), r#"{ "type": "object" }"#).unwrap();
+
+  let manifest = Manifest::read(dir.path(), "echo").unwrap();
+
+  assert!(manifest.entries[0].manual.is_none() && manifest.entries[0].manual_text.is_none());
+}
+
+#[test]
+fn a_manual_outside_the_tools_folder_is_refused() {
+  for path in ["../echo_back.md", "/etc/echo_back.md", "manuals/../../echo_back.md", ""] {
+    let why = Manifest::parse(&with_manual(path), "echo").unwrap_err();
+
+    assert_eq!(
+      why,
+      format!("garden/echo_back: its manual `{path}` does not stand inside the tool's folder")
+    );
+  }
+
+  // A link inside the folder resolving outside it is refused as the path would be.
+  let outside = tempfile::tempdir().unwrap();
+  let dir = tempfile::tempdir().unwrap();
+
+  std::fs::write(outside.path().join("echo_back.md"), "elsewhere").unwrap();
+  std::os::unix::fs::symlink(outside.path().join("echo_back.md"), dir.path().join("echo_back.md")).unwrap();
+  std::fs::write(dir.path().join(MANIFEST), with_manual("echo_back.md")).unwrap();
+  std::fs::write(dir.path().join("echo.json"), r#"{ "type": "object" }"#).unwrap();
+  assert!(
+    Manifest::read(dir.path(), "echo")
+      .unwrap_err()
+      .contains("resolves outside the tool's folder")
+  );
+}
+
 struct EchoBack;
 
 #[derive(Deserialize, schemars::JsonSchema)]

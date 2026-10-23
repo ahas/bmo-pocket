@@ -257,8 +257,14 @@ fn stage(
       }
 
       for file in manifest.named_files() {
-        fs::copy(folder.join(&file), into.join(&file))
-          .map_err(|why| format!("{file} could not be copied: {why}"))?;
+        let to = into.join(&file);
+
+        if let Some(parent) = to.parent() {
+          fs::create_dir_all(parent)
+            .map_err(|why| format!("{} could not be made: {why}", parent.display()))?;
+        }
+
+        fs::copy(folder.join(&file), &to).map_err(|why| format!("{file} could not be copied: {why}"))?;
       }
 
       Ok(())

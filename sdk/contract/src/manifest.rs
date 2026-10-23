@@ -150,6 +150,10 @@ pub struct Entry {
   #[serde(default)]
   pub title: Option<String>,
   pub description: String,
+  /// The Markdown file, by its path relative to the tool's folder and inside it, that says how the entry is
+  /// called; the toolbook's `describe` answers it whole after the description.
+  #[serde(default)]
+  pub manual: Option<String>,
   /// The input schema's file, beside the manifest.
   pub input: String,
   /// The output schema's file, where it answers an object.
@@ -188,6 +192,9 @@ pub struct Entry {
   pub input_schema: Value,
   #[serde(skip)]
   pub output_schema: Option<Value>,
+  /// The manual's text, read from its file.
+  #[serde(skip)]
+  pub manual_text: Option<String>,
 }
 
 impl Entry {
@@ -267,6 +274,12 @@ fn namespace_name(name: &str) -> bool {
       .all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == '_' || one == '-')
 }
 
+// A path inside the tool's folder: relative, and made of folder and file names alone, so it never climbs out.
+fn inside(path: &str) -> bool {
+  !path.is_empty()
+    && Path::new(path).components().all(|part| matches!(part, std::path::Component::Normal(_)))
+}
+
 // A file named beside the manifest, never one reached through another folder.
 fn beside(file: &str) -> bool {
   !file.is_empty() && !file.contains('/') && file != "." && file != ".."
@@ -285,6 +298,10 @@ impl Manifest {
       entry.input_schema = schema(dir, &entry.input).map_err(|why| format!("{at}: {why}"))?;
       entry.output_schema = match &entry.output {
         Some(file) => Some(schema(dir, file).map_err(|why| format!("{at}: {why}"))?),
+        None => None,
+      };
+      entry.manual_text = match &entry.manual {
+        Some(file) => Some(manual(dir, file).map_err(|why| format!("{at}: {why}"))?),
         None => None,
       };
     }
@@ -398,6 +415,10 @@ impl Manifest {
           return Err(format!("{at}: its schema `{file}` does not stand beside the manifest"));
         }
       }
+
+      if let Some(file) = entry.manual.as_deref().filter(|file| !inside(file)) {
+        return Err(format!("{at}: its manual `{file}` does not stand inside the tool's folder"));
+      }
     }
 
     if let Some(resources) = &self.resources
@@ -416,12 +437,17 @@ impl Manifest {
     Ok(())
   }
 
-  /// The files of the folder the manifest itself names: the manifest and every schema.
+  /// The files of the folder the manifest itself names: the manifest, every schema and every manual, each by
+  /// its path in the folder.
   pub fn named_files(&self) -> Vec<String> {
     let mut files = vec![MANIFEST.to_owned()];
 
     for entry in &self.entries {
-      files.extend(std::iter::once(entry.input.clone()).chain(entry.output.clone()));
+      files.extend(
+        std::iter::once(entry.input.clone())
+          .chain(entry.output.clone())
+          .chain(entry.manual.clone()),
+      );
     }
 
     files.sort();
@@ -515,6 +541,20 @@ fn schema(dir: &Path, file: &str) -> Result<Value, String> {
   }
 
   Ok(read)
+}
+
+// A manual's text, read from inside the folder: a link resolving outside it is refused as a path climbing out
+// would be.
+fn manual(dir: &Path, file: &str) -> Result<String, String> {
+  let unread = |why: std::io::Error| format!("its manual {file}: {why}");
+  let folder = dir.canonicalize().map_err(unread)?;
+  let found = dir.join(file).canonicalize().map_err(unread)?;
+
+  if !found.starts_with(&folder) {
+    return Err(format!("its manual {file} resolves outside the tool's folder"));
+  }
+
+  std::fs::read_to_string(&found).map_err(unread)
 }
 
 /// Every tool folder a tree's `tools/` holds, by its name: each folder whose name starts with neither `_` nor `.`,

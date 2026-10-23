@@ -130,6 +130,11 @@ impl Entry {
     self.declared().description.clone()
   }
 
+  /// The text of the manual its manifest names, where it names one.
+  pub fn manual(&self) -> Option<String> {
+    self.declared().manual_text.clone()
+  }
+
   pub fn input_schema(&self) -> Value {
     let declared = self.declared();
 

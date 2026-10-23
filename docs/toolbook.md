@@ -22,14 +22,18 @@
   - **`list`:** the booked tools this session may call, one line each: the tool's full name, which of `call` and
     `act` reaches it, and the first sentence of its description. An optional `query` narrows the list to the tools
     whose full name or description holds it.
-  - **`describe`:** one tool's description, its input schema, its read-only hint and, where it declares one, the
-    schema of what it answers with, and which of `call` and `act` reaches it.
+  - **`describe`:** one tool's description, then its manual's full text where its manifest names one, its input
+    schema, its read-only hint and, where it declares one, the schema of what it answers with, and which of `call`
+    and `act` reaches it.
   - **`call`:** calls one read-only tool with its arguments.
   - **`act`:** calls one tool that acts.
 - **The toolbook's own descriptions say how a booked tool is reached,** and nothing else need. `list`'s
   description tells the session that a tool its instructions name and it is not shown is one of the toolbook's,
   reached by its full name; so booking a tool, or making it resident again, moves no prompt, and every harness
   reads the same sentence, since a tool's description is part of every tool list.
+- **A tool's manual is answered by `describe` alone.** `list` carries the first sentence of a description and no
+  prefix carries a manual, so a manual may say at length how the tool's arguments are filled, with examples, for
+  a model that cannot fill them from one line (`docs/api.md`, 「The manifest」).
 - **Why a call and an act.** CLIs send calls to tools declared read-only side by side. A proxy declared read-only
   may only forward to read-only tools, so `call` is declared read-only and refuses a tool that acts, naming `act`;
   `act` is not declared read-only and forwards to any tool. Parallel reads therefore keep going through the

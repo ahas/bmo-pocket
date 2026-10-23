@@ -60,8 +60,9 @@
     call that entry by itself.
 - **What is placed:**
   - with a `build` command, the command is run through `sh` in the tool's folder with `BMO_TOOL_OUT` naming the new
-    version's staging folder and `BMO_CARGO_TARGET` the registry's own Cargo target folder, and the manifest and its
-    schema files are copied beside what the build put there;
+    version's staging folder and `BMO_CARGO_TARGET` the registry's own Cargo target folder, and the manifest, its
+    schema files and its entries' manuals are copied beside what the build put there, each at its path in the
+    tool's folder;
   - with no `build`, or with `--placed` for a folder a service's deployment already built, the folder is copied
     whole, its `.git` left out;
   - the staged version is read again as the host will read it, then renamed into place, and the pointer moved onto

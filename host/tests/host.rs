@@ -140,6 +140,7 @@ hints = { read_only = true }
 namespace = "garden"
 name = "plant_list"
 description = "Asked with a bed, that bed's plants. Asked with none, the beds."
+manual = "manuals/plant_list.md"
 input = "any.json"
 capabilities = ["garden.read"]
 hints = { read_only = true }
@@ -182,6 +183,9 @@ else:
 print(json.dumps({"content": [{"type": "text", "text": said}], "isError": False}))
 "#;
 
+// The manual the readers' plant_list names, in a folder of the tool's own.
+const PLANT_LIST_MANUAL: &str = "# plant_list\n\nPass `bed`, a bed's name, for that bed's plants.\n";
+
 // The stand-in readers placed in the tree a host about to start reads.
 fn place_readers(scratch: &Scratch) {
   place(
@@ -190,6 +194,7 @@ fn place_readers(scratch: &Scratch) {
     &[
       ("tool.toml", READERS_MANIFEST),
       ("any.json", r#"{ "type": "object" }"#),
+      ("manuals/plant_list.md", PLANT_LIST_MANUAL),
       ("readers.py", READERS_SCRIPT),
     ],
   );
@@ -1090,6 +1095,19 @@ async fn the_toolbook_lists_describes_and_calls_what_the_namespaces_do_not_list(
     "{described}"
   );
   assert!(described.contains("\nAnswers with: {"), "{described}");
+  assert!(!described.contains("Manual:"), "{described}");
+
+  // A tool whose manifest names a manual is described with its full text after the description.
+  let manual =
+    text(&called(&host, &seeker, "toolbook", "describe", json!({ "tool": "garden/plant_list" })).await);
+
+  assert!(
+    manual.starts_with(
+      "garden/plant_list — reached with call\nAsked with a bed, that bed's plants. Asked with none, the beds.\n\
+       Manual:\n# plant_list\n\nPass `bed`, a bed's name, for that bed's plants.\nRead-only: yes\n"
+    ),
+    "{manual}"
+  );
 
   // A booked tool answers through the toolbook and by its own name alike.
   assert_eq!(
@@ -1153,7 +1171,10 @@ fn place(tools: &Path, folder: &str, files: &[(&str, &str)]) {
   fs::create_dir_all(&staged).unwrap();
 
   for (name, text) in files {
-    fs::write(staged.join(name), text).unwrap();
+    let file = staged.join(name);
+
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(file, text).unwrap();
   }
 
   fs::rename(&staged, tools.join(folder).join(".placed")).unwrap();

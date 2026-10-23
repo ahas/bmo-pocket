@@ -72,7 +72,7 @@ pub fn tools() -> Vec<Value> {
     }),
     json!({
       "name": "describe",
-      "description": "One toolbook tool by its full name: what it does, its input schema, whether it only reads, and whether call or act reaches it.",
+      "description": "One toolbook tool by its full name: what it does, its manual on how to call it where it has one, its input schema, whether it only reads, and whether call or act reaches it.",
       "inputSchema": schema::<DescribeInput>(),
       "annotations": reading,
     }),
@@ -128,14 +128,20 @@ pub fn listed(held: &[Entry], query: Option<&str>) -> Vec<String> {
   lines.into_iter().map(|(_, line)| line).collect()
 }
 
-/// One entry described: what it does, how it is reached, whether it only reads, and its schemas.
+/// One entry described: what it does, its manual where it has one, how it is reached, whether it only reads,
+/// and its schemas.
 pub fn described(entry: &Entry) -> String {
   let mut said = vec![
     format!("{} — reached with {}", entry.full_name(), reached_by(entry)),
     entry.description(),
-    format!("Read-only: {}", if entry.read_only() { "yes" } else { "no" }),
-    format!("Input schema: {}", entry.input_schema()),
   ];
+
+  if let Some(manual) = entry.manual() {
+    said.push(format!("Manual:\n{}", manual.trim()));
+  }
+
+  said.push(format!("Read-only: {}", if entry.read_only() { "yes" } else { "no" }));
+  said.push(format!("Input schema: {}", entry.input_schema()));
 
   if let Some(output) = entry.output_schema() {
     said.push(format!("Answers with: {output}"));

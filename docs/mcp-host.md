@@ -160,6 +160,8 @@ flowchart TD
   - its name is not its folder's, or it has neither an entry nor resources, or a helper's has entries;
   - an entry has no description, or asks for no capability without being for the system alone;
   - an entry's schema file is missing, or is not a JSON Schema;
+  - an entry's manual is named by a path leaving the tool's folder, resolves outside it through a link, or does
+    not stand there;
   - an entry's full name is one another tool already holds; of two tools, the one read first keeps it, the tools
     root's in name order before the registry's in name order;
   - a registered tool's version folder is gone.
@@ -328,9 +330,10 @@ flowchart TD
 - **Capability and namespaces:** a session lacking a tool's capability, or whose record does not name its namespace,
   is not shown it and is refused when it calls it.
 - **Toolbook:** a namespace lists the entries the record's `shown` names alone; the toolbook lists and describes
-  the booked ones, calls a read-only one with `call` and refuses with `act` named one that acts, refuses arguments
-  that do not fit the tool's schema with the schema, refuses a tool the session does not hold by the words a direct
-  call is refused with, and answers a booked tool called by its own name.
+  the booked ones, a manual's text after the description where the manifest names one, calls a read-only one with
+  `call` and refuses with `act` named one that acts, refuses arguments that do not fit the tool's schema with the
+  schema, refuses a tool the session does not hold by the words a direct call is refused with, and answers a
+  booked tool called by its own name.
 - **Grants:** a call of an entry declaring a grant runs where the record's grants hold it and is refused naming it
   where they do not, on the tools face, the call-back socket and the control socket alike; an entry declaring none
   runs; a claim whose claimant's grant the record lacks is not granted and says why.

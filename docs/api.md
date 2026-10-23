@@ -1,6 +1,6 @@
 # The boundary
 
-**Fixed API, version 0.1.0-rev.3.** This document is the tool host's fixed API: every contract it exposes to another
+**Fixed API, version 0.1.0-rev.4.** This document is the tool host's fixed API: every contract it exposes to another
 unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
 served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
 tables, its files or its process. The host calls no other unit. How the host behaves behind these contracts is
@@ -361,6 +361,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | `name` | string, required | Lower-case letters, digits and `_` |
 | `title` | string | Its title |
 | `description` | string, required | What it does; its first sentence is its line in the toolbook's list |
+| `manual` | string | A Markdown file inside the tool's folder, named by its path relative to the folder: how to call the entry, its arguments and examples, which the toolbook's `describe` answers whole after the description |
 | `input` | string, required | The input schema's file, beside the manifest |
 | `output` | string | The output schema's file, where it answers an object |
 | `hints` | table | `read_only`, `destructive`, `open_world` (booleans) and `idempotent`; a read-only entry is reached by `call`, any other by `act` |
@@ -394,7 +395,8 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 - Neither an entry nor resources, or a helper's manifest with entries.
 - An entry with a namespace or name outside its alphabet, declared twice, with no description, asking for no
   capability without being for the system alone, with a capability or a grant with no name, unbounded with a
-  timeout, or naming a schema file not beside the manifest or not a JSON Schema.
+  timeout, naming a schema file not beside the manifest or not a JSON Schema, or naming a manual outside the
+  tool's folder or one that does not stand there.
 - A schedule whose pattern does not read.
 - Resources naming no namespace or no capability; a server tool declaring claims or resources.
 - An entry whose full name another tool already holds.
