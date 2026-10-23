@@ -203,6 +203,17 @@ describe("the TypeScript client", () => {
     expect((await reader.schedules({ after: page.items[0]!.nextAt })).items).toEqual([]);
   });
 
+  test("lists the sessions standing and the external servers to the issuer alone", async () => {
+    const reader = await session();
+    const standing = await issuer.toolSessions();
+
+    expect(standing.items.length).toBeGreaterThan(0);
+    expect(standing.items.every((one) => one.holderName === "tester" && !("token" in one))).toBe(true);
+    expect((await issuer.servers()).items).toEqual([]);
+    expect((await refusal(reader.toolSessions())).code).toBe("forbidden");
+    expect((await refusal(reader.servers())).code).toBe("forbidden");
+  });
+
   test("revokes a session, after which its token is refused", async () => {
     const issued = await issuer.issue({ holderName: "tester", namespaces: ["notes"], capabilities: [], grants: [] });
     const revoked = pocketClient({ socket: issuer.socket, token: issued.token });

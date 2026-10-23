@@ -1,0 +1,15 @@
+{
+  // The module's build and entry, typechecked on their own; the screen's sources are the Nuxt layer's and
+  // its typecheck reads them (`../tsconfig.json`).
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["bun"]
+  },
+  "files": ["vite.config.ts", "entry.ts", "page-meta.ts", "modules.d.ts"]
+}

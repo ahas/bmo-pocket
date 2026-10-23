@@ -32,6 +32,7 @@ flowchart TD
   Exe -->|call-back socket of the call| Host
   Host -->|a schedule due, under a record of its own| Exe
   Host -->|MCP, one connection per registration| External[an external server]
+  Console[a console] -->|HTTP + the console token: manifest, screen, reads| Host
 ```
 
 ## Namespaces and capabilities
@@ -106,6 +107,10 @@ flowchart TD
   takes this kind alone.
 - **No session can widen itself.** A session's token can issue nothing, so the only records standing are those the
   issuer wrote.
+- **The console token** reaches the console face alone (`docs/api.md`, 「The console face」): a random token in
+  `tool-host/console-token` under the data root, or in the file `--console-token-file` names, readable by the
+  host's user alone and made at the first start that opens the face. It reads what the issuer token reads and
+  writes nothing, so a console holding it can show the host but never issue a session or call a tool.
 
 ## Transport
 
@@ -279,6 +284,20 @@ flowchart TD
   `GET /discipline` (`docs/toolbook.md`, 「The rules a prompt carries」).
 - **Each tool member carries its icon,** and `GET /schedules` where each schedule stands, so a reader needs no
   second route for either.
+- **The issuer reads the sessions standing and the external servers:** `GET /tool-sessions` answers each record's
+  holder, reach and times, never its token or a variable's value, and `GET /servers` each registration the host
+  read with whether its server's tools are listed and why not.
+
+### The console face
+
+- **The host's screen is a console bundle** it serves itself (`docs/api.md`, 「The console face」): a console reads
+  its manifest, loads its module and relays the screen's reads on a loopback port of the face's own, opened where
+  the deployment names one. The screen shows the catalogue, the schedules, the sessions standing and the external
+  servers, read as the issuer reads them.
+- **The face reads and writes nothing of its own.** Its routes are the bundle's files and the control socket's reads,
+  answered by the same code, so the screen never shows the host other than the control socket does.
+- **The host is the guard,** as the contract has a service be: the console token on every route, and
+  `Owner-Role: administrator` on every route the screen uses.
 
 ### Schedules
 
@@ -400,6 +419,12 @@ flowchart TD
   shown to no session and called through `POST /tool-calls`; `POST /claims` names the entry whose manifest claims an
   address's host and whose executable claims the address, and none for one no entry claims; the namespaces and
   tools are paged by name, and the schedules by `nextAt` with no run of equal times split.
+- **The console face:** a request without the console token is refused on every route, the issuer's and a
+  session's tokens among them; the manifest and the words are answered to the token with no role, and the module,
+  the stylesheet and the reads only with `Owner-Role: administrator`; the manifest names the built files by their
+  digests, reads through bmo-ui's own reading of the contract, and is refused where no bundle stands; and every read
+  answers what the control socket answers the issuer. `GET /tool-sessions` pages the standing sessions by
+  `createdAt` with no token or variable's value in them, and `GET /servers` names each registration, listed or not.
 - **Schedules:** a schedule is due at its pattern's first time after it is seen, is called once at a beat past it
   with its arguments under a record of its own, is passed over while its last call runs, begins afresh when its
   pattern changes and is dropped with its entry; its last failure is kept and said.

@@ -15,7 +15,7 @@ pub enum HostError {
   #[error("the token names no session")]
   UnknownToken,
   /// A tool session's token on a route the issuer token alone takes.
-  #[error("the issuer token alone issues and revokes tool sessions")]
+  #[error("the issuer token alone issues, revokes and lists tool sessions and lists the external servers")]
   IssuerOnly,
   /// The issuer token on a route a tool session's token alone takes.
   #[error("a call or a claim is made under a tool session's token")]
@@ -29,6 +29,18 @@ pub enum HostError {
   /// The token names no tool session.
   #[error("no tool session stands under that token")]
   UnknownSession,
+  /// A token on the console face other than the console token.
+  #[error("the console token alone reaches the console face")]
+  NotTheConsole,
+  /// A route the screen uses asked with no `Owner-Role` allowing the screen's role.
+  #[error("the screen is the administrator's: `Owner-Role` must allow it")]
+  ScreenRole,
+  /// The host holds no console bundle, so it serves no screen.
+  #[error("the host holds no console bundle")]
+  NoBundle,
+  /// No file of the console bundle goes by that name.
+  #[error("the console bundle has no file `{0}`")]
+  NoBundleFile(String),
   /// What was handed to be issued cannot be a session record.
   #[error("the session record is malformed: {0}")]
   MalformedRecord(String),
@@ -58,9 +70,15 @@ pub enum HostError {
 impl HostError {
   pub fn code(&self) -> ErrorCode {
     match self {
-      Self::NoToken | Self::UnknownToken => ErrorCode::Unauthorized,
-      Self::IssuerOnly | Self::SessionOnly | Self::GrantRefused(_) => ErrorCode::Forbidden,
-      Self::UnknownNamespace(_) | Self::UnknownEntry(_) | Self::UnknownSession => ErrorCode::NotFound,
+      Self::NoToken | Self::UnknownToken | Self::NotTheConsole => ErrorCode::Unauthorized,
+      Self::IssuerOnly | Self::SessionOnly | Self::GrantRefused(_) | Self::ScreenRole => {
+        ErrorCode::Forbidden
+      }
+      Self::UnknownNamespace(_)
+      | Self::UnknownEntry(_)
+      | Self::UnknownSession
+      | Self::NoBundle
+      | Self::NoBundleFile(_) => ErrorCode::NotFound,
       Self::MalformedRecord(_) | Self::MalformedRequest(_) => ErrorCode::BadRequest,
       Self::ArgumentsMisfit(_) => ErrorCode::ArgumentsMisfit,
       Self::ToolFailed(_) => ErrorCode::ToolFailed,

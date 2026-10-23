@@ -1,12 +1,13 @@
 {
   "name": "@bmo/pocket-client",
-  "version": "0.1.0-rev.6",
+  "version": "0.1.0-rev.7",
   "description": "The tool host's control socket as a TypeScript caller reaches it: types generated from docs/openapi.json, one call per route over the socket with a bearer token.",
   "private": true,
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./schema": "./generated/openapi.d.ts"
   },
   "scripts": {
     "generate": "openapi-typescript ../docs/openapi.json --output generated/openapi.d.ts",

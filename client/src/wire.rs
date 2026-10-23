@@ -258,3 +258,82 @@ pub struct SchedulePage {
   pub items: Vec<Schedule>,
   pub more: bool,
 }
+
+/// A tool session that stands, as `GET /tool-sessions` answers it: its holder, its record's reach and its times,
+/// never its token or a variable's value.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StandingSession {
+  pub holder_name: String,
+  pub namespaces: BTreeSet<String>,
+  pub capabilities: BTreeSet<String>,
+  pub grants: Vec<Granted>,
+  pub shown: BTreeSet<String>,
+  /// The names of the variables handed to its calls, in order of name; their values are never answered.
+  pub variables: Vec<String>,
+  pub labels: Map<String, Value>,
+  /// When the session lapses, in epoch milliseconds; null where it stands until revoked.
+  pub expires_at: Option<u64>,
+  /// When it was issued, in epoch milliseconds.
+  pub created_at: u64,
+}
+
+impl StandingSession {
+  /// What a record that stands is told by.
+  pub fn of(session: &Session) -> Self {
+    Self {
+      holder_name: session.holder_name.clone(),
+      namespaces: session.namespaces.clone(),
+      capabilities: session.capabilities.clone(),
+      grants: session.grants.clone(),
+      shown: session.shown.clone(),
+      variables: session.variables.keys().cloned().collect(),
+      labels: session.labels.clone(),
+      expires_at: session.expires_at,
+      created_at: session.created_at,
+    }
+  }
+}
+
+/// A page of the tool sessions standing, in order of when each was issued.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SessionPage {
+  pub items: Vec<StandingSession>,
+  pub more: bool,
+}
+
+/// How the host reaches an external server: a command it starts, or an address it connects to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Transport {
+  Stdio,
+  Http,
+}
+
+/// One external server the host read a registration of, and whether its tools are listed.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Server {
+  pub name: String,
+  pub namespace: String,
+  pub transport: Transport,
+  /// Where it is reached: the command's words joined by spaces, or the address.
+  pub address: String,
+  /// What a record must hold to be shown its tools.
+  pub capabilities: Vec<String>,
+  /// What reaches a tool whose annotations carry no read-only hint.
+  pub reached_by: ReachedBy,
+  /// In seconds: the bound on connecting and listing, and each call's timeout.
+  pub timeout: u64,
+  /// How many tools its server last listed; null before it first answered.
+  pub listed: Option<u32>,
+  /// Why its last connection or listing failed, where it did.
+  pub error: Option<String>,
+}
+
+/// A page of the external servers, in order of name.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ServerPage {
+  pub items: Vec<Server>,
+  pub more: bool,
+}

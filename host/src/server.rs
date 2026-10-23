@@ -1,6 +1,7 @@
-//! The host's two faces: the namespaces sessions call on the loopback port, each behind a tool session's bearer
-//! token, and the control socket, where every route takes the issuer token or a tool session's (docs/mcp-host.md,
-//! 「Tokens」; docs/api.md, 「The control socket」).
+//! The host's faces: the namespaces sessions call on the loopback port, each behind a tool session's bearer token;
+//! the control socket, where every route takes the issuer token or a tool session's; and the console face, where
+//! the console token reaches the screen's bundle and the control socket's reads (docs/mcp-host.md, 「Tokens」;
+//! docs/api.md, 「The control socket」 and 「The console face」).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -9,20 +10,22 @@ use std::time::Instant;
 use axum::body::{Body, Bytes};
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Extension, Path, Query, Request, State};
-use axum::http::{StatusCode, Uri, header};
+use axum::http::{HeaderValue, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, delete, get, post};
 use axum::{Json, Router};
 use bmo_pocket_client::{
-  Claim, ClaimRequest, Health, NameQuery, Namespace, NamespacePage, Schedule, SchedulePage, TimeQuery,
-  Tool, ToolCall, ToolCallRequest, ToolPage, ToolResult, ToolSession,
+  Claim, ClaimRequest, Health, NameQuery, Namespace, NamespacePage, Schedule, SchedulePage, Server,
+  ServerPage, SessionPage, StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage,
+  ToolResult, ToolSession,
 };
 use bmo_tool::{Session, SessionRequest};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use serde_json::Value;
 
+use crate::console::{Bundle, ConsoleManifest, SCREEN_ROLE};
 use crate::error::HostError;
 use crate::handler::{Claimant, Entry, Handler, Host, Refusal};
 use crate::records::Records;
@@ -116,14 +119,13 @@ pub fn tools(records: Arc<Records>, host: Arc<Host>) -> Router {
     .layer(middleware::from_fn_with_state(records, authorise))
 }
 
-// What the control socket stands on: the records, the host it asks for the catalogue, the schedules, and the issuer
-// token.
+// What the control socket's routes and the console face's reads stand on: the records, the host it asks for the
+// catalogue, and the schedules.
 #[derive(Clone)]
 struct Control {
   records: Arc<Records>,
   host: Arc<Host>,
   schedules: Arc<Schedules>,
-  issuer: Arc<str>,
 }
 
 /// Who a control request was made by, as its token says: the issuer, or a tool session.
@@ -160,14 +162,18 @@ impl Caller {
 
 // Every control route stands behind this: the token is the issuer's or names a tool session, and who made the
 // request goes on with it.
-async fn authorise_control(State(control): State<Control>, mut request: Request, next: Next) -> Response {
+async fn authorise_control(
+  State((records, issuer)): State<(Arc<Records>, Arc<str>)>,
+  mut request: Request,
+  next: Next,
+) -> Response {
   let Some(token) = bearer(&request) else {
     return HostError::NoToken.into_response();
   };
-  let caller = if token == &*control.issuer {
+  let caller = if token == &*issuer {
     Caller::Issuer
   } else {
-    match control.records.get(token) {
+    match records.get(token) {
       Some((_, session)) => Caller::Session(session),
       None => return HostError::UnknownToken.into_response(),
     }
@@ -444,6 +450,46 @@ async fn revoke(
   Ok(StatusCode::NO_CONTENT)
 }
 
+// The tool sessions standing, to the issuer alone, told by their holders, records and times.
+async fn tool_session_page(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+  asked: Result<Query<TimeQuery>, QueryRejection>,
+) -> Result<Json<SessionPage>, HostError> {
+  caller.issuer()?;
+
+  let Query(asked) = asked.map_err(malformed)?;
+  let mut every: Vec<StandingSession> =
+    control.records.standing().iter().map(|session| StandingSession::of(session)).collect();
+
+  every.sort_by(|left, right| {
+    (left.created_at, &left.holder_name).cmp(&(right.created_at, &right.holder_name))
+  });
+
+  let issued = |one: &StandingSession| i64::try_from(one.created_at).unwrap_or(i64::MAX);
+  let (items, more) =
+    page_by_time(every, issued, asked.after, asked.limit).map_err(HostError::MalformedRequest)?;
+
+  Ok(Json(SessionPage { items, more }))
+}
+
+// The external servers the host read a registration of, to the issuer alone, listed or not.
+async fn server_page(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+  asked: Result<Query<NameQuery>, QueryRejection>,
+) -> Result<Json<ServerPage>, HostError> {
+  caller.issuer()?;
+
+  let Query(asked) = asked.map_err(malformed)?;
+  let every: Vec<Server> = control.host.placed.externals.every().iter().map(|link| link.server()).collect();
+  let (items, more) =
+    page_by_name(every, |server| server.name.clone(), asked.after.as_deref(), asked.limit)
+      .map_err(HostError::MalformedRequest)?;
+
+  Ok(Json(ServerPage { items, more }))
+}
+
 async fn schedule_page(
   State(control): State<Control>,
   Extension(caller): Extension<Caller>,
@@ -502,19 +548,20 @@ async fn method_not_allowed() -> HostError {
 }
 
 /// The control socket, each route behind the issuer token or a tool session's: health; the discipline; the
-/// namespaces, one of them, a namespace's tools and one tool; a call and a claim under a tool session; a tool
-/// session issued and revoked; and the schedules. Any other path or method is refused in the common error shape.
+/// namespaces, one of them, a namespace's tools and one tool; a call and a claim under a tool session; the tool
+/// sessions standing, one issued and one revoked; the external servers; and the schedules. Any other path or method
+/// is refused in the common error shape.
 pub fn control(
   records: Arc<Records>,
   host: Arc<Host>,
   schedules: Arc<Schedules>,
   issuer: String,
 ) -> Router {
+  let gate: (Arc<Records>, Arc<str>) = (records.clone(), issuer.into());
   let state = Control {
     records,
     host,
     schedules,
-    issuer: issuer.into(),
   };
 
   Router::new()
@@ -526,11 +573,122 @@ pub fn control(
     .route("/namespaces/{namespace}/tools/{toolName}", get(one_tool))
     .route("/tool-calls", post(tool_call))
     .route("/claims", post(claim))
-    .route("/tool-sessions", post(issue))
+    .route("/tool-sessions", get(tool_session_page).post(issue))
     .route("/tool-sessions/{token}", delete(revoke))
+    .route("/servers", get(server_page))
     .route("/schedules", get(schedule_page))
     .fallback(unknown_route)
     .method_not_allowed_fallback(method_not_allowed)
-    .layer(middleware::from_fn_with_state(state.clone(), authorise_control))
+    .layer(middleware::from_fn_with_state(gate, authorise_control))
+    .with_state(state)
+}
+
+/// What the console face stands on beside the control socket's reads: the console token, and the bundle the host
+/// read as it started, where one stood.
+pub struct Screen {
+  pub token: String,
+  pub bundle: Option<Bundle>,
+}
+
+// Every route of the console face stands behind this: the console token, and no other, reaches it, and its reads
+// are answered as the issuer's.
+async fn authorise_console(
+  State(screen): State<Arc<Screen>>,
+  mut request: Request,
+  next: Next,
+) -> Response {
+  match bearer(&request) {
+    None => return HostError::NoToken.into_response(),
+    Some(token) if token != screen.token => return HostError::NotTheConsole.into_response(),
+    Some(_) => {}
+  }
+
+  request.extensions_mut().insert(Caller::Issuer);
+  next.run(request).await
+}
+
+// Every route the screen uses stands behind this as well: the `Owner-Role` the console sets allows the screen's.
+async fn screen_role(request: Request, next: Next) -> Response {
+  let role = request.headers().get("owner-role").and_then(|value| value.to_str().ok());
+
+  if role != Some(SCREEN_ROLE) {
+    return HostError::ScreenRole.into_response();
+  }
+
+  next.run(request).await
+}
+
+fn bundle_of(screen: &Screen) -> Result<&Bundle, HostError> {
+  screen.bundle.as_ref().ok_or(HostError::NoBundle)
+}
+
+// Bytes answered under their media type and how long they may be kept.
+fn bytes(body: Vec<u8>, kind: &'static str, kept: &'static str) -> Response {
+  let mut response = (StatusCode::OK, body).into_response();
+  let headers = response.headers_mut();
+
+  headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(kind));
+  headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(kept));
+  headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+  response
+}
+
+async fn console_manifest(Extension(screen): Extension<Arc<Screen>>) -> Result<Response, HostError> {
+  let manifest: ConsoleManifest = bundle_of(&screen)?.manifest();
+  let mut response = Json(manifest).into_response();
+
+  response
+    .headers_mut()
+    .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+  Ok(response)
+}
+
+async fn console_words(Extension(screen): Extension<Arc<Screen>>) -> Result<Response, HostError> {
+  Ok(bytes(bundle_of(&screen)?.words.clone(), "application/json", "no-cache"))
+}
+
+// The module or the stylesheet by the name the manifest gives it, kept as long as a browser likes, since a name
+// changes with its bytes.
+async fn console_file(
+  Extension(screen): Extension<Arc<Screen>>,
+  Path(name): Path<String>,
+) -> Result<Response, HostError> {
+  let served = bundle_of(&screen)?.file(&name).ok_or(HostError::NoBundleFile(name))?;
+
+  Ok(bytes(served.bytes.clone(), served.kind, "private, max-age=31536000, immutable"))
+}
+
+/// The console face, every route behind the console token: the manifest and the words with no role, and the
+/// bundle's module and stylesheet and the control socket's reads, as the issuer is answered them, only with
+/// `Owner-Role` allowing the screen's role. Any other path or method is refused in the common error shape.
+pub fn console(
+  records: Arc<Records>,
+  host: Arc<Host>,
+  schedules: Arc<Schedules>,
+  screen: Screen,
+) -> Router {
+  let screen = Arc::new(screen);
+  let state = Control {
+    records,
+    host,
+    schedules,
+  };
+
+  Router::new()
+    .route("/console-bundle/{file}", get(console_file))
+    .route("/namespaces", get(namespaces))
+    .route("/namespaces/{namespace}", get(one_namespace))
+    .route("/namespaces/{namespace}/tools", get(tool_page))
+    .route("/namespaces/{namespace}/tools/{toolName}", get(one_tool))
+    .route("/schedules", get(schedule_page))
+    .route("/tool-sessions", get(tool_session_page))
+    .route("/servers", get(server_page))
+    .route_layer(middleware::from_fn(screen_role))
+    .route("/console-manifest", get(console_manifest))
+    .route("/console-bundle/words", get(console_words))
+    .fallback(unknown_route)
+    .method_not_allowed_fallback(method_not_allowed)
+    .layer(Extension(screen.clone()))
+    .layer(middleware::from_fn_with_state(screen, authorise_console))
     .with_state(state)
 }

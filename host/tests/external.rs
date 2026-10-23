@@ -1,14 +1,15 @@
 //! External servers as a person and a session meet them (docs/mcp-host.md, 「External servers」): a stand-in stdio MCP
 //! server registered by configuration, its tools listed, described and called through the toolbook for a record
 //! holding the registration's capability, started again after it dies, and gone once taken; a streamable HTTP
-//! registration sent its token file's text; and each refusal of a registration.
+//! registration sent its token file's text; each refusal of a registration; and each registration read on
+//! `GET /servers`, listed or not.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use bmo_pocket_client::ReachedBy;
+use bmo_pocket_client::{NameQuery, Pocket, ReachedBy, Transport};
 use bmo_tool::Session;
 use http::Request;
 use http_body_util::{BodyExt, Full};
@@ -19,10 +20,11 @@ use mcp_host::install::{self, Put};
 use mcp_host::placed::Placed;
 use mcp_host::records::Records;
 use mcp_host::registry::Registry;
+use mcp_host::schedule::Schedules;
 use mcp_host::server;
 use serde_json::{Value, json};
 use tempfile::TempDir;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream, UnixListener};
 
 // The stand-in MCP server, speaking the protocol on standard input and output a line a message: it marks each start
 // in the file `STARTS` names, lists three tools, says the text back after `MARK`, and ends itself for `fall_over`.
@@ -395,4 +397,59 @@ fn the_command_registers_a_server_by_mcp_and_lists_it() {
   assert!(listed.trim_end().ends_with("under outer/"), "{listed}");
   assert_eq!(pocket(&["put", "--mcp", file, "somewhere"]).status.code(), Some(2));
   assert_eq!(pocket(&["take", "stand-in"]).status.code(), Some(0));
+}
+
+// Each registration the host read is answered on `GET /servers` (docs/api.md, 「External servers」): before its
+// server first answered with no listing, and after it with how many tools it listed; where it is reached, never its
+// environment.
+#[tokio::test(flavor = "multi_thread")]
+async fn each_registration_read_is_answered_on_the_servers_route_listed_or_not() {
+  let scratch = Scratch::new();
+  let registry = scratch.registry();
+
+  register(&registry, &scratch.registration("stand-in", "reached_by = \"call\""), &["outer.use"]).unwrap();
+
+  let host = scratch.host();
+  let socket = scratch.sockets.path().join("control.sock");
+  let listener = UnixListener::bind(&socket).unwrap();
+  let records = Arc::new(Records::load(&scratch.dir.path().join("sessions")).unwrap());
+  let control = server::control(records, host.clone(), Arc::new(Schedules::default()), "issuer".to_owned());
+
+  tokio::spawn(async move { axum::serve(listener, control).await });
+
+  let issuer = Pocket::at(&socket, "issuer");
+  let before = issuer.servers(&NameQuery::default()).await.unwrap();
+
+  assert_eq!(before.items.len(), 1);
+
+  let server = &before.items[0];
+
+  assert_eq!((server.name.as_str(), server.namespace.as_str()), ("stand-in", "outer"));
+  assert_eq!(
+    (server.transport, server.reached_by, server.timeout),
+    (Transport::Stdio, ReachedBy::Call, 20)
+  );
+  assert!(
+    server.address.starts_with("python3 ") && server.address.ends_with("stand_in.py"),
+    "{}",
+    server.address
+  );
+  assert_eq!(server.capabilities, ["outer.use"]);
+  assert_eq!((server.listed, server.error.as_deref()), (None, None));
+
+  host.placed.refresh().await;
+
+  let after = issuer.servers(&NameQuery::default()).await.unwrap();
+
+  assert_eq!(after.items[0].listed, Some(3));
+
+  let said = serde_json::to_string(&after).unwrap();
+
+  assert!(!said.contains("STARTS") && !said.contains("m:"), "{said}");
+
+  let mut taken = Vec::new();
+
+  install::take(&registry, "stand-in", None, &mut taken).unwrap();
+  host.placed.reread();
+  assert!(issuer.servers(&NameQuery::default()).await.unwrap().items.is_empty());
 }

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 use std::time::Duration;
 
-use bmo_pocket_client::ReachedBy;
+use bmo_pocket_client::{ReachedBy, Server, Transport};
 use bmo_tool::manifest::{
   Entry, HintsPart, Manifest, Mode, PROTOCOL, ToolPart, entry_name, inside, manual, namespace_name,
 };
@@ -392,6 +392,29 @@ impl Link {
     self.why.lock().unwrap_or_else(PoisonError::into_inner).clone()
   }
 
+  /// The server as `GET /servers` answers it: where it is reached, never its headers, token file or environment,
+  /// and how far its last listing went.
+  pub fn server(&self) -> Server {
+    let registration = &self.registration;
+    let (transport, address) = match (&registration.stdio, &registration.http) {
+      (Some(stdio), _) => (Transport::Stdio, stdio.command.join(" ")),
+      (None, Some(http)) => (Transport::Http, http.url.clone()),
+      (None, None) => (Transport::Stdio, String::new()),
+    };
+
+    Server {
+      name: registration.name.clone(),
+      namespace: registration.namespace.clone(),
+      transport,
+      address,
+      capabilities: registration.capabilities.clone(),
+      reached_by: registration.reached_by,
+      timeout: registration.timeout,
+      listed: self.listing().map(|listed| u32::try_from(listed.len()).unwrap_or(u32::MAX)),
+      error: self.why(),
+    }
+  }
+
   // Whether it is to be listed: never listed yet, or said to have changed.
   fn wanting(&self) -> bool {
     self.stale.load(Ordering::SeqCst) || self.listing().is_none()
@@ -686,6 +709,11 @@ impl Externals {
       .lock()
       .unwrap_or_else(PoisonError::into_inner)
       .retain(|dir, _| dirs.contains(dir));
+  }
+
+  /// Every link held: one for each registration the last reading of the catalogue read.
+  pub fn every(&self) -> Vec<Arc<Link>> {
+    self.links.lock().unwrap_or_else(PoisonError::into_inner).values().cloned().collect()
   }
 
   /// Whether a link is to be listed.

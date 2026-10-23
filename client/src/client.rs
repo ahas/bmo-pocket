@@ -14,8 +14,8 @@ use url::Url;
 use crate::error::WireError;
 use crate::transport::{Reply, request};
 use crate::wire::{
-  Claim, ClaimRequest, Health, NameQuery, Namespace, NamespacePage, SchedulePage, TimeQuery, Tool,
-  ToolCall, ToolCallRequest, ToolPage, ToolSession,
+  Claim, ClaimRequest, Health, NameQuery, Namespace, NamespacePage, SchedulePage, ServerPage, SessionPage,
+  TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage, ToolSession,
 };
 
 /// Why a call answered no body of its route.
@@ -213,6 +213,21 @@ impl Pocket {
       StatusCode::NO_CONTENT => Ok(()),
       _ => Err(refusal(&reply)),
     }
+  }
+
+  /// `GET /tool-sessions`: a page of the tool sessions standing, in order of when each was issued, with the
+  /// issuer's token.
+  pub async fn tool_sessions(&self, page: &TimeQuery) -> Result<SessionPage, Failure> {
+    let query = paged(page.after.map(|after| after.to_string()), page.limit);
+
+    body(self.ask(Method::GET, &route(&["tool-sessions"], &query), None).await?, StatusCode::OK)
+  }
+
+  /// `GET /servers`: a page of the external servers registered, in order of name, with the issuer's token.
+  pub async fn servers(&self, page: &NameQuery) -> Result<ServerPage, Failure> {
+    let query = paged(page.after.clone(), page.limit);
+
+    body(self.ask(Method::GET, &route(&["servers"], &query), None).await?, StatusCode::OK)
   }
 
   /// `GET /schedules`: a page of the schedules the token sees, in order of when each is next due.

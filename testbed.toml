@@ -6,13 +6,20 @@ name = "pocket"
 [test]
 # The Cargo workspace's crates; the TypeScript tool kit's tests, which run from its own folder and hold the
 # Python kit to the same cases; the TypeScript client's, which run against the workspace's build of the host and
-# hold its types to docs/openapi.json; and the host's contract with an installed CLI, which runs where
-# BMO_LIVE_CLAUDE names one.
+# hold its types to docs/openapi.json; the console screen's, whose console face test runs against the same build
+# and reads the manifest through bmo-ui's own reading; and the host's contract with an installed CLI, which runs
+# where BMO_LIVE_CLAUDE names one.
 languages = ["cargo", "bun"]
-files = ["sdk/ts-kit/tests/**/*.test.ts", "client/tests/**/*.test.ts", "tests/host-contract/**/*.test.ts"]
+files = [
+  "sdk/ts-kit/tests/**/*.test.ts",
+  "client/tests/**/*.test.ts",
+  "console/tests/**/*.test.ts",
+  "tests/host-contract/**/*.test.ts",
+]
 setup = [
   "cd sdk/ts-kit && bun install --frozen-lockfile",
   "cd client && bun install --frozen-lockfile",
+  "cd console && bun install --frozen-lockfile",
   "cd tests/host-contract && bun install --frozen-lockfile",
 ]
 
@@ -34,10 +41,33 @@ lane = "wide"
 id = "fmt"
 command = "cargo fmt --all --check"
 
+# The console screen under console/, a Bun project of its own: its typecheck, against its own install.
+[[check.step]]
+id = "console-typecheck"
+dir = "console"
+command = "bun install --frozen-lockfile && bun run typecheck"
+lane = "wide"
+
 # The tool host's own deploy tree, and the data root it shares with the services whose tools it serves. The
 # host's user unit stands under deploy/ and is the repository's one service.
 [build]
 binaries = ["mcp-host", "bmo-pocket"]
+
+# The console bundle the console face serves (docs/api.md, 「The bundle」), built in the build tree, where its
+# install and Nuxt's generated project stay warm between deployments, and written before the flip into the release
+# being built: the release beside the build tree, named by the first twelve hex digits of the commit. Its
+# console-bundle/, a folder apart from the screen's sources in console/, is the one the host reads its bundle from
+# where `--console-bundle` names none, read once as it starts.
+[[build.step]]
+id = "console-install"
+dir = "console"
+command = "bun install --frozen-lockfile"
+
+[[build.step]]
+id = "console-bundle"
+dir = "console"
+lane = "wide"
+command = "BMO_POCKET_CONSOLE_OUT=\"$(git rev-parse --show-toplevel)/../deploy-releases/$(git rev-parse HEAD | cut -c1-12)/console-bundle\" bun run bundle"
 
 [deploy]
 root = "~/.local/share/bmo-pocket"

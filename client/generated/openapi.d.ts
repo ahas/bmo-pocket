@@ -140,6 +140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A page of the external servers registered, in order of name: where each is reached and whether its tools are listed, never its headers, token file or environment. */
+        get: operations["listServers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tool-calls": {
         parameters: {
             query?: never;
@@ -164,7 +181,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** A page of the tool sessions standing, in order of when each was issued: each one's holder, record and times, never its token or a variable's value; a page never ends inside a run of equal times. */
+        get: operations["listToolSessions"];
         put?: never;
         /** Issue a tool session for a holder, carrying the namespaces, capabilities and grants it allows. */
         post: operations["createToolSession"];
@@ -295,6 +313,40 @@ export interface components {
             items: components["schemas"]["Schedule"][];
             more: boolean;
         };
+        /** @description One external server the host read a registration of, and whether its tools are listed. */
+        Server: {
+            /** @description Where it is reached: the command's words joined by spaces, or the address. */
+            address: string;
+            /** @description What a record must hold to be shown its tools. */
+            capabilities: string[];
+            /** @description Why its last connection or listing failed, where it did. */
+            error: string | null;
+            /**
+             * Format: uint32
+             * @description How many tools its server last listed; null before it first answered.
+             */
+            listed: number | null;
+            name: string;
+            namespace: string;
+            /** @description What reaches a tool whose annotations carry no read-only hint. */
+            reachedBy: components["schemas"]["ReachedBy"];
+            /**
+             * Format: uint64
+             * @description In seconds: the bound on connecting and listing, and each call's timeout.
+             */
+            timeout: number;
+            transport: components["schemas"]["Transport"];
+        };
+        /** @description A page of the external servers, in order of name. */
+        ServerPage: {
+            items: components["schemas"]["Server"][];
+            more: boolean;
+        };
+        /** @description A page of the tool sessions standing, in order of when each was issued. */
+        SessionPage: {
+            items: components["schemas"]["StandingSession"][];
+            more: boolean;
+        };
         /**
          * @description What an issuer asks a session to be issued with: the record less the times the host answers, and how long
          *     it stands.
@@ -317,6 +369,32 @@ export interface components {
                 [key: string]: string;
             };
             variablesFile?: string | null;
+        };
+        /**
+         * @description A tool session that stands, as `GET /tool-sessions` answers it: its holder, its record's reach and its times,
+         *     never its token or a variable's value.
+         */
+        StandingSession: {
+            capabilities: string[];
+            /**
+             * Format: uint64
+             * @description When it was issued, in epoch milliseconds.
+             */
+            createdAt: number;
+            /**
+             * Format: uint64
+             * @description When the session lapses, in epoch milliseconds; null where it stands until revoked.
+             */
+            expiresAt: number | null;
+            grants: components["schemas"]["Granted"][];
+            holderName: string;
+            labels: {
+                [key: string]: unknown;
+            };
+            namespaces: string[];
+            shown: string[];
+            /** @description The names of the variables handed to its calls, in order of name; their values are never answered. */
+            variables: string[];
         };
         /** @description One tool of a namespace, in the form the token holds it. */
         Tool: {
@@ -427,6 +505,11 @@ export interface components {
             limit?: number | null;
             namespace: string;
         };
+        /**
+         * @description How the host reaches an external server: a command it starts, or an address it connects to.
+         * @enum {string}
+         */
+        Transport: "stdio" | "http";
         /** @description The body of every failure and refusal. */
         WireError: {
             code: components["schemas"]["ErrorCode"];
@@ -824,6 +907,67 @@ export interface operations {
             };
         };
     };
+    listServers: {
+        parameters: {
+            query?: {
+                /** @description The last server's name a page answered: the members whose names sort after it. */
+                after?: string;
+                /** @description At most this many members; every one where absent. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The route's answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerPage"];
+                };
+            };
+            /** @description Refused or failed: bad-request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "bad-request";
+                    };
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
+                    };
+                };
+            };
+        };
+    };
     createToolCall: {
         parameters: {
             query?: never;
@@ -915,6 +1059,67 @@ export interface operations {
                     "application/json": components["schemas"]["WireError"] & {
                         /** @enum {unknown} */
                         code?: "tool-failed";
+                    };
+                };
+            };
+        };
+    };
+    listToolSessions: {
+        parameters: {
+            query?: {
+                /** @description A time in epoch milliseconds: the sessions issued after it. */
+                after?: number;
+                /** @description At most this many members; every one where absent. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The route's answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPage"];
+                };
+            };
+            /** @description Refused or failed: bad-request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "bad-request";
+                    };
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
                     };
                 };
             };

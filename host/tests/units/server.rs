@@ -321,3 +321,91 @@ async fn the_discipline_answers_the_prompt_paragraph_as_text_to_either_token() {
     (StatusCode::UNAUTHORIZED, ErrorCode::Unauthorized)
   );
 }
+
+// The tool sessions standing (docs/api.md, 「A standing session」): to the issuer alone, in order of when each was
+// issued, never a token or a variable's value; and the external servers, to the issuer alone.
+#[tokio::test]
+async fn the_issuer_alone_reads_the_sessions_standing_and_the_external_servers() {
+  let fixture = Fixture::new();
+  let socket = fixture.serve(Arc::new(Schedules::default()));
+  let issuer = Pocket::at(&socket, ISSUER);
+  let mut first = asked(&["notes.read"], &["notes.keep"]);
+
+  first.variables = [("PLOT".to_owned(), "a secret".to_owned())].into();
+  first.labels = json!({ "desk": "one" }).as_object().unwrap().clone();
+
+  let one = issuer.issue(&first).await.unwrap();
+
+  tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+
+  let two = issuer.issue(&asked(&["notes.write"], &[])).await.unwrap();
+  let gone = issuer.issue(&asked(&["notes.read"], &[])).await.unwrap();
+
+  issuer.revoke(&gone.token).await.unwrap();
+
+  let every = issuer.tool_sessions(&TimeQuery::default()).await.unwrap();
+  let made: Vec<u64> = every.items.iter().map(|session| session.created_at).collect();
+
+  assert_eq!((made, every.more), (vec![one.created_at, two.created_at], false));
+  assert_eq!(every.items[0].variables, ["PLOT"]);
+  assert_eq!(every.items[0].labels["desk"], "one");
+  assert_eq!(every.items[0].grants[0].resource, "notes.keep");
+  assert_eq!(every.items[0].expires_at, one.expires_at);
+
+  let said = request(&socket, Method::GET, "/tool-sessions", Some(ISSUER), None).await.unwrap();
+  let text = String::from_utf8_lossy(&said.body);
+
+  assert!(
+    !text.contains(&one.token) && !text.contains("a secret") && !text.contains("\"token\""),
+    "{text}"
+  );
+
+  let first_page = issuer
+    .tool_sessions(&TimeQuery {
+      after: None,
+      limit: Some(1),
+    })
+    .await
+    .unwrap();
+
+  assert_eq!((first_page.items.len(), first_page.more), (1, true));
+
+  let rest = issuer
+    .tool_sessions(&TimeQuery {
+      after: Some(i64::try_from(one.created_at).unwrap()),
+      limit: None,
+    })
+    .await
+    .unwrap();
+
+  assert_eq!(
+    rest.items.iter().map(|session| session.created_at).collect::<Vec<_>>(),
+    [two.created_at]
+  );
+
+  let session = Pocket::at(&socket, one.token.clone());
+
+  assert_eq!(
+    code(session.tool_sessions(&TimeQuery::default()).await),
+    (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
+  );
+  assert_eq!(
+    code(session.servers(&NameQuery::default()).await),
+    (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
+  );
+
+  let servers = issuer.servers(&NameQuery::default()).await.unwrap();
+
+  assert!(servers.items.is_empty() && !servers.more);
+  assert_eq!(
+    code(
+      issuer
+        .servers(&NameQuery {
+          after: None,
+          limit: Some(0)
+        })
+        .await
+    ),
+    (StatusCode::BAD_REQUEST, ErrorCode::BadRequest)
+  );
+}

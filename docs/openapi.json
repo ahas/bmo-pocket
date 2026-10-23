@@ -303,6 +303,107 @@
         ],
         "type": "object"
       },
+      "Server": {
+        "description": "One external server the host read a registration of, and whether its tools are listed.",
+        "properties": {
+          "address": {
+            "description": "Where it is reached: the command's words joined by spaces, or the address.",
+            "type": "string"
+          },
+          "capabilities": {
+            "description": "What a record must hold to be shown its tools.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "error": {
+            "description": "Why its last connection or listing failed, where it did.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listed": {
+            "description": "How many tools its server last listed; null before it first answered.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "reachedBy": {
+            "$ref": "#/components/schemas/ReachedBy",
+            "description": "What reaches a tool whose annotations carry no read-only hint."
+          },
+          "timeout": {
+            "description": "In seconds: the bound on connecting and listing, and each call's timeout.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/Transport"
+          }
+        },
+        "required": [
+          "name",
+          "namespace",
+          "transport",
+          "address",
+          "capabilities",
+          "reachedBy",
+          "timeout",
+          "listed",
+          "error"
+        ],
+        "type": "object"
+      },
+      "ServerPage": {
+        "description": "A page of the external servers, in order of name.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Server"
+            },
+            "type": "array"
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object"
+      },
+      "SessionPage": {
+        "description": "A page of the tool sessions standing, in order of when each was issued.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StandingSession"
+            },
+            "type": "array"
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object"
+      },
       "SessionRequest": {
         "additionalProperties": false,
         "description": "What an issuer asks a session to be issued with: the record less the times the host answers, and how long\nit stands.",
@@ -368,6 +469,79 @@
           "namespaces",
           "capabilities",
           "grants"
+        ],
+        "type": "object"
+      },
+      "StandingSession": {
+        "description": "A tool session that stands, as `GET /tool-sessions` answers it: its holder, its record's reach and its times,\nnever its token or a variable's value.",
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "createdAt": {
+            "description": "When it was issued, in epoch milliseconds.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expiresAt": {
+            "description": "When the session lapses, in epoch milliseconds; null where it stands until revoked.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/Granted"
+            },
+            "type": "array"
+          },
+          "holderName": {
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "shown": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "variables": {
+            "description": "The names of the variables handed to its calls, in order of name; their values are never answered.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "holderName",
+          "namespaces",
+          "capabilities",
+          "grants",
+          "shown",
+          "variables",
+          "labels",
+          "expiresAt",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -711,6 +885,14 @@
         ],
         "type": "object"
       },
+      "Transport": {
+        "description": "How the host reaches an external server: a command it starts, or an address it connects to.",
+        "enum": [
+          "stdio",
+          "http"
+        ],
+        "type": "string"
+      },
       "WireError": {
         "additionalProperties": false,
         "description": "The body of every failure and refusal.",
@@ -738,9 +920,9 @@
     }
   },
   "info": {
-    "description": "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, tool and schedule, or a tool session's token, which sees the namespaces its record names and the tools it holds there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers text. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own protocol and is not stated here.",
+    "description": "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, tool and schedule, the tool sessions standing and the external servers, or a tool session's token, which sees the namespaces its record names and the tools it holds there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers text. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own protocol and is not stated here; the console face answers this document's reads in its shapes behind the console token, and is not stated here either.",
     "title": "bmo-pocket",
-    "version": "0.1.0-rev.6"
+    "version": "0.1.0-rev.7"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1434,6 +1616,123 @@
         "x-token": "either"
       }
     },
+    "/servers": {
+      "get": {
+        "operationId": "listServers",
+        "parameters": [
+          {
+            "description": "The last server's name a page answered: the members whose names sort after it.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many members; every one where absent.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerPage"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          }
+        },
+        "summary": "A page of the external servers registered, in order of name: where each is reached and whether its tools are listed, never its headers, token file or environment.",
+        "tags": [
+          "servers"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "forbidden"
+        ],
+        "x-token": "issuer"
+      }
+    },
     "/tool-calls": {
       "post": {
         "operationId": "createToolCall",
@@ -1613,6 +1912,122 @@
       }
     },
     "/tool-sessions": {
+      "get": {
+        "operationId": "listToolSessions",
+        "parameters": [
+          {
+            "description": "A time in epoch milliseconds: the sessions issued after it.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "At most this many members; every one where absent.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPage"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          }
+        },
+        "summary": "A page of the tool sessions standing, in order of when each was issued: each one's holder, record and times, never its token or a variable's value; a page never ends inside a run of equal times.",
+        "tags": [
+          "tool-sessions"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "forbidden"
+        ],
+        "x-token": "issuer"
+      },
       "post": {
         "operationId": "createToolSession",
         "requestBody": {
@@ -1906,6 +2321,10 @@
     {
       "description": "The calls the host makes at the times each tool declares.",
       "name": "schedules"
+    },
+    {
+      "description": "The external MCP servers registered, and whether each is listed.",
+      "name": "servers"
     }
   ],
   "x-harness": {

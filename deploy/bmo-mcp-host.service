@@ -4,8 +4,10 @@ Description=Tool host: every session's MCP tools, over streamable HTTP behind it
 
 [Service]
 WorkingDirectory=%h/.local/share/bmo-pocket/deploy
-# The host's own settings, BMO_MCP_HOST_PORT among them, where the deployment's env file names them (docs/api.md,
-# 「The variables」). The issuer token stands in tool-host/issuer-token under the data root, made at the first start.
+# The host's own settings, BMO_MCP_HOST_PORT and BMO_MCP_HOST_CONSOLE_PORT among them, where the deployment's env
+# file names them (docs/api.md, 「The variables」). The issuer token stands in tool-host/issuer-token under the data
+# root, made at the first start, and the console token in tool-host/console-token, made at the first start that
+# opens the console face.
 EnvironmentFile=-%h/.local/share/bmo/data/env/pocket.env
 # What a placed tool's call runs reaches the programs it starts by this path.
 Environment=PATH=%h/.local/bin:%h/.bun/bin:%h/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

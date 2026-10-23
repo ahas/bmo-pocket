@@ -1,0 +1,70 @@
+{
+  "pocket": {
+    "title": { "screen": "도구" },
+    "view": {
+      "catalogue": "카탈로그",
+      "schedules": "예약 호출",
+      "sessions": "세션",
+      "servers": "외부 서버"
+    },
+    "action": {
+      "close": "닫기",
+      "refresh": "다시 읽기"
+    },
+    "label": {
+      "namespaces": "네임스페이스",
+      "search": "검색",
+      "tool": "도구",
+      "toolbar": "도구 호스트",
+      "tools": "도구",
+      "view": "보기"
+    },
+    "field": {
+      "address": "주소",
+      "arguments": "인자",
+      "capabilities": "능력",
+      "created_at": "발급",
+      "error": "목록이 없는 이유",
+      "expires_at": "만료",
+      "grant": "권한",
+      "grants": "권한",
+      "idempotent": "멱등",
+      "input": "입력 스키마",
+      "labels": "레이블",
+      "last_at": "마지막 호출",
+      "last_error": "마지막 실패",
+      "listing": "목록 줄",
+      "manual": "설명서",
+      "namespace": "네임스페이스",
+      "next_at": "다음 호출",
+      "open_world": "외부 세계",
+      "output": "출력 스키마",
+      "reached_by": "부르는 도구",
+      "shown": "이름으로 보임",
+      "timeout": "제한 시간",
+      "variables": "변수"
+    },
+    "status": {
+      "choose_namespace": "네임스페이스를 고르면 그 도구가 보입니다.",
+      "destructive": "파괴적",
+      "failed": "읽지 못했습니다: {why}",
+      "failing": "지난번 실패",
+      "forever": "취소될 때까지",
+      "listed": "도구 {count}개",
+      "loading": "읽는 중",
+      "never": "아직 없음",
+      "no_match": "검색에 맞는 것이 없습니다.",
+      "no_namespaces": "서빙하는 네임스페이스가 없습니다.",
+      "none": "없음",
+      "no_schedules": "예약을 선언한 도구가 없습니다.",
+      "no_servers": "등록된 외부 서버가 없습니다.",
+      "no_sessions": "서 있는 도구 세션이 없습니다.",
+      "not_listed": "목록 없음",
+      "no_tools": "이 네임스페이스에는 도구가 없습니다.",
+      "read_only": "읽기 전용",
+      "running": "실행 중",
+      "seconds": "{count}초",
+      "system": "시스템 전용"
+    }
+  }
+}

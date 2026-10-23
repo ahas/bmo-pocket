@@ -45,7 +45,7 @@ fn every_route_takes_the_bearer_token_and_every_reference_resolves() {
     .flat_map(|(path, item)| item.as_object().unwrap().keys().map(move |method| format!("{method} {path}")))
     .collect();
 
-  assert_eq!(routes.len(), 11, "{routes:?}");
+  assert_eq!(routes.len(), 13, "{routes:?}");
   assert_eq!(document["security"], serde_json::json!([{ "bearer": [] }]));
   assert_eq!(document["info"]["version"], env!("CARGO_PKG_VERSION"));
 

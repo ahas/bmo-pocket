@@ -13,8 +13,8 @@ use serde_json::{Map, Value, json};
 use crate::error::{ErrorCode, WireError};
 use crate::harness::{ENTRY, MCP_COMMAND, PLUGIN, harness_tools};
 use crate::wire::{
-  Claim, ClaimRequest, Health, Namespace, NamespacePage, SchedulePage, Tool, ToolCall, ToolCallRequest,
-  ToolPage, ToolSession,
+  Claim, ClaimRequest, Health, Namespace, NamespacePage, SchedulePage, ServerPage, SessionPage, Tool,
+  ToolCall, ToolCallRequest, ToolPage, ToolSession,
 };
 
 /// Where the schemas the routes refer to stand in the document.
@@ -22,10 +22,11 @@ const SCHEMAS: &str = "/components/schemas";
 
 const DESCRIPTION: &str = "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer \
   token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, \
-  tool and schedule, or a tool session's token, which sees the namespaces its record names and the tools it holds \
-  there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers \
+  tool and schedule, the tool sessions standing and the external servers, or a tool session's token, which sees \
+  the namespaces its record names and the tools it holds there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers \
   text. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over \
-  HTTP on the loopback port, is MCP's own protocol and is not stated here.";
+  HTTP on the loopback port, is MCP's own protocol and is not stated here; the console face answers this \
+  document's reads in its shapes behind the console token, and is not stated here either.";
 
 /// Which token a route takes.
 #[derive(Clone, Copy)]
@@ -91,6 +92,14 @@ fn after_name(of: &str) -> Value {
     "after",
     &format!("The last {of} name a page answered: the members whose names sort after it."),
     json!({ "type": "string" }),
+  )
+}
+
+fn after_time(what: &str) -> Value {
+  query_parameter(
+    "after",
+    &format!("A time in epoch milliseconds: the {what} after it."),
+    json!({ "type": "integer", "format": "int64" }),
   )
 }
 
@@ -203,6 +212,19 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       codes: &[Unauthorized, BadRequest, Forbidden],
     },
     Route {
+      method: "get",
+      path: "/tool-sessions",
+      operation: "listToolSessions",
+      tag: "tool-sessions",
+      summary: "A page of the tool sessions standing, in order of when each was issued: each one's holder, \
+        record and times, never its token or a variable's value; a page never ends inside a run of equal times.",
+      token: Token::Issuer,
+      parameters: vec![after_time("sessions issued"), limit()],
+      request: None,
+      answer: (200, Answer::Json(schema::<SessionPage>(generator))),
+      codes: &[Unauthorized, BadRequest, Forbidden],
+    },
+    Route {
       method: "post",
       path: "/tool-sessions",
       operation: "createToolSession",
@@ -234,17 +256,23 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "A page of the tool calls the host makes at the times each tool's own manifest declares, in order \
         of when each is next due; a page never ends inside a run of equal times.",
       token: Token::Either,
-      parameters: vec![
-        query_parameter(
-          "after",
-          "A time in epoch milliseconds: the schedules next due after it.",
-          json!({ "type": "integer", "format": "int64" }),
-        ),
-        limit(),
-      ],
+      parameters: vec![after_time("schedules next due"), limit()],
       request: None,
       answer: (200, Answer::Json(schema::<SchedulePage>(generator))),
       codes: &[Unauthorized, BadRequest],
+    },
+    Route {
+      method: "get",
+      path: "/servers",
+      operation: "listServers",
+      tag: "servers",
+      summary: "A page of the external servers registered, in order of name: where each is reached and whether \
+        its tools are listed, never its headers, token file or environment.",
+      token: Token::Issuer,
+      parameters: vec![after_name("server's"), limit()],
+      request: None,
+      answer: (200, Answer::Json(schema::<ServerPage>(generator))),
+      codes: &[Unauthorized, BadRequest, Forbidden],
     },
   ]
 }
@@ -356,6 +384,7 @@ pub fn openapi() -> Value {
       { "name": "claims", "description": "Which entry a tool session may have an address read by." },
       { "name": "tool-sessions", "description": "The tool sessions a harness is handed tools through." },
       { "name": "schedules", "description": "The calls the host makes at the times each tool declares." },
+      { "name": "servers", "description": "The external MCP servers registered, and whether each is listed." },
     ],
     "paths": paths,
     "components": {

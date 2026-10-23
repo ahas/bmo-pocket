@@ -2,7 +2,8 @@
 
 This repository is the tool host, `bmo-pocket`: the `mcp-host` process serving the MCP tools of every tool
 session, the toolbook that lets a session reach every tool it holds without each one standing in its prompt,
-the registry of installed tools, the control socket's clients (`client/`), the harness plugin (`plugin/`), and
+the registry of installed tools, the control socket's clients (`client/`), the host's console screen (`console/`),
+the harness plugin (`plugin/`), and
 the tool SDK (`sdk/`): the contract every tool is written to and the helpers for tools in other languages. Tools are not this repository's: a standalone tool is a repository of
 its own, and a tool bound to one service stands in that service's `tools/` folder. The host knows neither by
 name; it reads their manifests.
@@ -42,7 +43,8 @@ A change moves through three stages in order:
    `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all --check` (108 columns,
    2-space indentation, as `rustfmt.toml` sets).
 3. Verification: the test targets the change touched, then the whole suite once: `cargo test --workspace`, which
-   holds the plugin crate's tests, and `bun test` in `sdk/ts-kit/`, in `client/` and in `tests/host-contract/`.
+   holds the plugin crate's tests, and `bun test` in `sdk/ts-kit/`, in `client/` and in `tests/host-contract/`, and
+   `bun run check` in `console/`, the screen's typecheck and its tests against the workspace's build of the host.
    The host-contract test runs only where `BMO_LIVE_CLAUDE` names an installed Claude Code CLI, and skips
    elsewhere.
 

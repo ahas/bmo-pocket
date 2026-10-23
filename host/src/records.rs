@@ -41,12 +41,12 @@ fn fresh_token() -> String {
   rand::random::<[u8; 32]>().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// The issuer token kept in `file` (docs/mcp-host.md, 「Tokens」): read where the file stands, and made, readable by
-/// the host's user alone, where it does not.
-pub fn issuer_token(file: &Path) -> io::Result<String> {
+/// A token of the host's own kept in `file`, the issuer token or the console token (docs/mcp-host.md, 「Tokens」): read
+/// where the file stands, and made, readable by the host's user alone, where it does not.
+pub fn kept_token(file: &Path) -> io::Result<String> {
   match fs::read_to_string(file) {
     Ok(token) if !token.trim().is_empty() => return Ok(token.trim().to_owned()),
-    Ok(_) => return Err(io::Error::other(format!("the issuer token {} is empty", file.display()))),
+    Ok(_) => return Err(io::Error::other(format!("the token file {} is empty", file.display()))),
     Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
     Err(_) => {}
   }
@@ -156,6 +156,20 @@ impl Records {
     }
 
     Some((RecordId(hash), found))
+  }
+
+  /// Every record that stands, none lapsed among them, in no order.
+  pub fn standing(&self) -> Vec<Arc<Session>> {
+    let now = now_ms();
+
+    self
+      .held
+      .read()
+      .expect("the records' lock is never poisoned")
+      .values()
+      .filter(|session| !lapsed(session, now))
+      .cloned()
+      .collect()
   }
 
   /// Every lapsed record dropped, so a collector that died leaves nothing standing, with the ids they were

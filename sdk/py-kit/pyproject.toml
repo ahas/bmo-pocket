@@ -1,6 +1,6 @@
 [project]
 name = "bmo-tool"
-version = "0.1.0-rev.6"
+version = "0.1.0-rev.7"
 description = "What a Python tool of the tool host reads its call with and answers it by."
 requires-python = ">=3.10"
 license = { text = "MIT" }

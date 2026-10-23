@@ -2,6 +2,7 @@
 //! token (docs/mcp-host.md).
 
 pub mod command;
+pub mod console;
 pub mod error;
 pub mod external;
 pub mod handler;

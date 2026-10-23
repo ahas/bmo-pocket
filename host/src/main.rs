@@ -1,7 +1,8 @@
 //! The tool host's binary (docs/mcp-host.md). Its verbs:
 //!
 //! - `serve`: the host itself — every namespace on the loopback port, behind each session's bearer
-//!   token, and the control socket tool sessions are issued and revoked on.
+//!   token, the control socket tool sessions are issued and revoked on, and, where a port is named for it,
+//!   the console face a console reads the host's screen on.
 //! - `call <namespace> <tool>`: one call of one placed tool as a session would make it, the
 //!   session record as an issuer asks for it and the arguments read from standard input as
 //!   `{"session": …, "arguments": …}` and the answer written to standard output as the protocol writes
@@ -18,13 +19,14 @@ use std::time::Duration;
 
 use bmo_tool::SessionRequest;
 use clap::{Args, Parser, Subcommand};
+use mcp_host::console::{Bundle, bundle_beside_binary};
 use mcp_host::handler::Host;
 use mcp_host::placed::Placed;
-use mcp_host::records::{Records, issuer_token, now_ms};
+use mcp_host::records::{Records, kept_token, now_ms};
 use mcp_host::registry::Registry;
 use mcp_host::running::sockets_beside;
 use mcp_host::schedule::{self, Schedules};
-use mcp_host::server;
+use mcp_host::server::{self, Screen};
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::net::{TcpListener, UnixListener};
@@ -79,6 +81,8 @@ enum Verb {
     /// How long the changes under the tools' folder must have settled before it is read again.
     #[arg(long, default_value_t = 300)]
     settle_ms: u64,
+    #[command(flatten)]
+    console: ConsoleFace,
   },
   /// Calls one tool as a session would: `{"session": …, "arguments": …}` on standard input.
   Call {
@@ -95,6 +99,50 @@ enum Verb {
     #[arg(long)]
     tools: Option<PathBuf>,
   },
+}
+
+/// The console face (docs/api.md, 「The console face」): opened only where a port is named for it.
+#[derive(Args)]
+struct ConsoleFace {
+  /// The loopback port a console reads the host's screen on; none opens no console face, and 0 takes any free one.
+  #[arg(long, env = "BMO_MCP_HOST_CONSOLE_PORT")]
+  console_port: Option<u16>,
+  /// The file the console token is kept in, made where it does not stand; `tool-host/console-token` under the data
+  /// root by default.
+  #[arg(long)]
+  console_token_file: Option<PathBuf>,
+  /// The folder the console bundle's build wrote into; `console-bundle/` beside the `bin/` this binary stands in by
+  /// default.
+  #[arg(long)]
+  console_bundle: Option<PathBuf>,
+}
+
+// The console face as it is opened: its port, and what it serves behind the console token.
+struct Opened {
+  port: u16,
+  screen: Screen,
+}
+
+impl ConsoleFace {
+  // The face opened where a port is named, its token kept and its bundle read; why not where its token could not be
+  // kept.
+  fn open(self, data_root: &Path) -> Result<Option<Opened>, String> {
+    let Some(port) = self.console_port else {
+      return Ok(None);
+    };
+    let file = self.console_token_file.unwrap_or_else(|| data_root.join("tool-host/console-token"));
+    let token = kept_token(&file)
+      .map_err(|why| format!("the console token {} could not be kept: {why}", file.display()))?;
+    let bundle = self
+      .console_bundle
+      .or_else(bundle_beside_binary)
+      .and_then(|folder| Bundle::found(&folder));
+
+    Ok(Some(Opened {
+      port,
+      screen: Screen { token, bundle },
+    }))
+  }
 }
 
 #[derive(Deserialize)]
@@ -130,22 +178,27 @@ fn main() -> ExitCode {
       reach,
       tools,
       settle_ms,
+      console,
     } => {
       let data_root = data_root.unwrap_or_else(default_data_root);
       let control = control.unwrap_or_else(|| runtime_dir().join("bmo/mcp-host.sock"));
       let issuer_file = issuer_token_file.unwrap_or_else(|| data_root.join("tool-host/issuer-token"));
-      let issuer = match issuer_token(&issuer_file) {
+      let issuer = match kept_token(&issuer_file) {
         Ok(token) => token,
         Err(why) => {
           return refused(format!("the issuer token {} could not be kept: {why}", issuer_file.display()));
         }
+      };
+      let console = match console.open(&data_root) {
+        Ok(console) => console,
+        Err(why) => return refused(why),
       };
       let placed = Arc::new(placed(tools, &data_root, &control));
       let host = Arc::new(reach.host(placed));
 
       match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
         Ok(runtime) => runtime.block_on(serve(
-          port,
+          (port, console),
           &data_root,
           (&control, issuer),
           Beats {
@@ -236,10 +289,10 @@ struct Beats {
   settle: Duration,
 }
 
-// The host served: the tools face on the loopback port, and the control socket at its path behind the issuer token
-// and the tool sessions' tokens.
+// The host served: the tools face on the loopback port, the control socket at its path behind the issuer token and
+// the tool sessions' tokens, and the console face on its own loopback port where it is opened.
 async fn serve(
-  port: u16,
+  (port, console): (u16, Option<Opened>),
   data_root: &Path,
   (control, issuer): (&Path, String),
   beats: Beats,
@@ -267,9 +320,20 @@ async fn serve(
       return refused(format!("the control socket {} could not be bound: {why}", control.display()));
     }
   };
+  let console = match console {
+    Some(opened) => match TcpListener::bind(("127.0.0.1", opened.port)).await {
+      Ok(listener) => Some((listener, opened.screen)),
+      Err(why) => return refused(format!("127.0.0.1:{} could not be bound: {why}", opened.port)),
+    },
+    None => None,
+  };
   let bound = tcp.local_addr().map_or(port, |address| address.port());
+  let screen_at = console
+    .as_ref()
+    .and_then(|(listener, _)| listener.local_addr().ok())
+    .map_or_else(String::new, |address| format!(", console 127.0.0.1:{}", address.port()));
 
-  println!("mcp-host listening on 127.0.0.1:{bound}, control {}", control.display());
+  println!("mcp-host listening on 127.0.0.1:{bound}, control {}{screen_at}", control.display());
   let _ = io::stdout().flush();
 
   let pruning = records.clone();
@@ -295,12 +359,23 @@ async fn serve(
 
   let sessions =
     axum::serve(tcp, server::tools(records.clone(), host.clone())).with_graceful_shutdown(stopped());
+  let screens = async {
+    match console {
+      Some((listener, screen)) => {
+        let face = server::console(records.clone(), host.clone(), schedules.clone(), screen);
+
+        axum::serve(listener, face).with_graceful_shutdown(stopped()).await
+      }
+      None => Ok(()),
+    }
+  };
   let issuers =
-    axum::serve(unix, server::control(records, host, schedules, issuer)).with_graceful_shutdown(stopped());
-  let (served, controlled) = tokio::join!(sessions, issuers);
+    axum::serve(unix, server::control(records.clone(), host.clone(), schedules.clone(), issuer))
+      .with_graceful_shutdown(stopped());
+  let (served, controlled, shown) = tokio::join!(sessions, issuers, screens);
   let _ = fs::remove_file(control);
 
-  match served.and(controlled) {
+  match served.and(controlled).and(shown) {
     Ok(()) => ExitCode::SUCCESS,
     Err(why) => refused(why),
   }

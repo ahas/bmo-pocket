@@ -1,9 +1,10 @@
 # The boundary
 
-**Fixed API, version 0.1.0-rev.6.** This document is the tool host's fixed API: every contract it exposes to another
+**Fixed API, version 0.1.0-rev.7.** This document is the tool host's fixed API: every contract it exposes to another
 unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
 served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
-tables, its files or its process. The host calls no other unit. How the host behaves behind these contracts is
+tables, its files or its process. The host calls no other unit; a console reaches it on the console face alone
+(「The console face」). How the host behaves behind these contracts is
 `docs/mcp-host.md` and `docs/toolbook.md`; how tools are installed is `docs/registry.md`.
 
 ## Version
@@ -12,7 +13,7 @@ tables, its files or its process. The host calls no other unit. How the host beh
   the first release it is `0.1.0` and counts revisions, `0.1.0-rev.<n>`, and major, minor and patch do not move.
 - **Every crate and package the repository publishes carries it,** and so do `GET /health`, the OpenAPI document's
   `info.version` and the harness plugin: `bmo-tool`, `mcp-host`, `bmo-pocket-client`, `bmo-pocket-plugin`,
-  `@bmo/pocket-client` and the TypeScript and Python tool kits.
+  `@bmo/pocket-client`, the console bundle `bmo-pocket-console` and the TypeScript and Python tool kits.
 - **The call protocol has a version of its own, 1,** which every manifest and every handed object names; a
   manifest speaking another is left out rather than misread.
 
@@ -31,9 +32,9 @@ tables, its files or its process. The host calls no other unit. How the host beh
 | Status | Code | Answered where |
 |---|---|---|
 | 400 | `bad-request` | a body or a query that does not read as the route takes it: a session record, a call, a claim, a cursor or a `limit` that is not a positive integer; the sentence names what is wrong |
-| 401 | `unauthorized` | a request carries no bearer token, or one naming neither the issuer token nor a tool session: never issued, revoked, or past its `expiresAt` |
-| 403 | `forbidden` | the token is right but may not do this: a tool-session token on an issuer's route, or a call whose entry declares a grant the session's grants do not hold; the sentence names the missing grant |
-| 404 | `not-found` | the route is right, but the namespace, the entry or the tool session its path or body names is not one the token sees |
+| 401 | `unauthorized` | a request carries no bearer token, or one naming neither the issuer token nor a tool session: never issued, revoked, or past its `expiresAt`; on the console face, one that is not the console token |
+| 403 | `forbidden` | the token is right but may not do this: a tool-session token on an issuer's route, or a call whose entry declares a grant the session's grants do not hold, the sentence naming the missing grant; on the console face, a route the screen uses asked with no `Owner-Role` allowing the screen's role |
+| 404 | `not-found` | the route is right, but the namespace, the entry or the tool session its path or body names is not one the token sees; on the console face, the manifest, the words or a bundle file where the host holds no bundle or no file of that name |
 | 404 | `no-route` | no route answers the method and path |
 | 422 | `arguments-misfit` | `POST /tool-calls`, where the input does not fit the entry's schema in the form the session holds; the sentence names each misfit and carries the schema |
 | 500 | `failed` | the host failed, as where a record could not be kept or taken back on disk; the sentence is the failure |
@@ -110,6 +111,86 @@ tables, its files or its process. The host calls no other unit. How the host beh
 - **Every result says it is complete,** and a listing or a resource read says it may be kept by the asking session
   alone and never past its answer, for a client on a protocol revision that asks; an earlier revision is answered
   without them.
+
+## The console face
+
+The host's screen for a console that follows bmo-ui's console plugin contract (`docs/console-bundles.md` in that
+layer): the console reads the host's manifest, loads the screen's module and relays the screen's reads, all over
+HTTP on a loopback port of the face's own.
+
+- **On the loopback address only,** at the port `--console-port` or `BMO_MCP_HOST_CONSOLE_PORT` names; 0 takes any
+  free one. Where neither names one, the face is not opened, and the host serves no screen.
+- **One token reaches it, the console token,** carried as `Authorization: Bearer <token>`: the one the host keeps
+  in `tool-host/console-token` under the data root, or in the file `--console-token-file` names, readable by the
+  host's user alone and made by the host at the first start that opens the face where none stands. The deployment
+  hands it to the console's settings. Neither the issuer token nor a session's reaches this face, and the console
+  token reaches no other.
+- **The screen's role is `administrator`.** A console sets `Owner-Role` on everything it relays; a route the screen
+  uses, asked with no `Owner-Role` or one other than `administrator`, is refused 403 `forbidden`. The manifest and
+  the words are answered to the console token with no role, since a console reads them for no reader. No route asks
+  for an owner key: what the host holds is the deployment's, not one owner's.
+- **The face only reads.** It issues, revokes and calls nothing: its routes are the manifest, the bundle's files,
+  and the control socket's reads, answered as the control socket answers them to the issuer token.
+
+| Route | Reach | Answer |
+|---|---|---|
+| `GET /console-manifest` | the console token | 200 the manifest; 404 `not-found` where the host holds no bundle |
+| `GET /console-bundle/words` | the console token | 200 the bundle's words; 404 `not-found` where the host holds no bundle |
+| `GET /console-bundle/{file}` | the console token and the screen's role | 200 the module or the stylesheet the manifest names, by its name; 404 `not-found` for any other |
+| `GET /namespaces`, `GET /namespaces/{namespace}`, `GET /namespaces/{namespace}/tools`, `GET /namespaces/{namespace}/tools/{toolName}` | the console token and the screen's role | as the control socket answers each to the issuer token (「Namespaces」, 「Tools」) |
+| `GET /schedules` | the console token and the screen's role | as the control socket answers it to the issuer token (「Schedules」) |
+| `GET /tool-sessions` | the console token and the screen's role | as the control socket answers it to the issuer token (「Tool sessions」) |
+| `GET /servers` | the console token and the screen's role | as the control socket answers it to the issuer token (「External servers」) |
+
+- **A request with no token or another one** is refused 401 `unauthorized` on every path, and any path or method
+  the table does not name 404 `no-route`, each in the common error shape.
+- **The OpenAPI document does not state this face:** its reads are the control socket's routes in the shapes the
+  document states, and the manifest's shape is the contract's.
+
+### The manifest
+
+| Field | Value |
+|---|---|
+| `name` | `pocket`, which is also its words' namespace |
+| `title` | `pocket.title.screen` |
+| `icon` | `i-material-symbols-home-repair-service-outline` |
+| `screenPath` | `/pocket` |
+| `serviceName` | `pocket` |
+| `bundle` | `/console-bundle/module.<digest>.js`, `<digest>` the first 16 hex digits of the module's SHA-256 |
+| `stylesheet` | `/console-bundle/style.<digest>.css`, the same of the stylesheet's; null where the build wrote none |
+| `words` | `/console-bundle/words` |
+| `apiPrefix` | `/` |
+| `role` | `administrator` |
+| `ownerKey` | false |
+| `events` | false |
+| `websocket` | false |
+| `pushKinds` | none |
+| `calls` | none |
+
+- **Every field is written,** null or empty where it holds nothing, so a console reads the manifest whole.
+- **A file's name follows its bytes,** so a console and a browser may keep what they loaded, and a host started on
+  a rebuilt bundle names new paths. The module and the stylesheet are answered as never changing under their names;
+  the manifest and the words are answered afresh at every ask.
+
+### The bundle
+
+- **The screen's sources stand in `console/`,** the package `bmo-pocket-console`: a Nuxt layer on bmo-ui at the
+  version the console runs, vendored as that release's archive in `console/vendor/`, and calling the routes above
+  through the layer's relay under the service name `pocket`. It reads the types of what it reads from
+  `@bmo/pocket-client`.
+- **Its build, `bun run bundle`,** writes three files into the folder `BMO_POCKET_CONSOLE_OUT` names: `module.js`,
+  the ES module whose default export holds the screen's route under `/pocket`, every import of what a console
+  shares left unbundled; `style.css`, the utilities its sources use beyond the layer's own; and `words.json`, each
+  locale's words under `pocket`.
+- **The host reads the bundle once, as it starts,** from the folder `--console-bundle` names, else `console-bundle/` in
+  the release its binary stands in, beside its `bin/`, a folder apart from the screen's sources in `console/`. A folder holding no module or no words leaves the host with no
+  screen, said in its log, and the face answers its manifest 404, which a console reads as a unit with no screen.
+- **A deployment builds the bundle before the flip** into the release it deploys (`testbed.toml`), so a release's
+  host serves the screen of its own commit.
+- **What the screen shows:** the namespaces and their tools, each tool with its description, manual, input and
+  output schemas, capabilities, grant, hints and how the toolbook reaches it; the schedules and where each
+  stands; the tool sessions standing; and the external servers, each with where it is reached and whether its
+  tools are listed.
 
 ## The control socket
 
@@ -214,6 +295,7 @@ tables, its files or its process. The host calls no other unit. How the host beh
 
 | Route | Token | Request | Answer |
 |---|---|---|---|
+| `GET /tool-sessions` | the issuer's | query `after`, a time in epoch milliseconds; `limit` | 200 a page of the tool sessions standing, in order of `createdAt`; 400 `bad-request`; 403 `forbidden` |
 | `POST /tool-sessions` | the issuer's | a session record, with `ttlMs` | 201 the tool session; 400 `bad-request` naming why the record does not read; 403 `forbidden`; 500 `failed` |
 | `DELETE /tool-sessions/{token}` | the issuer's | | 204, what the session's tools kept ended; 403 `forbidden`; 404 `not-found` where the token names no session; 500 `failed` |
 
@@ -248,6 +330,51 @@ The tool session answered, and the record a call is handed, carry the same field
 - **A record holds no path, address or value of the issuer's own** beyond these. What a tool reads of the issuer's
   is in `variables`, `variablesFile` or `labels`, as the issuer puts it there.
 
+#### A standing session
+
+What `GET /tool-sessions` answers of each session that stands, issued and neither revoked nor lapsed:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `holderName` | string | Who holds it |
+| `namespaces` | array of strings | The namespaces it may use |
+| `capabilities` | array of strings | The capabilities it holds |
+| `grants` | array | The grants it holds, each `{resource}` |
+| `shown` | array of strings | The full names of the entries its namespaces list by name |
+| `variables` | array of strings | The names of the variables handed to its calls, in order of name |
+| `labels` | object | The issuer's own metadata |
+| `expiresAt` | epoch milliseconds or null | When it lapses; null where it stands until revoked |
+| `createdAt` | epoch milliseconds | When it was issued |
+
+- **No token and no variable's value is answered.** A token is its holder's alone, and a variable or the file a
+  record names may carry what only the record's tools may read, so a session is told by its holder, its record's
+  reach and its times.
+- **A session is keyed by when it was issued:** `after` answers the sessions issued after it, and a page never ends
+  inside a run of equal `createdAt`, as a page of schedules never ends inside a run of equal `nextAt`.
+
+### External servers
+
+| Route | Query | Answer |
+|---|---|---|
+| `GET /servers` | `after`, a server's name; `limit` | 200 a page of the external servers registered, in order of name; 400 `bad-request`; 403 `forbidden` to a session's token |
+
+| Field of a server | Type | Meaning |
+|---|---|---|
+| `name` | string | Its registration's name |
+| `namespace` | string | The namespace its tools are listed under |
+| `transport` | `stdio` or `http` | Whether the host starts it, or connects to its address |
+| `address` | string | Where it is reached: the command's words joined by spaces, or the address |
+| `capabilities` | array of strings | What a record must hold to be shown its tools |
+| `reachedBy` | `call` or `act` | What reaches a tool whose annotations carry no `readOnlyHint` |
+| `timeout` | integer | In seconds, the bound on connecting and listing, and each call's timeout |
+| `listed` | integer or null | How many tools its server last listed; null before it first answered |
+| `error` | string or null | Why its last connection or listing failed, where it did |
+
+- **A server is one registration the host read** (「The registration of an external server」), whether its tools
+  are listed or not, so a server that cannot be reached is read here with why.
+- **Its headers, token file and environment are never answered:** they may carry what only the server may read.
+- **The issuer token alone reads them,** since a server is the deployment's and no session's.
+
 ### Schedules
 
 | Route | Query | Answer |
@@ -276,6 +403,8 @@ The tool session answered, and the record a call is handed, carry the same field
 | Variable | Read by | Meaning |
 |---|---|---|
 | `BMO_MCP_HOST_PORT` | the host; a harness's configuration | The loopback port the tools face listens on |
+| `BMO_MCP_HOST_CONSOLE_PORT` | the host; a console's settings | The loopback port the console face listens on, where it is opened (「The console face」) |
+| `BMO_POCKET_CONSOLE_OUT` | the console bundle's build | The folder the bundle's three files are written into |
 | `BMO_DATA_DIR` | the host; `bmo-pocket` | The data root whose `tool-host/` folder holds the records, the registry and the issuer token |
 | `BMO_MCP_HOST_SOCKET` | the clients; the plugin; `bmo-pocket`'s `tool` nouns | Where the control socket stands, where it does not stand at the default path |
 | `BMO_POCKET_TOKEN` | `bmo-pocket mcp` | The tool session's token it calls with |

@@ -1,0 +1,70 @@
+{
+  "pocket": {
+    "title": { "screen": "Tools" },
+    "view": {
+      "catalogue": "Catalogue",
+      "schedules": "Schedules",
+      "sessions": "Sessions",
+      "servers": "External servers"
+    },
+    "action": {
+      "close": "Close",
+      "refresh": "Read again"
+    },
+    "label": {
+      "namespaces": "Namespaces",
+      "search": "Search",
+      "tool": "Tool",
+      "toolbar": "Tool host",
+      "tools": "Tools",
+      "view": "View"
+    },
+    "field": {
+      "address": "Address",
+      "arguments": "Arguments",
+      "capabilities": "Capabilities",
+      "created_at": "Issued",
+      "error": "Why not listed",
+      "expires_at": "Lapses",
+      "grant": "Grant",
+      "grants": "Grants",
+      "idempotent": "Idempotent",
+      "input": "Input schema",
+      "labels": "Labels",
+      "last_at": "Last call",
+      "last_error": "Last failure",
+      "listing": "Listing line",
+      "manual": "Manual",
+      "namespace": "Namespace",
+      "next_at": "Next due",
+      "open_world": "Open world",
+      "output": "Output schema",
+      "reached_by": "Reached by",
+      "shown": "Shown by name",
+      "timeout": "Timeout",
+      "variables": "Variables"
+    },
+    "status": {
+      "choose_namespace": "Choose a namespace to see its tools.",
+      "destructive": "Destructive",
+      "failed": "Could not read: {why}",
+      "failing": "Failed last time",
+      "forever": "Until revoked",
+      "listed": "{count} tools listed",
+      "loading": "Reading",
+      "never": "Not yet",
+      "no_match": "Nothing matches the search.",
+      "no_namespaces": "No namespace is served.",
+      "none": "None",
+      "no_schedules": "No tool declares a schedule.",
+      "no_servers": "No external server is registered.",
+      "no_sessions": "No tool session stands.",
+      "not_listed": "Not listed",
+      "no_tools": "This namespace serves no tool.",
+      "read_only": "Read-only",
+      "running": "Running",
+      "seconds": "{count} s",
+      "system": "System only"
+    }
+  }
+}

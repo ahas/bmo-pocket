@@ -15,6 +15,7 @@ helpers tools written in TypeScript or Python import.
 | Folder | Holds |
 |---|---|
 | `client/` | the control socket's client: the Rust crate `bmo-pocket-client`, which generates `docs/openapi.json`, and the TypeScript package `@bmo/pocket-client` generated from it |
+| `console/` | the host's screen as a console bundle, `bmo-pocket-console`: a Nuxt layer on the vendored bmo-ui, built into the module, stylesheet and words the console face serves (`docs/api.md`, 「The console face」) |
 | `deploy/` | the host's user unit, `bmo-mcp-host.service`, which a deployment links from the deploy tree |
 | `docs/` | the canonical documents: the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`), the boundary every other unit matches (`api.md`) and its OpenAPI document (`openapi.json`) |
 | `.graph/` | the code dependency graph: one node per feature with its files and what it reads or calls, and boundary nodes for the APIs exposed and called, written only by `bmo graph` |
@@ -39,6 +40,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 (cd sdk/ts-kit && bun test)
 (cd client && bun test)
+(cd console && bun install && bun run check)
 (cd tests/host-contract && bun test)
 ```
 

@@ -1,16 +1,18 @@
 //! A stand-in tool placed under a tools root, the host serving it in this process, and its control socket served on a
-//! socket of the test's own, for the control socket's and the schedules' tests.
+//! socket of the test's own, and its console face on a port of the test's own, for the control socket's, the
+//! console face's and the schedules' tests.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use bmo_tool::manifest::{MANIFEST, PLACED};
 use bmo_tool::{Granted, Session};
+use mcp_host::console::Bundle;
 use mcp_host::handler::Host;
 use mcp_host::placed::Placed;
 use mcp_host::records::Records;
 use mcp_host::schedule::Schedules;
-use mcp_host::server;
+use mcp_host::server::{self, Screen};
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::net::UnixListener;
@@ -154,15 +156,45 @@ impl Fixture {
   /// The control socket served in this process on a socket of its own, behind `ISSUER`; it ends with the test's
   /// runtime.
   pub fn serve(&self, schedules: Arc<Schedules>) -> PathBuf {
+    let records = Arc::new(Records::load(&self.dir.path().join("sessions")).unwrap());
+
+    self.serve_control(records, schedules)
+  }
+
+  fn serve_control(&self, records: Arc<Records>, schedules: Arc<Schedules>) -> PathBuf {
     let socket = self.sockets.path().join("control.sock");
     let listener = UnixListener::bind(&socket).unwrap();
-    let records = Arc::new(Records::load(&self.dir.path().join("sessions")).unwrap());
     let router = server::control(records, self.host.clone(), schedules, ISSUER.to_owned());
 
     tokio::spawn(async move { axum::serve(listener, router).await });
     socket
   }
+
+  /// The control socket, as `serve` serves it, and the console face over the same records on a loopback port of
+  /// its own, behind `CONSOLE` and with this bundle; both end with the test's runtime.
+  pub fn serve_with_console(&self, bundle: Option<Bundle>) -> (PathBuf, u16) {
+    let records = Arc::new(Records::load(&self.dir.path().join("sessions")).unwrap());
+    let schedules = Arc::new(Schedules::default());
+    let socket = self.serve_control(records.clone(), schedules.clone());
+    let bound = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = bound.local_addr().unwrap().port();
+
+    bound.set_nonblocking(true).unwrap();
+
+    let listener = tokio::net::TcpListener::from_std(bound).unwrap();
+    let screen = Screen {
+      token: CONSOLE.to_owned(),
+      bundle,
+    };
+    let router = server::console(records, self.host.clone(), schedules, screen);
+
+    tokio::spawn(async move { axum::serve(listener, router).await });
+    (socket, port)
+  }
 }
 
 /// The issuer token the fixture's control socket is served behind.
 pub const ISSUER: &str = "issuer-token-of-the-fixture";
+
+/// The console token the fixture's console face is served behind.
+pub const CONSOLE: &str = "console-token-of-the-fixture";

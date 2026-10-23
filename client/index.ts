@@ -23,6 +23,11 @@ export type Claim = Schemas["Claim"];
 export type SessionRequest = Schemas["SessionRequest"];
 export type ToolSession = Schemas["ToolSession"];
 export type SchedulePage = Schemas["SchedulePage"];
+export type Schedule = Schemas["Schedule"];
+export type StandingSession = Schemas["StandingSession"];
+export type SessionPage = Schemas["SessionPage"];
+export type Server = Schemas["Server"];
+export type ServerPage = Schemas["ServerPage"];
 export type ErrorCode = Schemas["ErrorCode"];
 export type WireError = Schemas["WireError"];
 
@@ -32,7 +37,7 @@ export interface NameQuery {
   limit?: number;
 }
 
-/** Where a page of the schedules begins, a time in epoch milliseconds, and how much of it is answered. */
+/** Where a page of a collection keyed by time begins, a time in epoch milliseconds, and how much of it is answered. */
 export interface TimeQuery {
   after?: number;
   limit?: number;
@@ -132,6 +137,17 @@ export function pocketClient(options: PocketOptions) {
     /** `POST /tool-sessions`: a tool session issued, with the issuer's token. */
     async issue(request: SessionRequest): Promise<ToolSession> {
       return answered(await client.POST("/tool-sessions", { body: request }));
+    },
+
+    /** `GET /tool-sessions`: a page of the tool sessions standing, in order of when each was issued, with the
+     * issuer's token. */
+    async toolSessions(query: TimeQuery = {}): Promise<SessionPage> {
+      return answered(await client.GET("/tool-sessions", { params: { query } }));
+    },
+
+    /** `GET /servers`: a page of the external servers registered, in order of name, with the issuer's token. */
+    async servers(query: NameQuery = {}): Promise<ServerPage> {
+      return answered(await client.GET("/servers", { params: { query } }));
     },
 
     /** `DELETE /tool-sessions/{token}`: a tool session revoked, with the issuer's token. */
