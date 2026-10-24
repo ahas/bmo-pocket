@@ -281,7 +281,8 @@ flowchart TD
   that fails before the tool answers is a non-2xx status naming why, where a session's call on the tools face is
   answered the same refusal as a failed tool result for its model to read.
 - **It serves the paragraph on finding and using tools** that a session's system prompt carries, as text on
-  `GET /discipline` (`docs/toolbook.md`, 「The rules a prompt carries」).
+  `GET /discipline` (`docs/toolbook.md`, 「The rules a prompt carries」): the session reaches tools it does not hold
+  by name with `bmo use`.
 - **Each tool member carries its icon,** and `GET /schedules` where each schedule stands, so a reader needs no
   second route for either.
 - **The issuer reads the sessions standing and the external servers:** `GET /tool-sessions` answers each record's

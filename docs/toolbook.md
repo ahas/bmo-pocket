@@ -53,17 +53,19 @@
 
 ## The rules a prompt carries
 
-- **The toolbook's descriptions say how one booked tool is reached; a session's instructions say how tools are
-  found and used at all.** The host owns that paragraph, since the toolbook is its own, and serves it as text on
-  the control socket's `GET /discipline` (`docs/api.md`, 「Discipline」). An issuer writes it whole into the system
-  prompt of each session it hands the toolbook to, and writes nothing of its own about the toolbook beside it.
+- **A session's instructions say how tools are found and used at all; the toolbook's descriptions say how one
+  booked tool is reached.** The host owns that paragraph, since the tool collection is its own, and serves it as
+  text on the control socket's `GET /discipline` (`docs/api.md`, 「Discipline」). An issuer writes it whole into the
+  system prompt of each session it hands the tool host's tools to, and writes nothing of its own about them beside
+  it.
 - **What it tells the session:**
-  - an unknown tool is found with `list`, read with `describe` before its arguments are filled, and called by its
-    full name: a read through `call`, an action through `act`;
-  - the tools reached through the toolbook change while the session runs, so a tool's name is never taken from
-    memory or guessed, but found again;
-  - long work is not waited on: where a tool answers that it has started something, its result comes back as a
-    message, and the session goes on rather than calling again to see whether it is done;
+  - the tools named to it are the resident ones; every other hosted tool is found with `bmo use --tools`, read with
+    `bmo use <tool> --describe` before its arguments are filled, and called with `bmo use <tool>` and its
+    arguments;
+  - the tools the host holds change while the session runs, so a tool's name is never taken from memory or
+    guessed, but found again;
+  - long work is not waited on: `bmo use <tool> --async` starts it, its result comes back as a message, and the
+    session goes on rather than calling again to see whether it is done;
   - a refusal of the arguments carries the tool's schema, so the session mends them and calls once more.
 - **It is one English paragraph under a heading,** kept as `prompts/tool-use.md` and built into the host, so the
   text a host serves is the text of the version it runs. It moves no running session's prefix: an issuer reads it

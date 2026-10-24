@@ -217,7 +217,7 @@ HTTP on a loopback port of the face's own.
 
 | Route | Token | Answer |
 |---|---|---|
-| `GET /discipline` | either | 200 `text/plain`: the paragraph on finding and using tools that an issuer writes into the system prompt of a session it hands the toolbook to (`docs/toolbook.md`, 「The rules a prompt carries」) |
+| `GET /discipline` | either | 200 `text/plain`: the paragraph on finding and using tools that an issuer writes into the system prompt of a session it hands the tool host's tools to (`docs/toolbook.md`, 「The rules a prompt carries」) |
 
 - **The one route that answers no JSON:** its body is the prompt text itself, in UTF-8, written as it stands.
 

@@ -2299,7 +2299,7 @@
       "name": "health"
     },
     {
-      "description": "The prompt text a session handed the toolbook carries.",
+      "description": "The prompt text a session handed the tool host's tools carries.",
       "name": "discipline"
     },
     {

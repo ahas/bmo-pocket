@@ -378,7 +378,7 @@ pub fn openapi() -> Value {
     "security": [{ "bearer": [] }],
     "tags": [
       { "name": "health", "description": "Whether the host is ready." },
-      { "name": "discipline", "description": "The prompt text a session handed the toolbook carries." },
+      { "name": "discipline", "description": "The prompt text a session handed the tool host's tools carries." },
       { "name": "namespaces", "description": "Every namespace with its tools: the catalogue." },
       { "name": "tool-calls", "description": "Calls made under a tool session." },
       { "name": "claims", "description": "Which entry a tool session may have an address read by." },

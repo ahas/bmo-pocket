@@ -308,7 +308,14 @@ async fn the_discipline_answers_the_prompt_paragraph_as_text_to_either_token() {
   assert_eq!(session.discipline().await.unwrap(), said);
   assert!(said.starts_with("# Finding and using tools\n"), "{said}");
 
-  for rule in ["`list`", "`describe`", "`call`", "`act`", "never call a tool by a name"] {
+  for rule in [
+    "`bmo use`",
+    "`bmo use --tools`",
+    "--describe",
+    "--async",
+    "--memory",
+    "never call a tool by a name",
+  ] {
     assert!(said.contains(rule), "{rule}\n{said}");
   }
 
