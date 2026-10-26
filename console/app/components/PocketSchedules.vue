@@ -22,6 +22,7 @@ import { computed, onMounted, watch } from "vue";
 import * as api from "../domain/pocket-api";
 import { matches } from "../domain/pocket-place";
 import { reading, stamp } from "../domain/pocket-read";
+import { valueRows } from "../domain/pocket-value";
 import PocketState from "./PocketState.vue";
 
 import type { Schedule } from "../domain/pocket-api";
@@ -34,11 +35,18 @@ const { t } = useI18n();
 const list = reading(api.schedules);
 const shown = computed(() => list.items.value.filter((schedule) => matches(props.q, [schedule.namespace, schedule.toolName, schedule.cron])));
 
+// The arguments a scheduled call is handed, as their named fields; a call handed none says so.
+function argumentRows(schedule: Schedule): BarProperty[] {
+  const rows = valueRows(t, schedule.arguments).map((row) => ({ ...row, label: `${t("pocket.field.arguments")} › ${row.label}` }));
+
+  return rows.length === 0 ? [{ label: t("pocket.field.arguments"), value: t("pocket.status.none") }] : rows;
+}
+
 function rowsOf(schedule: Schedule): BarProperty[] {
   const rows: BarProperty[] = [
     { label: t("pocket.field.next_at"), value: stamp(schedule.nextAt) },
     { label: t("pocket.field.last_at"), value: schedule.lastAt === null ? t("pocket.status.never") : stamp(schedule.lastAt) },
-    { label: t("pocket.field.arguments"), value: JSON.stringify(schedule.arguments), mono: true }
+    ...argumentRows(schedule)
   ];
 
   if (schedule.lastError !== null) rows.push({ label: t("pocket.field.last_error"), value: schedule.lastError });

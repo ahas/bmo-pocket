@@ -1,6 +1,8 @@
 {
   "pocket": {
-    "title": { "screen": "Tools" },
+    "title": {
+      "screen": "Tools"
+    },
     "view": {
       "catalogue": "Catalogue",
       "schedules": "Schedules",
@@ -53,18 +55,30 @@
       "listed": "{count} tools listed",
       "loading": "Reading",
       "never": "Not yet",
+      "no": "No",
       "no_match": "Nothing matches the search.",
       "no_namespaces": "No namespace is served.",
-      "none": "None",
       "no_schedules": "No tool declares a schedule.",
       "no_servers": "No external server is registered.",
       "no_sessions": "No tool session stands.",
-      "not_listed": "Not listed",
       "no_tools": "This namespace serves no tool.",
+      "none": "None",
+      "not_listed": "Not listed",
       "read_only": "Read-only",
       "running": "Running",
       "seconds": "{count} s",
-      "system": "System only"
+      "system": "System only",
+      "unknown": "Not known",
+      "yes": "Yes"
+    },
+    "schema": {
+      "choices": "Choices: {values}",
+      "default": "Default: {value}",
+      "fixed": "Fixed: {value}",
+      "items": "Items: {from}–{to}",
+      "length": "Length: {from}–{to}",
+      "range": "Range: {from}–{to}",
+      "required": "Required"
     }
   }
 }

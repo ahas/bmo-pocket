@@ -29,18 +29,21 @@
 
     <section class="flex flex-col gap-1">
       <p class="text-xs font-medium text-muted">{{ t("pocket.field.input") }}</p>
-      <pre class="overflow-x-auto rounded-md bg-elevated p-3 font-mono text-xs text-default">{{ shown(props.tool.input) }}</pre>
+      <PocketSchema :schema="props.tool.input" />
     </section>
 
     <section v-if="props.tool.output" class="flex flex-col gap-1">
       <p class="text-xs font-medium text-muted">{{ t("pocket.field.output") }}</p>
-      <pre class="overflow-x-auto rounded-md bg-elevated p-3 font-mono text-xs text-default">{{ shown(props.tool.output) }}</pre>
+      <PocketSchema :schema="props.tool.output" />
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+
+import { stateWord } from "../domain/pocket-value";
+import PocketSchema from "./PocketSchema.vue";
 
 import type { Tool } from "../domain/pocket-api";
 import type { BarProperty } from "bmo-ui/app/domain/tabs";
@@ -55,12 +58,8 @@ const none = computed(() => t("pocket.status.none"));
 const rows = computed<BarProperty[]>(() => [
   { label: t("pocket.field.capabilities"), value: props.tool.capabilities.join(", ") || none.value, mono: true },
   { label: t("pocket.field.grant"), value: props.tool.grant ?? none.value, mono: true },
-  { label: t("pocket.field.idempotent"), value: props.tool.hints.idempotent === null ? none.value : String(props.tool.hints.idempotent) },
-  { label: t("pocket.field.open_world"), value: String(props.tool.hints.openWorld) },
+  { label: t("pocket.field.idempotent"), value: stateWord(t, props.tool.hints.idempotent) },
+  { label: t("pocket.field.open_world"), value: stateWord(t, props.tool.hints.openWorld) },
   { label: t("pocket.field.listing"), value: props.tool.listing?.line ?? none.value }
 ]);
-
-function shown(schema: unknown): string {
-  return JSON.stringify(schema, null, 2);
-}
 </script>

@@ -1072,7 +1072,7 @@
   "info": {
     "description": "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, tool and schedule, the tool sessions standing, the external servers and the event stream, or a tool session's token, which sees the namespaces its record names and the tools it holds there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers text, and the event stream, which answers server-sent events unless a page is asked for as JSON. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own protocol and is not stated here; the console face answers this document's reads in its shapes behind the console token, and is not stated here either.",
     "title": "bmo-pocket",
-    "version": "0.1.0-rev.8"
+    "version": "0.1.0-rev.9"
   },
   "openapi": "3.1.0",
   "paths": {

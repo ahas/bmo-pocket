@@ -311,6 +311,28 @@ flowchart TD
 - **The host is the guard,** as the contract has a service be: the console token on every route, and
   `Owner-Role: administrator` on every route the screen uses.
 
+#### How the screen reads
+
+- **It stands under the console's title bar where the console offers one** (bmo-web's `docs/web.md`, 「The title
+  bar」): its route asks for the console's bar in its meta, and where the console provides the offer the screen draws
+  no bar of its own; read where nothing offers it, it draws its own. Under the bar stands the screen's own row: the
+  view switch, the search, and at the row's end the button that reads the view again, which stays in the row at a
+  phone's width, the search giving up its width first.
+- **The catalogue's columns follow the room the screen has,** measured on its own box and never on the window:
+  - wide, the namespaces, the namespace's tools and the open tool stand side by side, the tools keeping a width
+    a line of their description reads at;
+  - narrower, the open tool stands in the place of the tool list, with a way back to it, beside the namespaces;
+  - at a phone's width, each of the three stands alone in turn.
+- **No value is shown as JSON.** A value stands as what it is: a list as its rows, an object as its named fields,
+  a moment as a moment, a yes or a no as a state word.
+  - A tool's hints read as state words: whether calling it twice does the same as once — yes, no or not
+    known — and whether it reaches outside the host.
+  - A tool's input and output schemas stand as their fields, one row each, nested fields under their parent's
+    name: its name, its type, whether it is required, what it is for and what it takes (its choices, its range,
+    its default). A schema of no fields stands as a highlighted code block.
+  - A session's labels stand one row each, the label's name beside its value; a schedule's arguments stand as
+    their named fields.
+
 ### Schedules
 
 - **A tool declares when its entry is called,** in the entry's `[[entry.schedule]]` tables, each a cron pattern and

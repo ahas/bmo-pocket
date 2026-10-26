@@ -10,7 +10,10 @@ const bundle: ConsoleBundleModule = {
     {
       path: "/pocket",
       name: "pocket",
-      component: () => import("../app/pages/pocket.vue")
+      component: () => import("../app/pages/pocket.vue"),
+      // The screen stands under the console's title bar where the console offers one (docs/mcp-host.md, 「How the
+      // screen reads」).
+      meta: { consoleTitleBar: true }
     }
   ]
 };

@@ -1,6 +1,6 @@
 {
   "name": "bmo-pocket-console",
-  "version": "0.1.0-rev.8",
+  "version": "0.1.0-rev.9",
   "description": "The tool host's screen, built as the browser module a console loads by the host's manifest.",
   "license": "MIT",
   "private": true,

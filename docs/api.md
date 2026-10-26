@@ -1,6 +1,6 @@
 # The boundary
 
-**Fixed API, version 0.1.0-rev.8.** This document is the tool host's fixed API: every contract it exposes to another
+**Fixed API, version 0.1.0-rev.9.** This document is the tool host's fixed API: every contract it exposes to another
 unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
 served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
 tables, its files or its process. The host calls no other unit; a console reaches it on the console face alone
