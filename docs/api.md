@@ -189,6 +189,10 @@ HTTP on a loopback port of the face's own.
   screen, said in its log, and the face answers its manifest 404, which a console reads as a unit with no screen.
 - **A deployment builds the bundle before the flip** into the release it deploys (`testbed.toml`), so a release's
   host serves the screen of its own commit.
+- **A deployment waits for quiet before its flip** (`testbed.toml`, `quiet`): the receiver's `quiet`
+  command, run by its deployed path, says whether a chat turn or a research run stands under way that the
+  restart of the tool host would cut, and the testbed waits on it before it flips (the receiver's
+  `docs/boundary-api.md`, 「The service and its commands」; the testbed's `docs/deploy.md`).
 - **What the screen shows:** the namespaces and their tools, each tool with its description, manual, input and
   output schemas, capabilities, grant, hints and how the toolbook reaches it; the schedules and where each
   stands; the tool sessions standing; and the external servers, each with where it is reached and whether its
