@@ -16,6 +16,6 @@ pub use openapi::{openapi, openapi_json};
 pub use wire::{
   Booked, Claim, ClaimRequest, Connection, Event, EventKind, EventPage, EventQuery, Health, Listing,
   NameQuery, Namespace, NamespacePage, ReachedBy, Schedule, SchedulePage, Server, ServerPage, SessionPage,
-  StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolChange, ToolHints, ToolPage, ToolResult,
-  ToolSession, Transport,
+  SessionQuery, StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolChange, ToolHints,
+  ToolPage, ToolResult, ToolSession, Transport,
 };

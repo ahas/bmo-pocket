@@ -346,10 +346,11 @@ host tells of its catalogue as the registry changes under it.
 
 | Route | Token | Request | Answer |
 |---|---|---|---|
-| `GET /tool-sessions` | the issuer's | query `after`, a time in epoch milliseconds; `limit` | 200 a page of the tool sessions standing, in order of `createdAt`; 400 `bad-request`; 403 `forbidden` |
+| `GET /tool-sessions` | the issuer's | query `after`, a time in epoch milliseconds; `limit`; `holder`, a holder's name | 200 a page of the tool sessions standing, in order of `createdAt`, those of the holder alone where one is named; 400 `bad-request`; 403 `forbidden` |
 | `POST /tool-sessions` | the issuer's | a session record, with `ttlMs` | 201 the tool session; 400 `bad-request` naming why the record does not read; 403 `forbidden`; 500 `failed` |
 | `GET /tool-sessions/{token}` | the issuer's | | 200 the standing session the token names; 403 `forbidden`; 404 `not-found` where the token names no session standing |
 | `DELETE /tool-sessions/{token}` | the issuer's | | 204, what the session's tools kept ended; 403 `forbidden`; 404 `not-found` where the token names no session; 500 `failed` |
+| `DELETE /tool-session-records/{id}` | the issuer's | | 204, the session the record id names revoked as by its token and what its tools kept ended; 403 `forbidden`; 404 `not-found` where the id names no session standing; 500 `failed` |
 
 #### The session record
 
@@ -389,6 +390,7 @@ What `GET /tool-sessions` answers of each session that stands, issued and neithe
 
 | Field | Type | Meaning |
 |---|---|---|
+| `id` | string | The record's id: the SHA-256 of its token in hexadecimal, which names its record and never its token |
 | `holderName` | string | Who holds it |
 | `namespaces` | array of strings | The namespaces it may use |
 | `capabilities` | array of strings | The capabilities it holds |
@@ -406,6 +408,9 @@ What `GET /tool-sessions` answers of each session that stands, issued and neithe
   connected before a restart reads none until they ask again; a session reaching its tools through the harness
   plugin asks the control socket instead, and reads none. An issuer that launched a session reads which of the
   servers its configuration names are missing.
+- **A session whose token is lost is revoked by its id.** The issuer reads the ids of a holder's sessions on
+  `GET /tool-sessions?holder=` and takes one back on `DELETE /tool-session-records/{id}`; an id is no bearer and
+  calls nothing.
 - **No token and no variable's value is answered.** A token is its holder's alone, and a variable or the file a
   record names may carry what only the record's tools may read, so a session is told by its holder, its record's
   reach and its times.

@@ -621,6 +621,10 @@
           "holderName": {
             "type": "string"
           },
+          "id": {
+            "description": "The record's id: the SHA-256 of its token in hexadecimal, which names its record and never its token.",
+            "type": "string"
+          },
           "labels": {
             "additionalProperties": true,
             "type": "object"
@@ -648,6 +652,7 @@
           }
         },
         "required": [
+          "id",
           "holderName",
           "namespaces",
           "capabilities",
@@ -2238,6 +2243,130 @@
         "x-token": "session"
       }
     },
+    "/tool-session-records/{id}": {
+      "delete": {
+        "operationId": "deleteToolSessionRecord",
+        "parameters": [
+          {
+            "description": "The record's id, the SHA-256 of its token in hexadecimal.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done; no body."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "failed"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: failed."
+          }
+        },
+        "summary": "Revoke the tool session a record id names, as by its token, and end what its tools kept: the way back for a session whose token is lost.",
+        "tags": [
+          "tool-sessions"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "forbidden",
+          "not-found",
+          "failed"
+        ],
+        "x-token": "issuer"
+      }
+    },
     "/tool-sessions": {
       "get": {
         "operationId": "listToolSessions",
@@ -2260,6 +2389,15 @@
             "schema": {
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "A holder's name: its sessions alone.",
+            "in": "query",
+            "name": "holder",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],

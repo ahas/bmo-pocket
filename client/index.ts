@@ -49,6 +49,14 @@ export interface TimeQuery {
   limit?: number;
 }
 
+/** Where a page of the tool sessions begins, a time in epoch milliseconds, how much of it is answered, and whose
+ * sessions it holds. */
+export interface SessionQuery {
+  after?: number;
+  limit?: number;
+  holder?: string;
+}
+
 /** Where a page of the event stream begins, an event's number, which kinds it holds, a comma-separated list, and
  * how many events it answers. */
 export interface EventQuery {
@@ -155,7 +163,7 @@ export function pocketClient(options: PocketOptions) {
 
     /** `GET /tool-sessions`: a page of the tool sessions standing, in order of when each was issued, with the
      * issuer's token. */
-    async toolSessions(query: TimeQuery = {}): Promise<SessionPage> {
+    async toolSessions(query: SessionQuery = {}): Promise<SessionPage> {
       return answered(await client.GET("/tool-sessions", { params: { query } }));
     },
 
@@ -181,6 +189,11 @@ export function pocketClient(options: PocketOptions) {
     /** `DELETE /tool-sessions/{token}`: a tool session revoked, with the issuer's token. */
     async revoke(token: string): Promise<void> {
       answered(await client.DELETE("/tool-sessions/{token}", { params: { path: { token } } }));
+    },
+
+    /** `DELETE /tool-session-records/{id}`: the tool session a record id names revoked, with the issuer's token. */
+    async revokeRecord(id: string): Promise<void> {
+      answered(await client.DELETE("/tool-session-records/{id}", { params: { path: { id } } }));
     },
 
     /** `GET /schedules`: a page of the schedules the token sees, in order of when each is next due. */

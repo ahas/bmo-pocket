@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tool-session-records/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke the tool session a record id names, as by its token, and end what its tools kept: the way back for a session whose token is lost. */
+        delete: operations["deleteToolSessionRecord"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tool-sessions": {
         parameters: {
             query?: never;
@@ -450,6 +467,8 @@ export interface components {
             expiresAt: number | null;
             grants: components["schemas"]["Granted"][];
             holderName: string;
+            /** @description The record's id: the SHA-256 of its token in hexadecimal, which names its record and never its token. */
+            id: string;
             labels: {
                 [key: string]: unknown;
             };
@@ -1218,6 +1237,75 @@ export interface operations {
             };
         };
     };
+    deleteToolSessionRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The record's id, the SHA-256 of its token in hexadecimal. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done; no body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
+                    };
+                };
+            };
+            /** @description Refused or failed: not-found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "not-found";
+                    };
+                };
+            };
+            /** @description Refused or failed: failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "failed";
+                    };
+                };
+            };
+        };
+    };
     listToolSessions: {
         parameters: {
             query?: {
@@ -1225,6 +1313,8 @@ export interface operations {
                 after?: number;
                 /** @description At most this many members; every one where absent. */
                 limit?: number;
+                /** @description A holder's name: its sessions alone. */
+                holder?: string;
             };
             header?: never;
             path?: never;

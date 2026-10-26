@@ -163,6 +163,26 @@ impl Records {
     }
   }
 
+  /// A record taken back by its id, where the id names one that stands, and the session it held.
+  pub fn revoke_id(&self, id: &str) -> io::Result<Option<Arc<Session>>> {
+    if id.len() != 64 || !id.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+      return Ok(None);
+    }
+
+    let gone = self.held.write().expect("the records' lock is never poisoned").remove(id);
+
+    if gone.is_none() {
+      return Ok(None);
+    }
+
+    self.forget(id);
+
+    match fs::remove_file(self.file(id)) {
+      Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+      _ => Ok(gone),
+    }
+  }
+
   /// The record a token names and its id, where it names one that has not lapsed.
   pub fn get(&self, token: &str) -> Option<(RecordId, Arc<Session>)> {
     let hash = digest(token);

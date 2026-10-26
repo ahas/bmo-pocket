@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use bmo_pocket_client::transport::{request, request_with};
 use bmo_pocket_client::{
-  Booked, ErrorCode, EventKind, EventQuery, Failure, Granted, NameQuery, Pocket, ReachedBy, SessionRequest,
-  TimeQuery, ToolCallRequest, ToolChange,
+  Booked, ErrorCode, EventKind, EventQuery, Failure, Granted, NameQuery, Pocket, ReachedBy, SessionQuery,
+  SessionRequest, TimeQuery, ToolCallRequest, ToolChange,
 };
 use http::{Method, Request, StatusCode};
 use http_body_util::{BodyExt, Empty, Full};
@@ -355,7 +355,7 @@ async fn the_issuer_alone_reads_the_sessions_standing_and_the_external_servers()
 
   issuer.revoke(&gone.token).await.unwrap();
 
-  let every = issuer.tool_sessions(&TimeQuery::default()).await.unwrap();
+  let every = issuer.tool_sessions(&SessionQuery::default()).await.unwrap();
   let made: Vec<u64> = every.items.iter().map(|session| session.created_at).collect();
 
   assert_eq!((made, every.more), (vec![one.created_at, two.created_at], false));
@@ -373,9 +373,9 @@ async fn the_issuer_alone_reads_the_sessions_standing_and_the_external_servers()
   );
 
   let first_page = issuer
-    .tool_sessions(&TimeQuery {
-      after: None,
+    .tool_sessions(&SessionQuery {
       limit: Some(1),
+      ..SessionQuery::default()
     })
     .await
     .unwrap();
@@ -383,9 +383,9 @@ async fn the_issuer_alone_reads_the_sessions_standing_and_the_external_servers()
   assert_eq!((first_page.items.len(), first_page.more), (1, true));
 
   let rest = issuer
-    .tool_sessions(&TimeQuery {
+    .tool_sessions(&SessionQuery {
       after: Some(i64::try_from(one.created_at).unwrap()),
-      limit: None,
+      ..SessionQuery::default()
     })
     .await
     .unwrap();
@@ -398,7 +398,7 @@ async fn the_issuer_alone_reads_the_sessions_standing_and_the_external_servers()
   let session = Pocket::at(&socket, one.token.clone());
 
   assert_eq!(
-    code(session.tool_sessions(&TimeQuery::default()).await),
+    code(session.tool_sessions(&SessionQuery::default()).await),
     (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
   );
   assert_eq!(
@@ -658,7 +658,7 @@ async fn a_session_says_which_servers_of_the_tools_face_its_clients_reached() {
   rpc(port, &one.token, "notes", "tools/list", json!({})).await;
   assert_eq!(issuer.tool_session(&one.token).await.unwrap().connected[0].at, at);
 
-  let every = issuer.tool_sessions(&TimeQuery::default()).await.unwrap();
+  let every = issuer.tool_sessions(&SessionQuery::default()).await.unwrap();
   let of = |created_at: u64| {
     every
       .items
@@ -680,4 +680,52 @@ async fn a_session_says_which_servers_of_the_tools_face_its_clients_reached() {
     code(issuer.tool_session(&one.token).await),
     (StatusCode::NOT_FOUND, ErrorCode::NotFound)
   );
+}
+
+// A session whose token is lost (docs/api.md, 「A standing session」): its id, the SHA-256 of its token, reads on
+// the page, a holder's sessions alone are read by the holder's name, and the id revokes it as the token would.
+#[tokio::test]
+async fn a_session_is_read_by_its_holder_and_revoked_by_its_id() {
+  use sha2::{Digest, Sha256};
+
+  let fixture = Fixture::new();
+  let socket = fixture.serve(Arc::new(Schedules::default()));
+  let issuer = Pocket::at(&socket, ISSUER);
+  let mut theirs = asked(&["notes.read"], &[]);
+
+  theirs.holder_name = "a-prober".to_owned();
+
+  let lost = issuer.issue(&theirs).await.unwrap();
+  let kept = issuer.issue(&asked(&["notes.read"], &[])).await.unwrap();
+  let id: String = Sha256::digest(lost.token.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect();
+  let probing = issuer
+    .tool_sessions(&SessionQuery {
+      holder: Some("a-prober".to_owned()),
+      ..SessionQuery::default()
+    })
+    .await
+    .unwrap();
+
+  assert_eq!(probing.items.iter().map(|one| one.id.as_str()).collect::<Vec<_>>(), [id.as_str()]);
+  assert_eq!(probing.items[0].created_at, lost.created_at);
+
+  assert_eq!(
+    code(Pocket::at(&socket, &kept.token).revoke_record(&id).await),
+    (StatusCode::FORBIDDEN, ErrorCode::Forbidden),
+    "a session's own token revokes nothing"
+  );
+
+  issuer.revoke_record(&id).await.unwrap();
+
+  assert_eq!(
+    code(Pocket::at(&socket, &lost.token).discipline().await),
+    (StatusCode::UNAUTHORIZED, ErrorCode::Unauthorized),
+    "the revoked session's token is refused"
+  );
+  assert_eq!(code(issuer.revoke_record(&id).await), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
+  assert_eq!(
+    code(issuer.revoke_record("not-an-id").await),
+    (StatusCode::NOT_FOUND, ErrorCode::NotFound)
+  );
+  assert!(issuer.tool_session(&kept.token).await.is_ok(), "another session stands");
 }

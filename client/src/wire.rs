@@ -46,6 +46,23 @@ pub struct TimeQuery {
   pub limit: Option<u32>,
 }
 
+/// Where a page of the tool sessions begins, how much of it is answered, and whose sessions it holds: the last time
+/// a page answered, in epoch milliseconds, a limit, and a holder's name.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SessionQuery {
+  /// The sessions issued after this time, in epoch milliseconds.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub after: Option<i64>,
+  /// At most this many sessions, with every session issued at the last one's time beside it.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  #[schemars(range(min = 1))]
+  pub limit: Option<u32>,
+  /// The sessions this holder holds alone.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub holder: Option<String>,
+}
+
 /// One namespace and what it says of itself.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -344,6 +361,8 @@ pub struct SchedulePage {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StandingSession {
+  /// The record's id: the SHA-256 of its token in hexadecimal, which names its record and never its token.
+  pub id: String,
   pub holder_name: String,
   pub namespaces: BTreeSet<String>,
   pub capabilities: BTreeSet<String>,
@@ -370,8 +389,9 @@ pub struct Connection {
 
 impl StandingSession {
   /// What a record that stands is told by, with the servers its clients reached.
-  pub fn of(session: &Session, connected: Vec<Connection>) -> Self {
+  pub fn of(id: &str, session: &Session, connected: Vec<Connection>) -> Self {
     Self {
+      id: id.to_owned(),
       holder_name: session.holder_name.clone(),
       namespaces: session.namespaces.clone(),
       capabilities: session.capabilities.clone(),

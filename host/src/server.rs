@@ -13,11 +13,11 @@ use axum::extract::{Extension, Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get, post};
+use axum::routing::{any, delete, get, post};
 use axum::{Json, Router};
 use bmo_pocket_client::{
   Claim, ClaimRequest, Event, EventPage, EventQuery, Health, NameQuery, Namespace, NamespacePage, Schedule,
-  SchedulePage, Server, ServerPage, SessionPage, StandingSession, TimeQuery, Tool, ToolCall,
+  SchedulePage, Server, ServerPage, SessionPage, SessionQuery, StandingSession, TimeQuery, Tool, ToolCall,
   ToolCallRequest, ToolPage, ToolResult, ToolSession,
 };
 use bmo_tool::{Session, SessionRequest};
@@ -455,11 +455,27 @@ async fn revoke(
   Ok(StatusCode::NO_CONTENT)
 }
 
-// The tool sessions standing, to the issuer alone, told by their holders, records and times.
+// A tool session revoked by its record's id, to the issuer alone: the way back for a session whose token is lost.
+async fn revoke_record(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+  Path(id): Path<String>,
+) -> Result<StatusCode, HostError> {
+  caller.issuer()?;
+
+  let gone = control.records.revoke_id(&id).map_err(|why| HostError::Unwritable(why.to_string()))?;
+  let gone = gone.ok_or(HostError::UnknownSession)?;
+
+  gone.kept.close().await;
+  Ok(StatusCode::NO_CONTENT)
+}
+
+// The tool sessions standing, to the issuer alone, told by their ids, holders, records and times; a holder's alone
+// where one is named.
 async fn tool_session_page(
   State(control): State<Control>,
   Extension(caller): Extension<Caller>,
-  asked: Result<Query<TimeQuery>, QueryRejection>,
+  asked: Result<Query<SessionQuery>, QueryRejection>,
 ) -> Result<Json<SessionPage>, HostError> {
   caller.issuer()?;
 
@@ -468,7 +484,8 @@ async fn tool_session_page(
     .records
     .standing()
     .iter()
-    .map(|(id, session)| StandingSession::of(session, control.records.connected(id)))
+    .filter(|(_, session)| asked.holder.as_ref().is_none_or(|holder| &session.holder_name == holder))
+    .map(|(id, session)| StandingSession::of(&id.0, session, control.records.connected(id)))
     .collect();
 
   every.sort_by(|left, right| {
@@ -492,7 +509,7 @@ async fn one_tool_session(
 
   let (id, session) = control.records.get(&token).ok_or(HostError::UnknownSession)?;
 
-  Ok(Json(StandingSession::of(&session, control.records.connected(&id))))
+  Ok(Json(StandingSession::of(&id.0, &session, control.records.connected(&id))))
 }
 
 /// How often a stream with nothing to say says it is open.
@@ -754,6 +771,7 @@ pub fn control(
     .route("/claims", post(claim))
     .route("/tool-sessions", get(tool_session_page).post(issue))
     .route("/tool-sessions/{token}", get(one_tool_session).delete(revoke))
+    .route("/tool-session-records/{id}", delete(revoke_record))
     .route("/servers", get(server_page))
     .route("/schedules", get(schedule_page))
     .fallback(unknown_route)

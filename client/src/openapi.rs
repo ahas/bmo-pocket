@@ -267,7 +267,11 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "A page of the tool sessions standing, in order of when each was issued: each one's holder, \
         record and times, never its token or a variable's value; a page never ends inside a run of equal times.",
       token: Token::Issuer,
-      parameters: vec![after_time("sessions issued"), limit()],
+      parameters: vec![
+        after_time("sessions issued"),
+        limit(),
+        query_parameter("holder", "A holder's name: its sessions alone.", json!({ "type": "string" })),
+      ],
       request: None,
       answer: (200, Answer::Json(schema::<SessionPage>(generator))),
       codes: &[Unauthorized, BadRequest, Forbidden],
@@ -305,6 +309,19 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       summary: "Revoke a tool session and end what its tools kept.",
       token: Token::Issuer,
       parameters: vec![path_parameter("token", "The token the session was issued with.")],
+      request: None,
+      answer: (204, Answer::Empty),
+      codes: &[Unauthorized, Forbidden, NotFound, Failed],
+    },
+    Route {
+      method: "delete",
+      path: "/tool-session-records/{id}",
+      operation: "deleteToolSessionRecord",
+      tag: "tool-sessions",
+      summary: "Revoke the tool session a record id names, as by its token, and end what its tools kept: the way \
+        back for a session whose token is lost.",
+      token: Token::Issuer,
+      parameters: vec![path_parameter("id", "The record's id, the SHA-256 of its token in hexadecimal.")],
       request: None,
       answer: (204, Answer::Empty),
       codes: &[Unauthorized, Forbidden, NotFound, Failed],

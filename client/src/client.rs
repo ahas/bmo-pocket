@@ -15,8 +15,8 @@ use crate::error::WireError;
 use crate::transport::{Reply, request, request_with};
 use crate::wire::{
   Claim, ClaimRequest, EventPage, EventQuery, Health, NameQuery, Namespace, NamespacePage, SchedulePage,
-  ServerPage, SessionPage, StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage,
-  ToolSession,
+  ServerPage, SessionPage, SessionQuery, StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest,
+  ToolPage, ToolSession,
 };
 
 /// Why a call answered no body of its route.
@@ -216,10 +216,25 @@ impl Pocket {
     }
   }
 
+  /// `DELETE /tool-session-records/{id}`: the tool session the record id names revoked, with the issuer's token,
+  /// and what its tools kept ended.
+  pub async fn revoke_record(&self, id: &str) -> Result<(), Failure> {
+    let reply = self.ask(Method::DELETE, &route(&["tool-session-records", id], &[]), None).await?;
+
+    match reply.status {
+      StatusCode::NO_CONTENT => Ok(()),
+      _ => Err(refusal(&reply)),
+    }
+  }
+
   /// `GET /tool-sessions`: a page of the tool sessions standing, in order of when each was issued, with the
   /// issuer's token.
-  pub async fn tool_sessions(&self, page: &TimeQuery) -> Result<SessionPage, Failure> {
-    let query = paged(page.after.map(|after| after.to_string()), page.limit);
+  pub async fn tool_sessions(&self, page: &SessionQuery) -> Result<SessionPage, Failure> {
+    let mut query = paged(page.after.map(|after| after.to_string()), page.limit);
+
+    if let Some(holder) = &page.holder {
+      query.push(("holder", holder.clone()));
+    }
 
     body(self.ask(Method::GET, &route(&["tool-sessions"], &query), None).await?, StatusCode::OK)
   }
