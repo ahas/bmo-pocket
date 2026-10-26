@@ -190,7 +190,8 @@ HTTP on a loopback port of the face's own.
 - **A deployment builds the bundle before the flip** into the release it deploys (`testbed.toml`), so a release's
   host serves the screen of its own commit.
 - **A deployment waits for quiet before its flip** (`testbed.toml`, `quiet`): the receiver's `quiet`
-  command, run by its deployed path, says whether a chat turn or a research run stands under way that the
+  command, run by its deployed path with `--with-jobs`, says whether a chat turn, a research run or a job's run,
+  since this restart can cut a worker's tool calls mid-turn, stands under way that the
   restart of the tool host would cut, and the testbed waits on it before it flips (the receiver's
   `docs/boundary-api.md`, 「The service and its commands」; the testbed's `docs/deploy.md`).
 - **What the screen shows:** the namespaces and their tools, each tool with its description, manual, input and
