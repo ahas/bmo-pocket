@@ -1,6 +1,6 @@
 //! `bmo-pocket`'s `tool` nouns and its `nouns` answer as a person and `bmo` meet them (docs/api.md, 「The CLI」):
-//! the four nouns declared, the catalogue listed and narrowed, one entry described and called, and the site tools
-//! read, against a real host on a scratch data root. Every process the host starts goes down with the test.
+//! the five nouns declared, `tool` alone answering its usage, the catalogue listed and narrowed, one entry
+//! described and called, and the site tools read, against a real host on a scratch data root. Every process the host starts goes down with the test.
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -150,8 +150,32 @@ fn the_nouns_are_declared_one_a_line() {
   assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
   assert_eq!(
     String::from_utf8(output.stdout).unwrap(),
-    "tool list\ntool describe\ntool call\ntool sites\n"
+    "tool\ntool list\ntool describe\ntool call\ntool sites\n"
   );
+}
+
+#[test]
+fn tool_alone_answers_its_usage_naming_the_four_nouns_and_its_help_the_same_on_standard_output() {
+  let pocket = |args: &[&str]| Command::new(env!("CARGO_BIN_EXE_bmo-pocket")).args(args).output().unwrap();
+  let alone = pocket(&["tool"]);
+  let usage = String::from_utf8_lossy(&alone.stderr).into_owned();
+
+  assert_eq!(alone.status.code(), Some(2));
+  assert!(alone.stdout.is_empty());
+
+  for noun in ["list", "describe", "call", "sites"] {
+    assert!(usage.lines().any(|line| line.trim_start().starts_with(noun)), "{noun}: {usage}");
+  }
+
+  let help = pocket(&["tool", "--help"]);
+
+  assert_eq!(help.status.code(), Some(0));
+  assert_eq!(String::from_utf8_lossy(&help.stdout), usage);
+
+  let noun = pocket(&["tool", "call", "--help"]);
+
+  assert_eq!(noun.status.code(), Some(0));
+  assert!(String::from_utf8_lossy(&noun.stdout).contains("Usage: bmo-pocket tool call"));
 }
 
 #[test]

@@ -23,6 +23,8 @@ pub enum ErrorCode {
   NotFound,
   /// No route answers the method and path.
   NoRoute,
+  /// An event after the cursor is no longer held: older than the window the host holds, or of an earlier run.
+  Gone,
   /// The input does not fit the tool's schema in the form held.
   ArgumentsMisfit,
   /// The host failed.
@@ -39,6 +41,7 @@ impl ErrorCode {
       Self::Unauthorized => StatusCode::UNAUTHORIZED,
       Self::Forbidden => StatusCode::FORBIDDEN,
       Self::NotFound | Self::NoRoute => StatusCode::NOT_FOUND,
+      Self::Gone => StatusCode::GONE,
       Self::ArgumentsMisfit => StatusCode::UNPROCESSABLE_ENTITY,
       Self::Failed => StatusCode::INTERNAL_SERVER_ERROR,
       Self::ToolFailed => StatusCode::BAD_GATEWAY,

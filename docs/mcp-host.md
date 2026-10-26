@@ -176,6 +176,11 @@ flowchart TD
   - a registered tool's version folder is gone;
   - an external server's registration does not read, or its tools are not yet listed.
 - **Each reading is said in the log,** with how many tools and helpers it placed.
+- **Each reading tells what it changed on the event stream** (`docs/api.md`, 「Events」): a tool it serves that the
+  last reading did not, or in another placed version, as `tool.placed` with the entries a session can be shown;
+  a tool whose pointer or folder is gone as `tool.removed`. The first reading of a run tells nothing, and a tool
+  that only fails to read, or whose server's listing is lost, stays told as it was, since its pointer stands. The
+  host names no reader of the stream: whoever reads it turns it into what its own readers are told.
 
 ### The manifest
 
@@ -288,6 +293,12 @@ flowchart TD
 - **The issuer reads the sessions standing and the external servers:** `GET /tool-sessions` answers each record's
   holder, reach and times, never its token or a variable's value, and `GET /servers` each registration the host
   read with whether its server's tools are listed and why not.
+- **A session says which of its servers connected:** each namespace, and the toolbook, whose `initialize` or
+  `tools/list` the tools face answered under the session's token, with when it first did, kept in memory since the
+  host started and dropped with the record. `GET /tool-sessions/{token}` answers it for one session, so an issuer
+  that launched a harness reads which servers of its configuration never connected.
+- **The issuer reads the event stream,** `GET /events`, where each reading of the catalogue tells the tools it
+  placed and removed (「The catalogue」).
 
 ### The console face
 
@@ -419,7 +430,13 @@ flowchart TD
   its namespaces and the entries it holds alone, and the issuer token every one; an entry for the system alone is
   shown to no session and called through `POST /tool-calls`; `POST /claims` names the entry whose manifest claims an
   address's host and whose executable claims the address, and none for one no entry claims; the namespaces and
-  tools are paged by name, and the schedules by `nextAt` with no run of equal times split.
+  tools are paged by name, and the schedules by `nextAt` with no run of equal times split. A session's
+  `connected` names each namespace and the toolbook once its `initialize` or `tools/list` is answered, and
+  `GET /tool-sessions/{token}` answers it for that session alone.
+- **The event stream:** a tool put while the host runs is told as one `tool.placed` naming its namespaces and
+  entries, an upgrade as one more with `replaced`, and a take as one `tool.removed`; a reader resuming after a
+  number is answered what followed it, one with a cursor older than the window is answered 410 `gone`, the page
+  form answers the same events, and a session's token or none is refused.
 - **The console face:** a request without the console token is refused on every route, the issuer's and a
   session's tokens among them; the manifest and the words are answered to the token with no role, and the module,
   the stylesheet and the reads only with `Owner-Role: administrator`; the manifest names the built files by their

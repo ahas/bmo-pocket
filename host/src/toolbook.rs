@@ -5,19 +5,19 @@
 
 use std::sync::Arc;
 
-use bmo_pocket_client::ReachedBy;
+pub use bmo_pocket_client::Booked;
 use bmo_tool::{Answer, Session};
 use rmcp::model::{
-  CallToolRequestParams, CallToolResponse, Implementation, InitializeResult, ListToolsResult,
-  PaginatedRequestParams, ServerCapabilities,
+  CallToolRequestParams, CallToolResponse, Implementation, InitializeRequestParams, InitializeResult,
+  ListToolsResult, PaginatedRequestParams, ServerCapabilities,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::handler::{Entry, Host, answered, private, read, session, unknown};
+use crate::handler::{Entry, Host, answered, initialized, private, reached, read, session, unknown};
 
 /// The path segment the toolbook is served at, and the server name the CLI calls its tools under.
 pub const TOOLBOOK: &str = "toolbook";
@@ -99,22 +99,9 @@ pub fn first_sentence(text: &str) -> &str {
   text.find(". ").map_or(text, |end| &text[..=end])
 }
 
-/// One tool of the list, as its structured content carries it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Booked {
-  /// Its full name, `<namespace>/<name>`.
-  pub tool: String,
-  pub reached_by: ReachedBy,
-  /// Its description's first sentence.
-  pub summary: String,
-}
-
-impl Booked {
-  /// Its line in the list's text.
-  pub fn line(&self) -> String {
-    format!("{} · {} — {}", self.tool, self.reached_by.name(), self.summary)
-  }
+/// One tool of the list's text: its full name, the calling tool that reaches it, and its summary.
+pub fn line(booked: &Booked) -> String {
+  format!("{} · {} — {}", booked.tool, booked.reached_by.name(), booked.summary)
 }
 
 /// The list: the booked tools the session holds, in order of full name, narrowed by `query` where one is
@@ -190,7 +177,7 @@ impl Toolbook {
         None => "No tool is reached through the toolbook in this session.".to_owned(),
       })
     } else {
-      let lines: Vec<String> = booked.iter().map(Booked::line).collect();
+      let lines: Vec<String> = booked.iter().map(line).collect();
 
       Answer::lines(&lines, "narrow it with query")
     };
@@ -247,6 +234,14 @@ impl ServerHandler for Toolbook {
     info
   }
 
+  async fn initialize(
+    &self,
+    request: InitializeRequestParams,
+    context: RequestContext<RoleServer>,
+  ) -> Result<InitializeResult, ErrorData> {
+    initialized(self, &request, &context, TOOLBOOK)
+  }
+
   async fn list_tools(
     &self,
     _: Option<PaginatedRequestParams>,
@@ -254,7 +249,10 @@ impl ServerHandler for Toolbook {
   ) -> Result<ListToolsResult, ErrorData> {
     session(&context)?;
 
-    read(private(json!({ "tools": tools() })))
+    let listed = read(private(json!({ "tools": tools() })))?;
+
+    reached(&context, TOOLBOOK);
+    Ok(listed)
   }
 
   async fn call_tool(

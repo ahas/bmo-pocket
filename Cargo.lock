@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-pocket"
-version = "0.1.0-rev.7"
+version = "0.1.0-rev.8"
 dependencies = [
  "regex",
  "serde_json",
@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-pocket-client"
-version = "0.1.0-rev.7"
+version = "0.1.0-rev.8"
 dependencies = [
  "bmo-tool",
  "http",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-pocket-plugin"
-version = "0.1.0-rev.7"
+version = "0.1.0-rev.8"
 dependencies = [
  "axum",
  "bmo-pocket-client",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-tool"
-version = "0.1.0-rev.7"
+version = "0.1.0-rev.8"
 dependencies = [
  "croner",
  "schemars",
@@ -1304,7 +1304,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mcp-host"
-version = "0.1.0-rev.7"
+version = "0.1.0-rev.8"
 dependencies = [
  "axum",
  "bmo-pocket-client",
@@ -1313,6 +1313,7 @@ dependencies = [
  "chrono",
  "clap",
  "croner",
+ "futures-util",
  "http",
  "http-body-util",
  "hyper",

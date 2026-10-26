@@ -2,14 +2,19 @@
 
 use std::sync::Arc;
 
-use bmo_pocket_client::transport::request;
+use bmo_pocket_client::transport::{request, request_with};
 use bmo_pocket_client::{
-  ErrorCode, Failure, Granted, NameQuery, Pocket, SessionRequest, TimeQuery, ToolCallRequest,
+  Booked, ErrorCode, EventKind, EventQuery, Failure, Granted, NameQuery, Pocket, ReachedBy, SessionRequest,
+  TimeQuery, ToolCallRequest, ToolChange,
 };
-use http::{Method, StatusCode};
+use http::{Method, Request, StatusCode};
+use http_body_util::{BodyExt, Empty, Full};
+use hyper::body::Bytes;
+use hyper_util::rt::TokioIo;
 use mcp_host::schedule::Schedules;
 use mcp_host::server::{page_by_name, page_by_time};
-use serde_json::json;
+use serde_json::{Value, json};
+use tokio::net::{TcpStream, UnixStream};
 
 use crate::fixture::{Fixture, ISSUER};
 
@@ -414,5 +419,265 @@ async fn the_issuer_alone_reads_the_sessions_standing_and_the_external_servers()
         .await
     ),
     (StatusCode::BAD_REQUEST, ErrorCode::BadRequest)
+  );
+}
+
+// A tool as an event carries it, of one read-only entry of `notes`.
+fn change(tool: &str) -> ToolChange {
+  ToolChange {
+    tool: tool.to_owned(),
+    namespaces: vec!["notes".to_owned()],
+    entries: vec![Booked {
+      tool: format!("notes/{tool}_entry"),
+      reached_by: ReachedBy::Call,
+      summary: "Reads.".to_owned(),
+    }],
+    replaced: false,
+  }
+}
+
+// The event stream opened on the control socket with these headers: its status, its type, and its body as it comes.
+async fn subscribe(
+  socket: &std::path::Path,
+  path: &str,
+  headers: &[(&str, &str)],
+) -> (StatusCode, String, hyper::body::Incoming) {
+  let stream = UnixStream::connect(socket).await.unwrap();
+  let (mut link, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream)).await.unwrap();
+
+  tokio::spawn(connection);
+
+  let mut asked = Request::get(path).header("host", "localhost");
+
+  for (name, value) in headers {
+    asked = asked.header(*name, *value);
+  }
+
+  let response = link.send_request(asked.body(Empty::<Bytes>::new()).unwrap()).await.unwrap();
+  let kind = response
+    .headers()
+    .get("content-type")
+    .map(|value| value.to_str().unwrap().to_owned())
+    .unwrap_or_default();
+
+  (response.status(), kind, response.into_body())
+}
+
+// The stream's text read until it holds `until`, within a few seconds.
+async fn read_until(body: &mut hyper::body::Incoming, until: &str) -> String {
+  let mut said = String::new();
+
+  tokio::time::timeout(std::time::Duration::from_secs(5), async {
+    while !said.contains(until) {
+      let frame = body.frame().await.expect("the stream ended").unwrap();
+
+      if let Some(data) = frame.data_ref() {
+        said.push_str(&String::from_utf8_lossy(data));
+      }
+    }
+  })
+  .await
+  .unwrap_or_else(|_| panic!("the stream never said {until}: {said}"));
+
+  said
+}
+
+#[tokio::test]
+async fn the_event_stream_tells_each_event_as_it_is_published_and_resumes_after_a_cursor() {
+  let fixture = Fixture::new();
+  let socket = fixture.serve(Arc::new(Schedules::default()));
+  let events = &fixture.host.placed.events;
+  let bearer = format!("Bearer {ISSUER}");
+  let (status, kind, mut body) = subscribe(&socket, "/events", &[("authorization", &bearer)]).await;
+
+  assert_eq!((status, kind.as_str()), (StatusCode::OK, "text/event-stream"));
+
+  let first = events.publish(EventKind::ToolPlaced, change("almanac"));
+  let said = read_until(&mut body, "\n\n").await;
+  let (head, data) = said.trim_end().split_once("\ndata: ").unwrap();
+
+  assert_eq!(head, format!("id: {}\nevent: tool.placed", first.id));
+  assert_eq!(serde_json::from_str::<Value>(data).unwrap(), serde_json::to_value(&first).unwrap());
+  // Numbered from above the moment the run began, which was before the event was read.
+  assert!(first.id / 1000 <= i64::try_from(first.at).unwrap());
+
+  let second = events.publish(EventKind::ToolRemoved, change("almanac"));
+
+  assert!(
+    read_until(&mut body, "event: tool.removed")
+      .await
+      .contains(&format!("id: {}", second.id))
+  );
+
+  // A reader resuming after the first is told the second first; one narrowed to placements is told neither.
+  let resumed = first.id.to_string();
+  let (_, _, mut again) =
+    subscribe(&socket, "/events", &[("authorization", &bearer), ("last-event-id", &resumed)]).await;
+
+  assert!(
+    read_until(&mut again, "\n\n")
+      .await
+      .starts_with(&format!("id: {}\nevent: tool.removed", second.id))
+  );
+
+  let issuer = Pocket::at(&socket, ISSUER);
+  let page = issuer.events(&EventQuery::default()).await.unwrap();
+
+  assert_eq!((page.items, page.more), (vec![first.clone(), second.clone()], false));
+
+  let narrowed = issuer
+    .events(&EventQuery {
+      after: None,
+      kinds: Some("tool.placed".to_owned()),
+      limit: Some(1),
+    })
+    .await
+    .unwrap();
+
+  assert_eq!((narrowed.items, narrowed.more), (vec![first.clone()], false));
+
+  let after = issuer
+    .events(&EventQuery {
+      after: Some(first.id),
+      ..EventQuery::default()
+    })
+    .await
+    .unwrap();
+
+  assert_eq!(after.items, [second]);
+}
+
+#[tokio::test]
+async fn the_event_stream_refuses_a_reader_with_no_token_a_sessions_token_and_a_cursor_gone() {
+  let fixture = Fixture::new();
+  let socket = fixture.serve(Arc::new(Schedules::default()));
+  let issuer = Pocket::at(&socket, ISSUER);
+  let bare = request(&socket, Method::GET, "/events", None, None).await.unwrap();
+
+  assert_eq!(bare.status, StatusCode::UNAUTHORIZED);
+  assert_eq!(bare.json().unwrap()["code"], "unauthorized");
+
+  let (status, _, _) = subscribe(&socket, "/events", &[("authorization", "Bearer no-such-token")]).await;
+
+  assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+  let session = issuer.issue(&asked(&["notes.read"], &[])).await.unwrap();
+
+  assert_eq!(
+    code(Pocket::at(&socket, session.token.clone()).events(&EventQuery::default()).await),
+    (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
+  );
+
+  // A cursor of an earlier run, below the numbers this run began at, is gone, on the stream and on a page alike.
+  let stale = request_with(&socket, Method::GET, "/events?after=7", Some(ISSUER), None, &[])
+    .await
+    .unwrap();
+
+  assert_eq!(stale.status, StatusCode::GONE);
+  assert_eq!(stale.json().unwrap()["code"], "gone");
+  assert_eq!(
+    code(
+      issuer
+        .events(&EventQuery {
+          after: Some(7),
+          ..EventQuery::default()
+        })
+        .await
+    ),
+    (StatusCode::GONE, ErrorCode::Gone)
+  );
+  assert_eq!(
+    code(
+      issuer
+        .events(&EventQuery {
+          limit: Some(0),
+          ..EventQuery::default()
+        })
+        .await
+    ),
+    (StatusCode::BAD_REQUEST, ErrorCode::BadRequest)
+  );
+}
+
+// One JSON-RPC request on the tools face, answered by its status.
+async fn rpc(port: u16, token: &str, namespace: &str, method: &str, params: Value) -> StatusCode {
+  let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+  let (mut link, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream)).await.unwrap();
+
+  tokio::spawn(connection);
+
+  let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params });
+  let asked = Request::post(format!("/mcp/{namespace}"))
+    .header("host", "127.0.0.1")
+    .header("content-type", "application/json")
+    .header("accept", "application/json, text/event-stream")
+    .header("mcp-protocol-version", "2025-06-18")
+    .header("authorization", format!("Bearer {token}"))
+    .body(Full::new(Bytes::from(body.to_string())))
+    .unwrap();
+  let response = link.send_request(asked).await.unwrap();
+  let status = response.status();
+
+  response.into_body().collect().await.unwrap();
+  status
+}
+
+#[tokio::test]
+async fn a_session_says_which_servers_of_the_tools_face_its_clients_reached() {
+  let fixture = Fixture::new();
+  let (socket, port) = fixture.serve_with_tools();
+  let issuer = Pocket::at(&socket, ISSUER);
+  let one = issuer.issue(&asked(&["notes.read"], &[])).await.unwrap();
+
+  tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+
+  let other = issuer.issue(&asked(&["notes.read"], &[])).await.unwrap();
+
+  assert!(issuer.tool_session(&one.token).await.unwrap().connected.is_empty());
+
+  let opening = json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "probe", "version": "1" } });
+
+  assert_eq!(rpc(port, &one.token, "notes", "initialize", opening.clone()).await, StatusCode::OK);
+  assert_eq!(rpc(port, &one.token, "toolbook", "tools/list", json!({})).await, StatusCode::OK);
+  // A namespace the record does not name is refused before it is reached.
+  assert_eq!(
+    rpc(port, &one.token, "pages", "initialize", opening.clone()).await,
+    StatusCode::NOT_FOUND
+  );
+
+  let read = issuer.tool_session(&one.token).await.unwrap();
+  let reached: Vec<&str> = read.connected.iter().map(|server| server.namespace.as_str()).collect();
+
+  assert_eq!(reached, ["notes", "toolbook"]);
+  assert!(read.connected.iter().all(|server| server.at >= one.created_at));
+
+  // The first answer's moment is kept.
+  let at = read.connected[0].at;
+
+  tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+  rpc(port, &one.token, "notes", "tools/list", json!({})).await;
+  assert_eq!(issuer.tool_session(&one.token).await.unwrap().connected[0].at, at);
+
+  let every = issuer.tool_sessions(&TimeQuery::default()).await.unwrap();
+  let of = |created_at: u64| {
+    every
+      .items
+      .iter()
+      .find(|session| session.created_at == created_at)
+      .unwrap()
+      .connected
+      .len()
+  };
+
+  assert_eq!((of(one.created_at), of(other.created_at)), (2, 0));
+  assert_eq!(
+    code(Pocket::at(&socket, one.token.clone()).tool_session(&one.token).await),
+    (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
+  );
+
+  issuer.revoke(&one.token).await.unwrap();
+  assert_eq!(
+    code(issuer.tool_session(&one.token).await),
+    (StatusCode::NOT_FOUND, ErrorCode::NotFound)
   );
 }

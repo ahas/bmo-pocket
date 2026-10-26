@@ -12,8 +12,9 @@ use clap::Subcommand;
 use http::StatusCode;
 use serde_json::{Map, Value};
 
-/// Every noun this command declares, as `bmo-pocket nouns` prints them.
-pub const NOUNS: [&str; 4] = ["tool list", "tool describe", "tool call", "tool sites"];
+/// Every noun this command declares, as `bmo-pocket nouns` prints them: `tool` itself, which answers its usage, and
+/// its four nouns, which the longest match reaches first.
+pub const NOUNS: [&str; 5] = ["tool", "tool list", "tool describe", "tool call", "tool sites"];
 
 /// The most members one page asks for; the pages go on until none stands past the last.
 const PAGE: u32 = 1000;

@@ -13,8 +13,8 @@ use serde_json::{Map, Value, json};
 use crate::error::{ErrorCode, WireError};
 use crate::harness::{ENTRY, MCP_COMMAND, PLUGIN, harness_tools};
 use crate::wire::{
-  Claim, ClaimRequest, Health, Namespace, NamespacePage, SchedulePage, ServerPage, SessionPage, Tool,
-  ToolCall, ToolCallRequest, ToolPage, ToolSession,
+  Claim, ClaimRequest, Event, EventPage, Health, Namespace, NamespacePage, SchedulePage, ServerPage,
+  SessionPage, StandingSession, Tool, ToolCall, ToolCallRequest, ToolPage, ToolSession,
 };
 
 /// Where the schemas the routes refer to stand in the document.
@@ -22,10 +22,11 @@ const SCHEMAS: &str = "/components/schemas";
 
 const DESCRIPTION: &str = "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer \
   token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, \
-  tool and schedule, the tool sessions standing and the external servers, or a tool session's token, which sees \
-  the namespaces its record names and the tools it holds there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers \
-  text. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over \
-  HTTP on the loopback port, is MCP's own protocol and is not stated here; the console face answers this \
+  tool and schedule, the tool sessions standing, the external servers and the event stream, or a tool session's \
+  token, which sees the namespaces its record names and the tools it holds there, and calls and claims under that \
+  record. Bodies are JSON both ways, but for the discipline, which answers text, and the event stream, which \
+  answers server-sent events unless a page is asked for as JSON. Every failure and refusal is a non-2xx status \
+  with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own protocol and is not stated here; the console face answers this \
   document's reads in its shapes behind the console token, and is not stated here either.";
 
 /// Which token a route takes.
@@ -52,6 +53,9 @@ enum Answer {
   Json(Schema),
   /// A body of plain UTF-8 text.
   Text,
+  /// Server-sent events, each event's data of the second schema, or with `Accept: application/json` a page of the
+  /// first.
+  Events(Schema, Schema),
   /// No body.
   Empty,
 }
@@ -103,12 +107,18 @@ fn after_time(what: &str) -> Value {
   )
 }
 
+fn header_parameter(name: &str, description: &str) -> Value {
+  json!({ "name": name, "in": "header", "required": false, "description": description, "schema": { "type": "string" } })
+}
+
 fn schema<T: JsonSchema>(generator: &mut SchemaGenerator) -> Schema {
   generator.subschema_for::<T>()
 }
 
 fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
-  use ErrorCode::{ArgumentsMisfit, BadRequest, Failed, Forbidden, NotFound, ToolFailed, Unauthorized};
+  use ErrorCode::{
+    ArgumentsMisfit, BadRequest, Failed, Forbidden, Gone, NotFound, ToolFailed, Unauthorized,
+  };
 
   vec![
     Route {
@@ -134,6 +144,44 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       request: None,
       answer: (200, Answer::Text),
       codes: &[Unauthorized],
+    },
+    Route {
+      method: "get",
+      path: "/events",
+      operation: "listEvents",
+      tag: "events",
+      summary: "The host's event stream: each tool a reading of the catalogue placed or removed, as server-sent \
+        events after the cursor and then as each is published, a comment line every fifteen seconds; with \
+        `Accept: application/json`, a page of the events held. A cursor older than the window held is gone.",
+      token: Token::Issuer,
+      parameters: vec![
+        query_parameter(
+          "after",
+          "An event's number: the events numbered after it.",
+          json!({ "type": "integer", "format": "int64" }),
+        ),
+        query_parameter(
+          "kinds",
+          "The kinds answered, a comma-separated list; every kind where absent.",
+          json!({ "type": "string" }),
+        ),
+        query_parameter(
+          "limit",
+          "At most this many events, in a page; every one held where absent.",
+          json!({ "type": "integer", "minimum": 1 }),
+        ),
+        header_parameter(
+          "Last-Event-ID",
+          "The last event's number a stream answered, read where `after` is absent.",
+        ),
+        header_parameter(
+          "Accept",
+          "`application/json` for a page of the events held in place of the stream.",
+        ),
+      ],
+      request: None,
+      answer: (200, Answer::Events(schema::<EventPage>(generator), schema::<Event>(generator))),
+      codes: &[Unauthorized, BadRequest, Forbidden, Gone],
     },
     Route {
       method: "get",
@@ -237,6 +285,19 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
       codes: &[Unauthorized, BadRequest, Forbidden, Failed],
     },
     Route {
+      method: "get",
+      path: "/tool-sessions/{token}",
+      operation: "readToolSession",
+      tag: "tool-sessions",
+      summary: "One standing tool session, as the page answers it, with each server of the tools face its clients \
+        reached.",
+      token: Token::Issuer,
+      parameters: vec![path_parameter("token", "The token the session was issued with.")],
+      request: None,
+      answer: (200, Answer::Json(schema::<StandingSession>(generator))),
+      codes: &[Unauthorized, Forbidden, NotFound],
+    },
+    Route {
       method: "delete",
       path: "/tool-sessions/{token}",
       operation: "deleteToolSession",
@@ -291,6 +352,16 @@ impl Route {
         Answer::Text => json!({
           "description": "The route's answer, as text.",
           "content": { "text/plain": { "schema": { "type": "string" } } },
+        }),
+        Answer::Events(page, event) => json!({
+          "description": "The stream, or a page of the events held where `Accept: application/json` asks for one.",
+          "content": {
+            "text/event-stream": {
+              "schema": { "type": "string" },
+              "x-event": event,
+            },
+            "application/json": { "schema": page },
+          },
         }),
         Answer::Empty => json!({ "description": "Done; no body." }),
       },
@@ -378,6 +449,7 @@ pub fn openapi() -> Value {
     "security": [{ "bearer": [] }],
     "tags": [
       { "name": "health", "description": "Whether the host is ready." },
+      { "name": "events", "description": "The tools each reading of the catalogue placed and removed." },
       { "name": "discipline", "description": "The prompt text a session handed the tool host's tools carries." },
       { "name": "namespaces", "description": "Every namespace with its tools: the catalogue." },
       { "name": "tool-calls", "description": "Calls made under a tool session." },

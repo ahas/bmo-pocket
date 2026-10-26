@@ -214,6 +214,43 @@ describe("the TypeScript client", () => {
     expect((await refusal(reader.servers())).code).toBe("forbidden");
   });
 
+  test("reads one standing session by its token, with the servers its clients reached", async () => {
+    const issued = await issuer.issue({ holderName: "tester", namespaces: ["notes"], capabilities: [], grants: [] });
+    const read = await issuer.toolSession(issued.token);
+
+    expect([read.holderName, read.createdAt, read.connected]).toEqual(["tester", issued.createdAt, []]);
+    expect((await refusal(pocketClient({ socket: issuer.socket, token: issued.token }).toolSession(issued.token))).code).toBe("forbidden");
+    await issuer.revoke(issued.token);
+    expect((await refusal(issuer.toolSession(issued.token))).code).toBe("not-found");
+  });
+
+  test("tells a tool placed while the host runs as one event of the stream", async () => {
+    const placed = join(scratch, "tools", "ledger", ".placed");
+
+    mkdirSync(placed, { recursive: true });
+    writeFileSync(join(placed, "note.json"), JSON.stringify({ type: "object" }));
+    writeFileSync(join(placed, "almanac.py"), SCRIPT);
+    writeFileSync(
+      join(placed, "tool.toml"),
+      MANIFEST.split("[[entry]]")[0]!.replace('name = "almanac"', 'name = "ledger"') +
+        '[[entry]]\nnamespace = "ledger"\nname = "keep"\ndescription = "Keeps a line. Then says so."\ninput = "note.json"\ncapabilities = ["notes.read"]\n',
+    );
+
+    let page = await issuer.events();
+
+    for (let tries = 0; page.items.length === 0 && tries < 50; tries += 1) {
+      await Bun.sleep(100);
+      page = await issuer.events();
+    }
+
+    expect(page.items.map((event) => [event.kind, event.data])).toEqual([
+      ["tool.placed", { tool: "ledger", namespaces: ["ledger"], entries: [{ tool: "ledger/keep", reachedBy: "act", summary: "Keeps a line." }], replaced: false }],
+    ]);
+    expect((await issuer.events({ after: page.items[0]!.id })).items).toEqual([]);
+    expect((await refusal(issuer.events({ after: 1 }))).code).toBe("gone");
+    expect((await refusal((await session()).events())).code).toBe("forbidden");
+  });
+
   test("revokes a session, after which its token is refused", async () => {
     const issued = await issuer.issue({ holderName: "tester", namespaces: ["notes"], capabilities: [], grants: [] });
     const revoked = pocketClient({ socket: issuer.socket, token: issued.token });

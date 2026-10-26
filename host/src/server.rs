@@ -3,22 +3,22 @@
 //! the console token reaches the screen's bundle and the control socket's reads (docs/mcp-host.md, 「Tokens」;
 //! docs/api.md, 「The control socket」 and 「The console face」).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::body::{Body, Bytes};
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Extension, Path, Query, Request, State};
-use axum::http::{HeaderValue, StatusCode, Uri, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, delete, get, post};
+use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use bmo_pocket_client::{
-  Claim, ClaimRequest, Health, NameQuery, Namespace, NamespacePage, Schedule, SchedulePage, Server,
-  ServerPage, SessionPage, StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage,
-  ToolResult, ToolSession,
+  Claim, ClaimRequest, Event, EventPage, EventQuery, Health, NameQuery, Namespace, NamespacePage, Schedule,
+  SchedulePage, Server, ServerPage, SessionPage, StandingSession, TimeQuery, Tool, ToolCall,
+  ToolCallRequest, ToolPage, ToolResult, ToolSession,
 };
 use bmo_tool::{Session, SessionRequest};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
@@ -27,8 +27,9 @@ use serde_json::Value;
 
 use crate::console::{Bundle, ConsoleManifest, SCREEN_ROLE};
 use crate::error::HostError;
+use crate::events::Events;
 use crate::handler::{Claimant, Entry, Handler, Host, Refusal};
-use crate::records::Records;
+use crate::records::{Reach, Records};
 use crate::schedule::{Schedules, now_ms};
 use crate::toolbook::{TOOLBOOK, Toolbook};
 
@@ -44,16 +45,20 @@ fn bearer(request: &Request) -> Option<&str> {
 }
 
 // Every namespace stands behind this: the token names a record, and the record goes on with the
-// request for the handler to serve by.
+// request for the handler to serve by, with what its servers are marked reached by.
 async fn authorise(State(records): State<Arc<Records>>, mut request: Request, next: Next) -> Response {
   let Some(token) = bearer(&request) else {
     return HostError::NoToken.into_response();
   };
-  let Some((_, session)) = records.get(token) else {
+  let Some((id, session)) = records.get(token) else {
     return HostError::UnknownToken.into_response();
   };
 
   request.extensions_mut().insert::<Arc<Session>>(session);
+  request.extensions_mut().insert(Reach {
+    records: records.clone(),
+    id,
+  });
   next.run(request).await
 }
 
@@ -459,8 +464,12 @@ async fn tool_session_page(
   caller.issuer()?;
 
   let Query(asked) = asked.map_err(malformed)?;
-  let mut every: Vec<StandingSession> =
-    control.records.standing().iter().map(|session| StandingSession::of(session)).collect();
+  let mut every: Vec<StandingSession> = control
+    .records
+    .standing()
+    .iter()
+    .map(|(id, session)| StandingSession::of(session, control.records.connected(id)))
+    .collect();
 
   every.sort_by(|left, right| {
     (left.created_at, &left.holder_name).cmp(&(right.created_at, &right.holder_name))
@@ -471,6 +480,175 @@ async fn tool_session_page(
     page_by_time(every, issued, asked.after, asked.limit).map_err(HostError::MalformedRequest)?;
 
   Ok(Json(SessionPage { items, more }))
+}
+
+// One standing tool session by its token, to the issuer alone, with the servers its clients reached.
+async fn one_tool_session(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+  Path(token): Path<String>,
+) -> Result<Json<StandingSession>, HostError> {
+  caller.issuer()?;
+
+  let (id, session) = control.records.get(&token).ok_or(HostError::UnknownSession)?;
+
+  Ok(Json(StandingSession::of(&session, control.records.connected(&id))))
+}
+
+/// How often a stream with nothing to say says it is open.
+const PING: Duration = Duration::from_secs(15);
+
+// One event as its frame of the stream: its number, its kind as the event's name, and the event as JSON.
+fn frame(event: &Event) -> Bytes {
+  let data = serde_json::to_string(event).unwrap_or_default();
+
+  Bytes::from(format!("id: {}\nevent: {}\ndata: {data}\n\n", event.id, event.kind.as_str()))
+}
+
+// Where a stream stands: the last number it went past, what it holds to write, and which kinds it writes.
+struct Reading {
+  host: Arc<Host>,
+  cursor: i64,
+  pending: VecDeque<Event>,
+  kinds: Option<BTreeSet<String>>,
+  latest: tokio::sync::watch::Receiver<i64>,
+  stopping: tokio::sync::watch::Receiver<bool>,
+}
+
+fn wanted(kinds: Option<&BTreeSet<String>>, event: &Event) -> bool {
+  kinds.is_none_or(|kinds| kinds.contains(event.kind.as_str()))
+}
+
+impl Reading {
+  // The next frame: an event held past the cursor, a ping after a quiet while, or none once the host stops or the
+  // reader fell behind the window, which its next connection is told.
+  async fn next(mut self) -> Option<(Result<Bytes, std::convert::Infallible>, Self)> {
+    loop {
+      if let Some(event) = self.pending.pop_front() {
+        self.cursor = event.id;
+
+        if wanted(self.kinds.as_ref(), &event) {
+          return Some((Ok(frame(&event)), self));
+        }
+
+        continue;
+      }
+
+      if *self.stopping.borrow() {
+        return None;
+      }
+
+      self.latest.borrow_and_update();
+
+      match self.host.placed.events.after(Some(self.cursor)) {
+        Ok(found) if !found.is_empty() => {
+          self.pending = found.into();
+          continue;
+        }
+        Ok(_) => {}
+        Err(_) => return None,
+      }
+
+      tokio::select! {
+        changed = self.latest.changed() => {
+          if changed.is_err() {
+            return None;
+          }
+        }
+        _ = self.stopping.changed() => {}
+        () = tokio::time::sleep(PING) => return Some((Ok(Bytes::from_static(b": ping\n\n")), self)),
+      }
+    }
+  }
+}
+
+// The cursor a reader resumes after: `after`, else `Last-Event-ID`.
+fn cursor(asked: &EventQuery, headers: &HeaderMap) -> Result<Option<i64>, HostError> {
+  if asked.after.is_some() {
+    return Ok(asked.after);
+  }
+
+  headers
+    .get("last-event-id")
+    .map(|value| {
+      value
+        .to_str()
+        .ok()
+        .and_then(|text| text.trim().parse::<i64>().ok())
+        .ok_or_else(|| HostError::MalformedRequest("`Last-Event-ID` is not an event's number".to_owned()))
+    })
+    .transpose()
+}
+
+// The events held after the cursor, or why the cursor is gone.
+fn held_after(events: &Events, after: Option<i64>) -> Result<Vec<Event>, HostError> {
+  events.after(after).map_err(|gone| HostError::Gone {
+    after: after.unwrap_or(gone.floor),
+    floor: gone.floor,
+  })
+}
+
+// The event stream, to the issuer alone: server-sent events after the cursor and on as each is published, or with
+// `Accept: application/json` a page of the events held.
+async fn events(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+  headers: HeaderMap,
+  asked: Result<Query<EventQuery>, QueryRejection>,
+) -> Result<Response, HostError> {
+  caller.issuer()?;
+
+  let Query(asked) = asked.map_err(malformed)?;
+
+  if asked.limit == Some(0) {
+    return Err(HostError::MalformedRequest("`limit` is a positive integer".to_owned()));
+  }
+
+  let after = cursor(&asked, &headers)?;
+  let kinds: Option<BTreeSet<String>> = asked.kinds.as_deref().map(|kinds| {
+    kinds
+      .split(',')
+      .map(str::trim)
+      .filter(|kind| !kind.is_empty())
+      .map(str::to_owned)
+      .collect()
+  });
+  let events = &control.host.placed.events;
+  let paged = headers
+    .get(header::ACCEPT)
+    .and_then(|value| value.to_str().ok())
+    .is_some_and(|accept| accept.contains("application/json"));
+
+  if paged {
+    let mut items: Vec<Event> = held_after(events, after)?
+      .into_iter()
+      .filter(|event| wanted(kinds.as_ref(), event))
+      .collect();
+    let more = asked.limit.is_some_and(|limit| items.len() > limit as usize);
+
+    items.truncate(asked.limit.map_or(usize::MAX, |limit| limit as usize));
+    return Ok(Json(EventPage { items, more }).into_response());
+  }
+
+  let (cursor, pending) = match after {
+    Some(after) => (after, held_after(events, Some(after))?.into()),
+    None => (events.last(), VecDeque::new()),
+  };
+  let reading = Reading {
+    host: control.host.clone(),
+    cursor,
+    pending,
+    kinds,
+    latest: events.watch(),
+    stopping: events.stopping(),
+  };
+  let body = Body::from_stream(futures_util::stream::unfold(reading, Reading::next));
+  let mut response = (StatusCode::OK, body).into_response();
+  let said = response.headers_mut();
+
+  said.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
+  said.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+  Ok(response)
 }
 
 // The external servers the host read a registration of, to the issuer alone, listed or not.
@@ -547,10 +725,10 @@ async fn method_not_allowed() -> HostError {
   HostError::MethodNotAllowed
 }
 
-/// The control socket, each route behind the issuer token or a tool session's: health; the discipline; the
-/// namespaces, one of them, a namespace's tools and one tool; a call and a claim under a tool session; the tool
-/// sessions standing, one issued and one revoked; the external servers; and the schedules. Any other path or method
-/// is refused in the common error shape.
+/// The control socket, each route behind the issuer token or a tool session's: health; the discipline; the event
+/// stream; the namespaces, one of them, a namespace's tools and one tool; a call and a claim under a tool session;
+/// the tool sessions standing, one read, one issued and one revoked; the external servers; and the schedules. Any
+/// other path or method is refused in the common error shape.
 pub fn control(
   records: Arc<Records>,
   host: Arc<Host>,
@@ -567,6 +745,7 @@ pub fn control(
   Router::new()
     .route("/health", get(health))
     .route("/discipline", get(discipline))
+    .route("/events", get(events))
     .route("/namespaces", get(namespaces))
     .route("/namespaces/{namespace}", get(one_namespace))
     .route("/namespaces/{namespace}/tools", get(tool_page))
@@ -574,7 +753,7 @@ pub fn control(
     .route("/tool-calls", post(tool_call))
     .route("/claims", post(claim))
     .route("/tool-sessions", get(tool_session_page).post(issue))
-    .route("/tool-sessions/{token}", delete(revoke))
+    .route("/tool-sessions/{token}", get(one_tool_session).delete(revoke))
     .route("/servers", get(server_page))
     .route("/schedules", get(schedule_page))
     .fallback(unknown_route)

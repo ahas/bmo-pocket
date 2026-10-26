@@ -15,7 +15,10 @@ pub enum HostError {
   #[error("the token names no session")]
   UnknownToken,
   /// A tool session's token on a route the issuer token alone takes.
-  #[error("the issuer token alone issues, revokes and lists tool sessions and lists the external servers")]
+  #[error(
+    "the issuer token alone issues, revokes and lists tool sessions, lists the external servers and reads the \
+     event stream"
+  )]
   IssuerOnly,
   /// The issuer token on a route a tool session's token alone takes.
   #[error("a call or a claim is made under a tool session's token")]
@@ -59,6 +62,12 @@ pub enum HostError {
   /// The host could not keep or take back a record on disk.
   #[error("the session record could not be written: {0}")]
   Unwritable(String),
+  /// A cursor of the event stream older than the window held, or one of an earlier run.
+  #[error(
+    "the event {after} is no longer held: the events held follow {floor}; read the namespaces again and subscribe \
+     with no cursor"
+  )]
+  Gone { after: i64, floor: i64 },
   /// A path the control socket does not serve.
   #[error("no route `{0}`")]
   UnknownRoute(String),
@@ -84,6 +93,7 @@ impl HostError {
       Self::ToolFailed(_) => ErrorCode::ToolFailed,
       Self::Unwritable(_) => ErrorCode::Failed,
       Self::UnknownRoute(_) | Self::MethodNotAllowed => ErrorCode::NoRoute,
+      Self::Gone { .. } => ErrorCode::Gone,
     }
   }
 }

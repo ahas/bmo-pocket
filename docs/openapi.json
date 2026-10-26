@@ -1,6 +1,28 @@
 {
   "components": {
     "schemas": {
+      "Booked": {
+        "description": "One entry of a tool as the toolbook's list answers it: its full name, which calling tool reaches it, and its\ndescription's first sentence.",
+        "properties": {
+          "reachedBy": {
+            "$ref": "#/components/schemas/ReachedBy"
+          },
+          "summary": {
+            "description": "Its description's first sentence.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Its full name, `<namespace>/<name>`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "reachedBy",
+          "summary"
+        ],
+        "type": "object"
+      },
       "Claim": {
         "description": "The answer to a claim: the entry that claims the address and the arguments it reads it with, where the\nsession holds the entry and its grant; why not, where it does not.",
         "properties": {
@@ -55,6 +77,24 @@
         ],
         "type": "object"
       },
+      "Connection": {
+        "description": "A server of the tools face a session's clients reached: its namespace, `toolbook` for the toolbook, and when the\nhost first answered its `initialize` or `tools/list` under the session's token, in epoch milliseconds.",
+        "properties": {
+          "at": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "at"
+        ],
+        "type": "object"
+      },
       "ErrorCode": {
         "description": "A stable code a caller decides on, each answered with one status.",
         "oneOf": [
@@ -84,6 +124,11 @@
             "type": "string"
           },
           {
+            "const": "gone",
+            "description": "An event after the cursor is no longer held: older than the window the host holds, or of an earlier run.",
+            "type": "string"
+          },
+          {
             "const": "arguments-misfit",
             "description": "The input does not fit the tool's schema in the form held.",
             "type": "string"
@@ -99,6 +144,69 @@
             "type": "string"
           }
         ]
+      },
+      "Event": {
+        "description": "One event of the stream.",
+        "properties": {
+          "at": {
+            "description": "When the host read the change, in epoch milliseconds.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ToolChange"
+          },
+          "id": {
+            "description": "Its number, which only grows.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EventKind"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "at",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EventKind": {
+        "description": "What an event tells of the catalogue.",
+        "oneOf": [
+          {
+            "const": "tool.placed",
+            "description": "A tool served that was not, or in another placed version.",
+            "type": "string"
+          },
+          {
+            "const": "tool.removed",
+            "description": "A tool whose pointer or folder is gone.",
+            "type": "string"
+          }
+        ]
+      },
+      "EventPage": {
+        "description": "A page of the events held, in order of number.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            },
+            "type": "array"
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object"
       },
       "Granted": {
         "additionalProperties": false,
@@ -482,6 +590,13 @@
             "type": "array",
             "uniqueItems": true
           },
+          "connected": {
+            "description": "Each server of the tools face its clients reached, in order of namespace.",
+            "items": {
+              "$ref": "#/components/schemas/Connection"
+            },
+            "type": "array"
+          },
           "createdAt": {
             "description": "When it was issued, in epoch milliseconds.",
             "format": "uint64",
@@ -541,7 +656,8 @@
           "variables",
           "labels",
           "expiresAt",
-          "createdAt"
+          "createdAt",
+          "connected"
         ],
         "type": "object"
       },
@@ -684,6 +800,40 @@
           "namespace",
           "name",
           "input"
+        ],
+        "type": "object"
+      },
+      "ToolChange": {
+        "description": "The tool an event is of: its name, the namespaces of its entries, and each entry it serves a session.",
+        "properties": {
+          "entries": {
+            "description": "Each entry it serves a session, in order of full name; none for the system alone.",
+            "items": {
+              "$ref": "#/components/schemas/Booked"
+            },
+            "type": "array"
+          },
+          "namespaces": {
+            "description": "The namespaces its entries are shown under, in order of name.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "replaced": {
+            "description": "Whether a placement took the place of another version of the tool the host served.",
+            "type": "boolean"
+          },
+          "tool": {
+            "description": "Its name: its registration's, or its folder's under the tools root.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "namespaces",
+          "entries",
+          "replaced"
         ],
         "type": "object"
       },
@@ -920,9 +1070,9 @@
     }
   },
   "info": {
-    "description": "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, tool and schedule, the tool sessions standing and the external servers, or a tool session's token, which sees the namespaces its record names and the tools it holds there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers text. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own protocol and is not stated here; the console face answers this document's reads in its shapes behind the console token, and is not stated here either.",
+    "description": "The tool host's control socket: HTTP/1.1 over a Unix socket. Every route takes a bearer token: the issuer token the host keeps, which alone issues and revokes tool sessions and sees every namespace, tool and schedule, the tool sessions standing, the external servers and the event stream, or a tool session's token, which sees the namespaces its record names and the tools it holds there, and calls and claims under that record. Bodies are JSON both ways, but for the discipline, which answers text, and the event stream, which answers server-sent events unless a page is asked for as JSON. Every failure and refusal is a non-2xx status with a body of `code` and `error`. The tools face, MCP over HTTP on the loopback port, is MCP's own protocol and is not stated here; the console face answers this document's reads in its shapes behind the console token, and is not stated here either.",
     "title": "bmo-pocket",
-    "version": "0.1.0-rev.7"
+    "version": "0.1.0-rev.8"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1078,6 +1228,183 @@
           "unauthorized"
         ],
         "x-token": "either"
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "listEvents",
+        "parameters": [
+          {
+            "description": "An event's number: the events numbered after it.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The kinds answered, a comma-separated list; every kind where absent.",
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "At most this many events, in a page; every one held where absent.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The last event's number a stream answered, read where `after` is absent.",
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`application/json` for a page of the events held in place of the stream.",
+            "in": "header",
+            "name": "Accept",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPage"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "x-event": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            },
+            "description": "The stream, or a page of the events held where `Accept: application/json` asks for one."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "gone"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: gone."
+          }
+        },
+        "summary": "The host's event stream: each tool a reading of the catalogue placed or removed, as server-sent events after the cursor and then as each is published, a comment line every fifteen seconds; with `Accept: application/json`, a page of the events held. A cursor older than the window held is gone.",
+        "tags": [
+          "events"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "forbidden",
+          "gone"
+        ],
+        "x-token": "issuer"
       }
     },
     "/health": {
@@ -2279,6 +2606,111 @@
           "failed"
         ],
         "x-token": "issuer"
+      },
+      "get": {
+        "operationId": "readToolSession",
+        "parameters": [
+          {
+            "description": "The token the session was issued with.",
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandingSession"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          }
+        },
+        "summary": "One standing tool session, as the page answers it, with each server of the tools face its clients reached.",
+        "tags": [
+          "tool-sessions"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "forbidden",
+          "not-found"
+        ],
+        "x-token": "issuer"
       }
     }
   },
@@ -2297,6 +2729,10 @@
     {
       "description": "Whether the host is ready.",
       "name": "health"
+    },
+    {
+      "description": "The tools each reading of the catalogue placed and removed.",
+      "name": "events"
     },
     {
       "description": "The prompt text a session handed the tool host's tools carries.",

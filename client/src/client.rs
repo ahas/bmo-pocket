@@ -12,10 +12,11 @@ use thiserror::Error;
 use url::Url;
 
 use crate::error::WireError;
-use crate::transport::{Reply, request};
+use crate::transport::{Reply, request, request_with};
 use crate::wire::{
-  Claim, ClaimRequest, Health, NameQuery, Namespace, NamespacePage, SchedulePage, ServerPage, SessionPage,
-  TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage, ToolSession,
+  Claim, ClaimRequest, EventPage, EventQuery, Health, NameQuery, Namespace, NamespacePage, SchedulePage,
+  ServerPage, SessionPage, StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage,
+  ToolSession,
 };
 
 /// Why a call answered no body of its route.
@@ -221,6 +222,39 @@ impl Pocket {
     let query = paged(page.after.map(|after| after.to_string()), page.limit);
 
     body(self.ask(Method::GET, &route(&["tool-sessions"], &query), None).await?, StatusCode::OK)
+  }
+
+  /// `GET /tool-sessions/{token}`: the standing session the token names, with the servers its clients reached,
+  /// with the issuer's token.
+  pub async fn tool_session(&self, token: &str) -> Result<StandingSession, Failure> {
+    body(
+      self.ask(Method::GET, &route(&["tool-sessions", token], &[]), None).await?,
+      StatusCode::OK,
+    )
+  }
+
+  /// `GET /events` with `Accept: application/json`: a page of the events held after the cursor, in order of
+  /// number, with the issuer's token. The stream itself is read as server-sent events on the same route.
+  pub async fn events(&self, page: &EventQuery) -> Result<EventPage, Failure> {
+    let mut query = paged(page.after.map(|after| after.to_string()), page.limit);
+
+    if let Some(kinds) = &page.kinds {
+      query.push(("kinds", kinds.clone()));
+    }
+
+    let path = route(&["events"], &query);
+    let reply = request_with(
+      &self.socket,
+      Method::GET,
+      &path,
+      Some(&self.token),
+      None,
+      &[("accept", "application/json")],
+    )
+    .await
+    .map_err(Failure::Unreachable)?;
+
+    body(reply, StatusCode::OK)
   }
 
   /// `GET /servers`: a page of the external servers registered, in order of name, with the issuer's token.

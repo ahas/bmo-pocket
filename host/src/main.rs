@@ -357,6 +357,14 @@ async fn serve(
 
   tokio::spawn(schedule::keep(host.clone(), schedules.clone(), beats.schedule));
 
+  // Every event stream ended as the host stops, so the control socket's serving lets go of it.
+  let streaming = host.clone();
+
+  tokio::spawn(async move {
+    stopped().await;
+    streaming.placed.events.stop();
+  });
+
   let sessions =
     axum::serve(tcp, server::tools(records.clone(), host.clone())).with_graceful_shutdown(stopped());
   let screens = async {

@@ -34,6 +34,7 @@ enum Verb {
   /// Every noun this command declares, one a line.
   Nouns,
   /// The host's catalogue: the entries listed, one described, one called, and the site tools read.
+  #[command(arg_required_else_help = true)]
   Tool {
     #[command(subcommand)]
     noun: command::Noun,

@@ -3,20 +3,25 @@
 //! under either settle, so a tool placed, replaced or taken away is served from the next call with nothing
 //! restarted. A registered version that has left the catalogue is taken away once nothing holds it. An external
 //! server's registration in the registry adds the tools its server last listed (docs/mcp-host.md, 「External
-//! servers」).
+//! servers」). Each reading after the first tells the event stream which tools it placed and removed (docs/api.md,
+//! 「Events」).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
+use bmo_pocket_client::{Booked, EventKind as Change, ReachedBy, ToolChange};
+use bmo_tool::Hints;
 pub use bmo_tool::manifest::PLACED;
 use bmo_tool::manifest::{MANIFEST, Manifest};
 use notify::event::ModifyKind;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::events::Events;
 use crate::external::{self, External, Externals, REGISTRATION, Registration};
 use crate::registry::Registry;
+use crate::toolbook::first_sentence;
 
 /// A tool as it is placed: its folder's name, where it is placed, and its manifest; for an external server, the
 /// manifest its listed tools read as and its link to the server.
@@ -33,6 +38,8 @@ pub struct PlacedTool {
 pub struct Catalogue {
   pub tools: Vec<Arc<PlacedTool>>,
   pub helpers: BTreeMap<String, Arc<PlacedTool>>,
+  /// Every pointer the registry held that read, by name: the version folder each names.
+  pub pointers: BTreeMap<String, PathBuf>,
 }
 
 // The folders standing in `dir`, by name.
@@ -100,6 +107,8 @@ impl Catalogue {
     let (pointers, unread) = registry.map(Registry::entries).unwrap_or_default();
 
     faults.extend(unread);
+    catalogue.pointers =
+      pointers.iter().map(|pointer| (pointer.name.clone(), pointer.dir.clone())).collect();
 
     let mut linked = BTreeSet::new();
 
@@ -247,6 +256,117 @@ pub struct Placed {
   current: RwLock<Arc<Catalogue>>,
   /// The registered versions that have left the catalogue, each taken away once nothing else holds it.
   retired: Mutex<Vec<Arc<PlacedTool>>>,
+  /// The event stream each reading tells what it placed and removed.
+  pub events: Events,
+  /// What the event stream was last told of each tool, by name; none before the first reading.
+  told: Mutex<Option<Told>>,
+}
+
+/// What the event stream was last told of each tool, by name: the folder it was served from, or its pointer
+/// names, and the tool as an event carries it.
+pub type Told = BTreeMap<String, (PathBuf, ToolChange)>;
+
+/// A tool as an event carries it: its name, the namespaces of its entries a session can be shown, and those
+/// entries as the toolbook's list answers them.
+pub fn change_of(tool: &PlacedTool, replaced: bool) -> ToolChange {
+  let mut entries: Vec<Booked> = tool
+    .manifest
+    .entries
+    .iter()
+    .filter(|entry| !entry.system)
+    .map(|entry| Booked {
+      tool: entry.full_name(),
+      reached_by: if Hints::from(entry.hints).read_only { ReachedBy::Call } else { ReachedBy::Act },
+      summary: first_sentence(&entry.description).to_owned(),
+    })
+    .collect();
+
+  entries.sort_by(|one, other| one.tool.cmp(&other.tool));
+
+  let namespaces: BTreeSet<String> = entries
+    .iter()
+    .filter_map(|entry| entry.tool.split_once('/').map(|(namespace, _)| namespace.to_owned()))
+    .collect();
+
+  ToolChange {
+    tool: tool.folder.clone(),
+    namespaces: namespaces.into_iter().collect(),
+    entries,
+    replaced,
+  }
+}
+
+/// What a reading's catalogue serves, by name, the first of a name read keeping it.
+fn served(catalogue: &Catalogue) -> BTreeMap<&str, &Arc<PlacedTool>> {
+  let mut served = BTreeMap::new();
+
+  for tool in &catalogue.tools {
+    served.entry(tool.folder.as_str()).or_insert(tool);
+  }
+
+  served
+}
+
+/// What the first reading of a run serves, told as standing without an event: each tool it serves, and each
+/// pointer naming no helper whose tool it could not serve yet, an external server not yet listed among them.
+pub fn first_told(catalogue: &Catalogue) -> Told {
+  let mut told: Told = served(catalogue)
+    .into_iter()
+    .map(|(name, tool)| (name.to_owned(), (tool.dir.clone(), change_of(tool, false))))
+    .collect();
+
+  for (name, dir) in &catalogue.pointers {
+    if catalogue.helpers.contains_key(name) || told.contains_key(name) {
+      continue;
+    }
+
+    let unread = ToolChange {
+      tool: name.clone(),
+      namespaces: Vec::new(),
+      entries: Vec::new(),
+      replaced: false,
+    };
+
+    told.insert(name.clone(), (dir.clone(), unread));
+  }
+
+  told
+}
+
+/// What a later reading changed against what was told, and what is told from then on: a tool served that was not
+/// told, or served from another folder, is placed; a tool told whose name neither the catalogue serves nor a
+/// pointer names is removed. A tool whose pointer stands but which the reading could not serve stays told as it
+/// was.
+pub fn changes(told: &mut Told, catalogue: &Catalogue) -> Vec<(Change, ToolChange)> {
+  let served = served(catalogue);
+  let mut changed = Vec::new();
+
+  for (name, tool) in &served {
+    let replaced = match told.get(*name) {
+      Some((dir, _)) if *dir == tool.dir => continue,
+      Some(_) => true,
+      None => false,
+    };
+    let change = change_of(tool, replaced);
+
+    told.insert((*name).to_owned(), (tool.dir.clone(), change.clone()));
+    changed.push((Change::ToolPlaced, change));
+  }
+
+  let gone: Vec<String> = told
+    .keys()
+    .filter(|name| !served.contains_key(name.as_str()) && !catalogue.pointers.contains_key(*name))
+    .cloned()
+    .collect();
+
+  for name in gone {
+    if let Some((_, mut change)) = told.remove(&name) {
+      change.replaced = false;
+      changed.push((Change::ToolRemoved, change));
+    }
+  }
+
+  changed
 }
 
 impl Placed {
@@ -258,6 +378,8 @@ impl Placed {
       externals: Externals::default(),
       current: RwLock::new(Arc::new(Catalogue::default())),
       retired: Mutex::new(Vec::new()),
+      events: Events::default(),
+      told: Mutex::new(None),
     }
   }
 
@@ -299,10 +421,14 @@ impl Placed {
     );
 
     let kept = catalogue.dirs();
+    let catalogue = Arc::new(catalogue);
     let old = std::mem::replace(
       &mut *self.current.write().unwrap_or_else(std::sync::PoisonError::into_inner),
-      Arc::new(catalogue),
+      catalogue.clone(),
     );
+
+    self.tell(&catalogue);
+
     let leaving: Vec<Arc<PlacedTool>> = old
       .tools
       .iter()
@@ -314,6 +440,21 @@ impl Placed {
     drop(old);
     self.retired.lock().unwrap_or_else(std::sync::PoisonError::into_inner).extend(leaving);
     self.sweep();
+  }
+
+  // What the reading now in place changed told on the event stream, under the lock that keeps readings in order;
+  // the first reading of the run tells nothing.
+  fn tell(&self, catalogue: &Catalogue) {
+    let mut told = self.told.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Some(standing) = told.as_mut() else {
+      *told = Some(first_told(catalogue));
+      return;
+    };
+
+    for (kind, change) in changes(standing, catalogue) {
+      eprintln!("mcp-host: told {} {}", kind.as_str(), change.tool);
+      self.events.publish(kind, change);
+    }
   }
 
   /// Every external server wanting a listing listed, and the catalogue read again where a listing moved.

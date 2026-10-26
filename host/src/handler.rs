@@ -12,9 +12,9 @@ use bmo_tool::manifest::Entry as Declared;
 use bmo_tool::protocol::Asked;
 use bmo_tool::{Answer, Held, Hints, Session, narrowed};
 use rmcp::model::{
-  CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, InitializeResult,
-  ListResourcesResult, ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams,
-  ReadResourceResponse, ReadResourceResult, ServerCapabilities,
+  CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, InitializeRequestParams,
+  InitializeResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
+  ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, ServerCapabilities,
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData, RoleServer, ServerHandler};
@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::placed::{Placed, PlacedTool};
+use crate::records::Reach;
 use crate::residency;
 use crate::running::{ask, claim_answer, claimed, failed};
 
@@ -275,6 +276,33 @@ pub(crate) fn session(context: &RequestContext<RoleServer>) -> Result<Arc<Sessio
     .and_then(|parts| parts.extensions.get::<Arc<Session>>())
     .cloned()
     .ok_or_else(|| ErrorData::internal_error("the request carries no session", None))
+}
+
+// The server of this namespace, or the toolbook, marked reached under the request's record once its `initialize`
+// or `tools/list` is answered (docs/api.md, 「A standing session」).
+pub(crate) fn reached(context: &RequestContext<RoleServer>, namespace: &str) {
+  if let Some(reach) = context
+    .extensions
+    .get::<http::request::Parts>()
+    .and_then(|parts| parts.extensions.get::<Reach>())
+  {
+    reach.mark(namespace);
+  }
+}
+
+// The `initialize` answer of a server as the protocol negotiates it, the server marked reached once it is.
+pub(crate) fn initialized<S: ServerHandler>(
+  server: &S,
+  request: &InitializeRequestParams,
+  context: &RequestContext<RoleServer>,
+  namespace: &str,
+) -> Result<InitializeResult, ErrorData> {
+  context.peer.set_peer_info(request.clone());
+
+  let answer = server.negotiate_initialize(request)?;
+
+  reached(context, namespace);
+  Ok(answer)
 }
 
 // A listing or a read as the session it was answered for may keep it: never fresh past its answer,
@@ -702,14 +730,24 @@ impl ServerHandler for Handler {
     info
   }
 
+  async fn initialize(
+    &self,
+    request: InitializeRequestParams,
+    context: RequestContext<RoleServer>,
+  ) -> Result<InitializeResult, ErrorData> {
+    initialized(self, &request, &context, &self.namespace)
+  }
+
   async fn list_tools(
     &self,
     _: Option<PaginatedRequestParams>,
     context: RequestContext<RoleServer>,
   ) -> Result<ListToolsResult, ErrorData> {
     let session = session(&context)?;
+    let listed = read(private(json!({ "tools": self.tools(&session) })))?;
 
-    read(private(json!({ "tools": self.tools(&session) })))
+    reached(&context, &self.namespace);
+    Ok(listed)
   }
 
   // A call by the tool's own name. A booked tool the session holds is answered too, so a session whose

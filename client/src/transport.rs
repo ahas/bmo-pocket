@@ -33,6 +33,18 @@ pub async fn request(
   token: Option<&str>,
   body: Option<&Value>,
 ) -> io::Result<Reply> {
+  request_with(socket, method, path, token, body, &[]).await
+}
+
+/// The same, with these headers beside the token and the body's type.
+pub async fn request_with(
+  socket: &Path,
+  method: Method,
+  path: &str,
+  token: Option<&str>,
+  body: Option<&Value>,
+  headers: &[(&str, &str)],
+) -> io::Result<Reply> {
   let stream = UnixStream::connect(socket).await?;
   let (mut link, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
     .await
@@ -44,6 +56,10 @@ pub async fn request(
 
   if let Some(token) = token {
     asked = asked.header(http::header::AUTHORIZATION, format!("Bearer {token}"));
+  }
+
+  for (name, value) in headers {
+    asked = asked.header(*name, *value);
   }
 
   let bytes = match body {

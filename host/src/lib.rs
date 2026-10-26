@@ -4,6 +4,7 @@
 pub mod command;
 pub mod console;
 pub mod error;
+pub mod events;
 pub mod external;
 pub mod handler;
 pub mod install;

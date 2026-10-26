@@ -1,8 +1,8 @@
 //! The registry as a person and the host meet it (docs/registry.md): tools put from a folder, a git address and a
 //! bare name, each refusal, a take and an upgrade, the host picking each up with no restart, a call in flight going
-//! on through a take and an upgrade, and a running session's prompt front unmoved while its toolbook changes. Each
-//! change reaches the host through the catalogue's reread hook, and a call is held where it stands by named pipes,
-//! so no test waits on the clock.
+//! on through a take and an upgrade, a running session's prompt front unmoved while its toolbook changes, and each
+//! put, upgrade and take told once on the event stream. Each change reaches the host through the catalogue's
+//! reread hook, and a call is held where it stands by named pipes, so no test waits on the clock.
 
 use std::ffi::CString;
 use std::fs;
@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
+use bmo_pocket_client::{Booked, EventKind, ReachedBy, ToolChange};
 use bmo_tool::Session;
 use http::{Request, StatusCode};
 use http_body_util::{BodyExt, Full};
@@ -426,6 +427,56 @@ async fn an_upgrade_moves_the_pointer_onto_a_new_version_and_a_take_takes_the_to
 
   assert!(host.find(&session, "fixture", "echo_back").is_none());
   assert!(!second.dir.exists());
+}
+
+#[tokio::test]
+async fn a_put_an_upgrade_and_a_take_are_each_told_once_on_the_event_stream() {
+  let scratch = Scratch::new();
+  let registry = scratch.registry();
+  let folder = scratch.echo("echo", "echo_back", "v1");
+
+  put(&registry, &put_of(folder.to_string_lossy())).unwrap();
+
+  // What the host serves as it starts is told as standing, with no event.
+  let host = scratch.host();
+  let events = &host.placed.events;
+
+  assert!(events.after(None).unwrap().is_empty());
+
+  put(&registry, &put_of(scratch.echo("other", "other_back", "o").to_string_lossy())).unwrap();
+  host.placed.reread();
+  host.placed.reread();
+
+  let told = events.after(None).unwrap();
+  let placed = ToolChange {
+    tool: "other".to_owned(),
+    namespaces: vec!["fixture".to_owned()],
+    entries: vec![Booked {
+      tool: "fixture/other_back".to_owned(),
+      reached_by: ReachedBy::Call,
+      summary: "Says the text back.".to_owned(),
+    }],
+    replaced: false,
+  };
+
+  assert_eq!(told.len(), 1, "{told:?}");
+  assert_eq!((told[0].kind, &told[0].data), (EventKind::ToolPlaced, &placed));
+
+  fs::write(folder.join("mark.txt"), "v2").unwrap();
+  put(&registry, &put_of(folder.to_string_lossy())).unwrap();
+  take(&registry, "other", None).unwrap();
+  host.placed.reread();
+
+  let told = events.after(Some(told[0].id)).unwrap();
+  let kinds: Vec<(EventKind, &str, bool)> = told
+    .iter()
+    .map(|event| (event.kind, event.data.tool.as_str(), event.data.replaced))
+    .collect();
+
+  assert_eq!(kinds, [(EventKind::ToolPlaced, "echo", true), (EventKind::ToolRemoved, "other", false)]);
+  assert_eq!(told[0].data.entries[0].tool, "fixture/echo_back");
+  assert_eq!(told[1].data, placed);
+  assert!(told[0].id < told[1].id);
 }
 
 #[tokio::test(flavor = "multi_thread")]

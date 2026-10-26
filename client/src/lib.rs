@@ -14,7 +14,8 @@ pub use client::{Failure, Pocket, default_socket};
 pub use error::{ErrorCode, WireError};
 pub use openapi::{openapi, openapi_json};
 pub use wire::{
-  Claim, ClaimRequest, Health, Listing, NameQuery, Namespace, NamespacePage, ReachedBy, Schedule,
-  SchedulePage, Server, ServerPage, SessionPage, StandingSession, TimeQuery, Tool, ToolCall,
-  ToolCallRequest, ToolHints, ToolPage, ToolResult, ToolSession, Transport,
+  Booked, Claim, ClaimRequest, Connection, Event, EventKind, EventPage, EventQuery, Health, Listing,
+  NameQuery, Namespace, NamespacePage, ReachedBy, Schedule, SchedulePage, Server, ServerPage, SessionPage,
+  StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolChange, ToolHints, ToolPage, ToolResult,
+  ToolSession, Transport,
 };

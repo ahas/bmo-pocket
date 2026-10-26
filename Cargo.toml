@@ -6,7 +6,7 @@ members = ["client", "host", "plugin", "sdk/contract"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0-rev.7"
+version = "0.1.0-rev.8"
 edition = "2024"
 license = "MIT"
 publish = false
@@ -18,6 +18,8 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock", "s
 clap = { version = "4.5.40", features = ["derive", "env", "string"] }
 # A schedule's cron pattern, read and its next time found.
 croner = "4.0.1"
+# The event stream's body, unfolded from the events as they are published.
+futures-util = { version = "0.3.34", default-features = false }
 http = "1.3.1"
 http-body-util = "0.1.3"
 hyper = { version = "1.6.0", features = ["client", "http1"] }

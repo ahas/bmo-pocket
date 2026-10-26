@@ -1,6 +1,6 @@
 //! A stand-in tool placed under a tools root, the host serving it in this process, and its control socket served on a
-//! socket of the test's own, and its console face on a port of the test's own, for the control socket's, the
-//! console face's and the schedules' tests.
+//! socket of the test's own, and its console face or its tools face on a port of the test's own, for the control
+//! socket's, the console face's and the schedules' tests.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -187,6 +187,25 @@ impl Fixture {
       bundle,
     };
     let router = server::console(records, self.host.clone(), schedules, screen);
+
+    tokio::spawn(async move { axum::serve(listener, router).await });
+    (socket, port)
+  }
+}
+
+impl Fixture {
+  /// The control socket, as `serve` serves it, and the tools face over the same records on a loopback port of its
+  /// own; both end with the test's runtime.
+  pub fn serve_with_tools(&self) -> (PathBuf, u16) {
+    let records = Arc::new(Records::load(&self.dir.path().join("sessions")).unwrap());
+    let socket = self.serve_control(records.clone(), Arc::new(Schedules::default()));
+    let bound = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = bound.local_addr().unwrap().port();
+
+    bound.set_nonblocking(true).unwrap();
+
+    let listener = tokio::net::TcpListener::from_std(bound).unwrap();
+    let router = server::tools(records, self.host.clone());
 
     tokio::spawn(async move { axum::serve(listener, router).await });
     (socket, port)

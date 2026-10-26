@@ -25,6 +25,12 @@ export type ToolSession = Schemas["ToolSession"];
 export type SchedulePage = Schemas["SchedulePage"];
 export type Schedule = Schemas["Schedule"];
 export type StandingSession = Schemas["StandingSession"];
+export type Connection = Schemas["Connection"];
+export type Event = Schemas["Event"];
+export type EventKind = Schemas["EventKind"];
+export type EventPage = Schemas["EventPage"];
+export type ToolChange = Schemas["ToolChange"];
+export type Booked = Schemas["Booked"];
 export type SessionPage = Schemas["SessionPage"];
 export type Server = Schemas["Server"];
 export type ServerPage = Schemas["ServerPage"];
@@ -40,6 +46,14 @@ export interface NameQuery {
 /** Where a page of a collection keyed by time begins, a time in epoch milliseconds, and how much of it is answered. */
 export interface TimeQuery {
   after?: number;
+  limit?: number;
+}
+
+/** Where a page of the event stream begins, an event's number, which kinds it holds, a comma-separated list, and
+ * how many events it answers. */
+export interface EventQuery {
+  after?: number;
+  kinds?: string;
   limit?: number;
 }
 
@@ -143,6 +157,20 @@ export function pocketClient(options: PocketOptions) {
      * issuer's token. */
     async toolSessions(query: TimeQuery = {}): Promise<SessionPage> {
       return answered(await client.GET("/tool-sessions", { params: { query } }));
+    },
+
+    /** `GET /tool-sessions/{token}`: the standing session the token names, with the servers its clients reached,
+     * with the issuer's token. */
+    async toolSession(token: string): Promise<StandingSession> {
+      return answered(await client.GET("/tool-sessions/{token}", { params: { path: { token } } }));
+    },
+
+    /** `GET /events` with `Accept: application/json`: a page of the events held after the cursor, in order of
+     * number, with the issuer's token. The stream itself is read as server-sent events on the same route. */
+    async events(query: EventQuery = {}): Promise<EventPage> {
+      return answered(
+        await client.GET("/events", { params: { query }, headers: { Accept: "application/json" } }),
+      ) as EventPage;
     },
 
     /** `GET /servers`: a page of the external servers registered, in order of name, with the issuer's token. */

@@ -29,6 +29,7 @@ bmo-tool = { path = "../sdk/contract" }
 chrono.workspace = true
 clap.workspace = true
 croner.workspace = true
+futures-util.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true

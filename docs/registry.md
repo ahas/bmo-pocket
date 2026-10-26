@@ -104,3 +104,6 @@
 - **The host watches the registry folder** as it watches the tools root, and reads the catalogue again once the
   changes settle: a put, an upgrade or a take is served from the next call, with no restart of the host or of a
   session, and changes no running session's prompt (`docs/toolbook.md`, 「Why」).
+- **The host tells each put, upgrade and take on its event stream** as it reads it (`docs/api.md`, 「Events」):
+  `tool.placed` once the new version is served, naming the tool's namespaces and entries, and `tool.removed` once
+  its pointer is gone.

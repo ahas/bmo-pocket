@@ -57,6 +57,86 @@ pub struct Namespace {
   pub tool_count: u32,
 }
 
+/// Where a page of the event stream begins, which kinds it holds and how many events it answers.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EventQuery {
+  /// The events numbered after this one.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub after: Option<i64>,
+  /// The kinds answered, a comma-separated list; every kind where absent.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub kinds: Option<String>,
+  /// At most this many events; every one held where absent.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  #[schemars(range(min = 1))]
+  pub limit: Option<u32>,
+}
+
+/// What an event tells of the catalogue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum EventKind {
+  /// A tool served that was not, or in another placed version.
+  #[serde(rename = "tool.placed")]
+  ToolPlaced,
+  /// A tool whose pointer or folder is gone.
+  #[serde(rename = "tool.removed")]
+  ToolRemoved,
+}
+
+impl EventKind {
+  /// The kind as it stands on the wire, which is also its server-sent event's name.
+  pub fn as_str(self) -> &'static str {
+    match self {
+      Self::ToolPlaced => "tool.placed",
+      Self::ToolRemoved => "tool.removed",
+    }
+  }
+}
+
+/// One entry of a tool as the toolbook's list answers it: its full name, which calling tool reaches it, and its
+/// description's first sentence.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Booked {
+  /// Its full name, `<namespace>/<name>`.
+  pub tool: String,
+  pub reached_by: ReachedBy,
+  /// Its description's first sentence.
+  pub summary: String,
+}
+
+/// The tool an event is of: its name, the namespaces of its entries, and each entry it serves a session.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ToolChange {
+  /// Its name: its registration's, or its folder's under the tools root.
+  pub tool: String,
+  /// The namespaces its entries are shown under, in order of name.
+  pub namespaces: Vec<String>,
+  /// Each entry it serves a session, in order of full name; none for the system alone.
+  pub entries: Vec<Booked>,
+  /// Whether a placement took the place of another version of the tool the host served.
+  pub replaced: bool,
+}
+
+/// One event of the stream.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Event {
+  /// Its number, which only grows.
+  pub id: i64,
+  pub kind: EventKind,
+  /// When the host read the change, in epoch milliseconds.
+  pub at: u64,
+  pub data: ToolChange,
+}
+
+/// A page of the events held, in order of number.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct EventPage {
+  pub items: Vec<Event>,
+  pub more: bool,
+}
+
 /// A page of namespaces, in order of name.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct NamespacePage {
@@ -276,11 +356,21 @@ pub struct StandingSession {
   pub expires_at: Option<u64>,
   /// When it was issued, in epoch milliseconds.
   pub created_at: u64,
+  /// Each server of the tools face its clients reached, in order of namespace.
+  pub connected: Vec<Connection>,
+}
+
+/// A server of the tools face a session's clients reached: its namespace, `toolbook` for the toolbook, and when the
+/// host first answered its `initialize` or `tools/list` under the session's token, in epoch milliseconds.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Connection {
+  pub namespace: String,
+  pub at: u64,
 }
 
 impl StandingSession {
-  /// What a record that stands is told by.
-  pub fn of(session: &Session) -> Self {
+  /// What a record that stands is told by, with the servers its clients reached.
+  pub fn of(session: &Session, connected: Vec<Connection>) -> Self {
     Self {
       holder_name: session.holder_name.clone(),
       namespaces: session.namespaces.clone(),
@@ -291,6 +381,7 @@ impl StandingSession {
       labels: session.labels.clone(),
       expires_at: session.expires_at,
       created_at: session.created_at,
+      connected,
     }
   }
 }

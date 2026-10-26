@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The host's event stream: each tool a reading of the catalogue placed or removed, as server-sent events after the cursor and then as each is published, a comment line every fifteen seconds; with `Accept: application/json`, a page of the events held. A cursor older than the window held is gone. */
+        get: operations["listEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -199,7 +216,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** One standing tool session, as the page answers it, with each server of the tools face its clients reached. */
+        get: operations["readToolSession"];
         put?: never;
         post?: never;
         /** Revoke a tool session and end what its tools kept. */
@@ -213,6 +231,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description One entry of a tool as the toolbook's list answers it: its full name, which calling tool reaches it, and its
+         *     description's first sentence.
+         */
+        Booked: {
+            reachedBy: components["schemas"]["ReachedBy"];
+            /** @description Its description's first sentence. */
+            summary: string;
+            /** @description Its full name, `<namespace>/<name>`. */
+            tool: string;
+        };
         /**
          * @description The answer to a claim: the entry that claims the address and the arguments it reads it with, where the
          *     session holds the entry and its grant; why not, where it does not.
@@ -231,8 +260,39 @@ export interface components {
             /** @description The address. */
             resource: string;
         };
+        /**
+         * @description A server of the tools face a session's clients reached: its namespace, `toolbook` for the toolbook, and when the
+         *     host first answered its `initialize` or `tools/list` under the session's token, in epoch milliseconds.
+         */
+        Connection: {
+            /** Format: uint64 */
+            at: number;
+            namespace: string;
+        };
         /** @description A stable code a caller decides on, each answered with one status. */
-        ErrorCode: "bad-request" | "unauthorized" | "forbidden" | "not-found" | "no-route" | "arguments-misfit" | "failed" | "tool-failed";
+        ErrorCode: "bad-request" | "unauthorized" | "forbidden" | "not-found" | "no-route" | "gone" | "arguments-misfit" | "failed" | "tool-failed";
+        /** @description One event of the stream. */
+        Event: {
+            /**
+             * Format: uint64
+             * @description When the host read the change, in epoch milliseconds.
+             */
+            at: number;
+            data: components["schemas"]["ToolChange"];
+            /**
+             * Format: int64
+             * @description Its number, which only grows.
+             */
+            id: number;
+            kind: components["schemas"]["EventKind"];
+        };
+        /** @description What an event tells of the catalogue. */
+        EventKind: "tool.placed" | "tool.removed";
+        /** @description A page of the events held, in order of number. */
+        EventPage: {
+            items: components["schemas"]["Event"][];
+            more: boolean;
+        };
         /** @description One grant a session holds: a resource it may act on, an opaque name its issuer and its tools agree on. */
         Granted: {
             resource: string;
@@ -376,6 +436,8 @@ export interface components {
          */
         StandingSession: {
             capabilities: string[];
+            /** @description Each server of the tools face its clients reached, in order of namespace. */
+            connected: components["schemas"]["Connection"][];
             /**
              * Format: uint64
              * @description When it was issued, in epoch milliseconds.
@@ -440,6 +502,17 @@ export interface components {
             };
             name: string;
             namespace: string;
+        };
+        /** @description The tool an event is of: its name, the namespaces of its entries, and each entry it serves a session. */
+        ToolChange: {
+            /** @description Each entry it serves a session, in order of full name; none for the system alone. */
+            entries: components["schemas"]["Booked"][];
+            /** @description The namespaces its entries are shown under, in order of name. */
+            namespaces: string[];
+            /** @description Whether a placement took the place of another version of the tool the host served. */
+            replaced: boolean;
+            /** @description Its name: its registration's, or its folder's under the tools root. */
+            tool: string;
         };
         /** @description What a tool says of how it behaves. */
         ToolHints: {
@@ -612,6 +685,87 @@ export interface operations {
                     "application/json": components["schemas"]["WireError"] & {
                         /** @enum {unknown} */
                         code?: "unauthorized";
+                    };
+                };
+            };
+        };
+    };
+    listEvents: {
+        parameters: {
+            query?: {
+                /** @description An event's number: the events numbered after it. */
+                after?: number;
+                /** @description The kinds answered, a comma-separated list; every kind where absent. */
+                kinds?: string;
+                /** @description At most this many events, in a page; every one held where absent. */
+                limit?: number;
+            };
+            header?: {
+                /** @description The last event's number a stream answered, read where `after` is absent. */
+                "Last-Event-ID"?: string;
+                /** @description `application/json` for a page of the events held in place of the stream. */
+                Accept?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stream, or a page of the events held where `Accept: application/json` asks for one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPage"];
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Refused or failed: bad-request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "bad-request";
+                    };
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
+                    };
+                };
+            };
+            /** @description Refused or failed: gone. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "gone";
                     };
                 };
             };
@@ -1192,6 +1346,65 @@ export interface operations {
                     "application/json": components["schemas"]["WireError"] & {
                         /** @enum {unknown} */
                         code?: "failed";
+                    };
+                };
+            };
+        };
+    };
+    readToolSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The token the session was issued with. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The route's answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandingSession"];
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
+                    };
+                };
+            };
+            /** @description Refused or failed: not-found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "not-found";
                     };
                 };
             };

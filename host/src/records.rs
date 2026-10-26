@@ -1,8 +1,9 @@
 //! The session records the host serves by (docs/mcp-host.md, 「The session record」): one file per
 //! record, readable by the host's user alone and named by the SHA-256 of its token, read back at start so
-//! a restart costs no session its tools. The token itself is never written down.
+//! a restart costs no session its tools. The token itself is never written down. Beside each record, in memory
+//! alone, stands which servers of the tools face its clients reached (docs/api.md, 「A standing session」).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
@@ -10,12 +11,15 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use bmo_pocket_client::Connection;
 use bmo_tool::Session;
 use sha2::{Digest, Sha256};
 
 pub struct Records {
   dir: PathBuf,
   held: RwLock<HashMap<String, Arc<Session>>>,
+  /// By record, each server of the tools face its clients reached and when it was first answered.
+  connected: RwLock<HashMap<String, BTreeMap<String, u64>>>,
 }
 
 /// What a record is known by outside the host — its file name — where its token must never be: the
@@ -25,6 +29,21 @@ pub struct RecordId(pub String);
 
 fn digest(token: &str) -> String {
   Sha256::digest(token.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// What a request on the tools face marks a server reached by: the records, and the record the request was
+/// authorised as.
+#[derive(Clone)]
+pub struct Reach {
+  pub records: Arc<Records>,
+  pub id: RecordId,
+}
+
+impl Reach {
+  /// The server of this namespace, or the toolbook, reached under the record.
+  pub fn mark(&self, namespace: &str) {
+    self.records.connect(&self.id, namespace);
+  }
 }
 
 /// The present moment, in epoch milliseconds, which a record's `expiresAt` is held to.
@@ -72,6 +91,7 @@ impl Records {
     let records = Self {
       dir: dir.to_owned(),
       held: RwLock::new(HashMap::new()),
+      connected: RwLock::new(HashMap::new()),
     };
     let now = now_ms();
 
@@ -135,6 +155,8 @@ impl Records {
     let hash = digest(token);
     let gone = self.held.write().expect("the records' lock is never poisoned").remove(&hash);
 
+    self.forget(&hash);
+
     match fs::remove_file(self.file(&hash)) {
       Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
       _ => Ok((RecordId(hash), gone)),
@@ -158,18 +180,57 @@ impl Records {
     Some((RecordId(hash), found))
   }
 
-  /// Every record that stands, none lapsed among them, in no order.
-  pub fn standing(&self) -> Vec<Arc<Session>> {
+  /// Every record that stands, none lapsed among them, in no order, each with the id it is known by.
+  pub fn standing(&self) -> Vec<(RecordId, Arc<Session>)> {
     let now = now_ms();
 
     self
       .held
       .read()
       .expect("the records' lock is never poisoned")
-      .values()
-      .filter(|session| !lapsed(session, now))
-      .cloned()
+      .iter()
+      .filter(|(_, session)| !lapsed(session, now))
+      .map(|(hash, session)| (RecordId(hash.clone()), session.clone()))
       .collect()
+  }
+
+  /// A server of the tools face the record's clients reached, kept with the moment it was first answered; a
+  /// record no longer held keeps nothing.
+  pub fn connect(&self, id: &RecordId, namespace: &str) {
+    if !self.held.read().expect("the records' lock is never poisoned").contains_key(&id.0) {
+      return;
+    }
+
+    let mut connected = self.connected.write().expect("the records' lock is never poisoned");
+
+    connected
+      .entry(id.0.clone())
+      .or_default()
+      .entry(namespace.to_owned())
+      .or_insert_with(now_ms);
+  }
+
+  /// Each server of the tools face the record's clients reached, in order of namespace.
+  pub fn connected(&self, id: &RecordId) -> Vec<Connection> {
+    self
+      .connected
+      .read()
+      .expect("the records' lock is never poisoned")
+      .get(&id.0)
+      .map(|servers| {
+        servers
+          .iter()
+          .map(|(namespace, at)| Connection {
+            namespace: namespace.clone(),
+            at: *at,
+          })
+          .collect()
+      })
+      .unwrap_or_default()
+  }
+
+  fn forget(&self, hash: &str) {
+    self.connected.write().expect("the records' lock is never poisoned").remove(hash);
   }
 
   /// Every lapsed record dropped, so a collector that died leaves nothing standing, with the ids they were
@@ -189,6 +250,8 @@ impl Records {
     for hash in lapsed_ones {
       let session = self.held.write().expect("the records' lock is never poisoned").remove(&hash);
       let _ = fs::remove_file(self.file(&hash));
+
+      self.forget(&hash);
 
       if let Some(session) = session {
         gone.push((RecordId(hash), session));
