@@ -1,6 +1,7 @@
 //! The tool host: one process serving every session's MCP tools, each session known by its bearer
 //! token (docs/mcp-host.md).
 
+pub mod async_calls;
 pub mod command;
 pub mod console;
 pub mod error;

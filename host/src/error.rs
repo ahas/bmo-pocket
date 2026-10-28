@@ -29,6 +29,9 @@ pub enum HostError {
   /// No tool of that full name the token sees.
   #[error("Tool {0} not found")]
   UnknownEntry(String),
+  /// No asynchronous call of that id was asked under the token's session.
+  #[error("call {0} not found")]
+  UnknownCall(String),
   /// The token names no tool session.
   #[error("no tool session stands under that token")]
   UnknownSession,
@@ -85,6 +88,7 @@ impl HostError {
       }
       Self::UnknownNamespace(_)
       | Self::UnknownEntry(_)
+      | Self::UnknownCall(_)
       | Self::UnknownSession
       | Self::NoBundle
       | Self::NoBundleFile(_) => ErrorCode::NotFound,

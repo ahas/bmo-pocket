@@ -205,7 +205,7 @@ impl Fixture {
     bound.set_nonblocking(true).unwrap();
 
     let listener = tokio::net::TcpListener::from_std(bound).unwrap();
-    let router = server::tools(records, self.host.clone());
+    let router = server::tools(records, self.host.clone(), self.dir.path().join("calls"));
 
     tokio::spawn(async move { axum::serve(listener, router).await });
     (socket, port)

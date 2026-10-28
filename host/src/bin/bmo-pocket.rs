@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use bmo_pocket_client::{Pocket, default_socket};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory as _, Parser, Subcommand};
 use mcp_host::command;
 use mcp_host::install::{self, Put};
 use mcp_host::registry::Registry;
@@ -153,6 +153,18 @@ fn finish(done: Result<(), String>, said: &[String]) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+  // The `tool` noun alone writes its usage, which names the four, on standard error and ends 2, as `tool --help`
+  // writes it on standard output. Without this, clap answers a required subcommand's absence in its own words.
+  let words: Vec<std::ffi::OsString> = std::env::args_os().collect();
+
+  if words.len() == 2 && words[1] == "tool" {
+    if let Err(why) = Cli::command().try_get_matches_from(["bmo-pocket", "tool", "--help"]) {
+      eprint!("{why}");
+    }
+
+    return ExitCode::from(2);
+  }
+
   let cli = Cli::parse();
   let data_root = cli.data_root.clone().unwrap_or_else(default_data_root);
 

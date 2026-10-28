@@ -91,7 +91,8 @@ tables, its files or its process. The host calls no other unit; a console reache
 - **On the loopback address only,** at the port `--port` or `BMO_MCP_HOST_PORT` names, 3290 where neither does.
 - **`/mcp/<namespace>`** for every namespace a placed manifest declares, and **`/mcp/toolbook`** for the toolbook;
   each is a streamable HTTP MCP server with no protocol session kept: every request stands alone, each answer one
-  JSON body. The OpenAPI document does not state this face: it is MCP's own protocol.
+  JSON body. **`/use`** is the face's own plain JSON routes for a session's asynchronous calls (「Asynchronous
+  calls」). The OpenAPI document does not state this face: it is MCP's own protocol.
 - **Every request carries `Authorization: Bearer <token>`,** a tool session's token. A request without one, or with
   one naming no session, is answered 401 `unauthorized`; a namespace no placed manifest declares, or one the
   session's `namespaces` does not name, 404 `not-found`. Each in the common error shape.
@@ -113,6 +114,32 @@ tables, its files or its process. The host calls no other unit; a console reache
 - **Every result says it is complete,** and a listing or a resource read says it may be kept by the asking session
   alone and never past its answer, for a client on a protocol revision that asks; an earlier revision is answered
   without them.
+
+## Asynchronous calls
+
+- **`POST /use` asks the host to run one call beyond the request,** on the tools face under the caller's tool
+  session token, so a caller's shell writes nothing: the record, the timer and the wake stand with the host. The
+  body is camelCase: `tool`, a full name `namespace/name`; `arguments`, the tool's own arguments as one object; and,
+  each optional, `memory`, `room`, `agent`, `via` and `maxSeconds`, a positive number of seconds, 86400 where it is
+  absent.
+- **The answer is `{id, state, record}`:** the call's id, `running`, and the folder the host keeps it in under its
+  data root. An unknown tool, or one the session does not hold, is refused before anything is kept, in the common
+  error shape.
+- **The call runs under the caller's own session record,** with its namespaces, capabilities, grants and variables,
+  so it reaches exactly what a synchronous call of that session reaches. The host keeps `request.json` before it
+  starts and `answer.json` once the tool answered or refused.
+- **Its longest run** is `maxSeconds`; a call still running then is ended as `failed`, its answer naming the limit.
+- **The wake:** once the answer is kept, the host queues a fact with the receiver's `POST /instructions`, at
+  `RECEIVER_ADDRESS` with `RECEIVER_TOKEN` as the bearer, each from the environment or the data root's
+  `env/receiver.env`. The fact names the call by `use` and `tool` with its `state`, `summary` and the caller's
+  `memory`; the answer itself is read through `GET /use/{id}`. A wake that could not be queued is kept in the end's
+  `wake` with the reason.
+- **`GET /use`** answers `{items}`: every call the token's session asked, oldest first, each as `GET /use/{id}`
+  answers it. **`GET /use/{id}`** answers one call: the request's fields, `state` (`running`, `done`, `refused` or
+  `failed`), and, once it ended, `endedAt`, `summary` and `wake`; a call that stood running when the host stopped
+  reads `lost`. A call another session asked is answered 404 `not-found`, as one that never stood is.
+- **The records stand under the host's data root,** `use/<id>/`, readable by the host's user alone: `request.json`,
+  `answer.json` and `end.json`, the end last with `endedAt`, `state`, `summary` and `wake`.
 
 ## The console face
 

@@ -567,7 +567,7 @@ async fn a_running_sessions_initialize_and_tools_list_stay_byte_for_byte_while_i
   let token = records.issue(scratch.session(&["fixture/echo_back"])).unwrap();
   let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
   let port = listener.local_addr().unwrap().port();
-  let app = server::tools(records, host.clone());
+  let app = server::tools(records, host.clone(), std::env::temp_dir().join("mcp-host-calls"));
 
   tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 

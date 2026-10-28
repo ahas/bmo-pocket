@@ -32,6 +32,7 @@ croner.workspace = true
 futures-util.workspace = true
 http.workspace = true
 http-body-util.workspace = true
+dotenvy.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 jsonschema.workspace = true

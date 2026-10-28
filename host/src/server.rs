@@ -4,6 +4,7 @@
 //! docs/api.md, 「The control socket」 and 「The console face」).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -25,6 +26,7 @@ use rmcp::transport::streamable_http_server::session::never::NeverSessionManager
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use serde_json::Value;
 
+use crate::async_calls::{self, Asked, AsyncCalls};
 use crate::console::{Bundle, ConsoleManifest, SCREEN_ROLE};
 use crate::error::HostError;
 use crate::events::Events;
@@ -79,7 +81,7 @@ fn stateless() -> StreamableHttpServerConfig {
 // One request on a namespace's path, served where a placed manifest declares that namespace as the catalogue stands
 // at the request and the session's record names it, and answered 404 otherwise.
 async fn namespace(
-  State(host): State<Arc<Host>>,
+  State(tools): State<Tools>,
   Path(namespace): Path<String>,
   request: Request,
 ) -> Response {
@@ -88,10 +90,11 @@ async fn namespace(
     .get::<Arc<Session>>()
     .is_some_and(|session| session.uses(&namespace));
 
-  if !named || !host.namespaces().contains(&namespace) {
+  if !named || !tools.host.namespaces().contains(&namespace) {
     return HostError::UnknownNamespace(namespace).into_response();
   }
 
+  let host = tools.host.clone();
   let service = StreamableHttpService::new(
     move || {
       Ok(Handler {
@@ -106,9 +109,16 @@ async fn namespace(
   service.handle(request).await.map(Body::new)
 }
 
-/// The namespaces, each at `/mcp/<namespace>`, and the toolbook at `/mcp/toolbook`, served as streamable
-/// HTTP with no session kept: every request stands alone and is known by its token.
-pub fn tools(records: Arc<Records>, host: Arc<Host>) -> Router {
+/// What the tools face stands on: the host it asks, and the calls it keeps for its sessions.
+#[derive(Clone)]
+pub struct Tools {
+  host: Arc<Host>,
+  calls: Arc<AsyncCalls>,
+}
+
+/// The namespaces, each at `/mcp/<namespace>`, the toolbook at `/mcp/toolbook`, and the asynchronous calls at
+/// `/use`, served as streamable HTTP with no session kept: every request stands alone and is known by its token.
+pub fn tools(records: Arc<Records>, host: Arc<Host>, data_root: PathBuf) -> Router {
   let book = host.clone();
   let toolbook = StreamableHttpService::new(
     move || Ok(Toolbook { host: book.clone() }),
@@ -119,9 +129,52 @@ pub fn tools(records: Arc<Records>, host: Arc<Host>) -> Router {
   Router::new()
     .route_service(&format!("/mcp/{TOOLBOOK}"), toolbook)
     .route("/mcp/{namespace}", any(namespace))
-    .with_state(host)
+    .route("/use", post(start_call).get(list_calls))
+    .route("/use/{id}", get(one_call))
+    .with_state(Tools {
+      host,
+      calls: Arc::new(async_calls::AsyncCalls::new(data_root)),
+    })
     .fallback(unknown_namespace)
     .layer(middleware::from_fn_with_state(records, authorise))
+}
+
+// A session's call asked to be run by the host: its id and state answered once it is under way.
+async fn start_call(
+  State(tools): State<Tools>,
+  Extension(reach): Extension<Reach>,
+  Extension(session): Extension<Arc<Session>>,
+  body: Bytes,
+) -> Result<Json<Value>, HostError> {
+  let asked: Asked =
+    serde_json::from_slice(&body).map_err(|why| HostError::MalformedRequest(why.to_string()))?;
+
+  Ok(Json(tools.calls.start(tools.host.clone(), session, reach.id.0.clone(), asked).await?))
+}
+
+// Every call the token's session keeps, oldest first.
+async fn list_calls(State(tools): State<Tools>, Extension(reach): Extension<Reach>) -> Json<Value> {
+  let calls: Vec<Value> =
+    tools.calls.list().into_iter().filter(|call| held_by(call, &reach.id.0)).collect();
+
+  Json(async_calls::page(calls))
+}
+
+// One call the token's session keeps, as it stands.
+async fn one_call(
+  State(tools): State<Tools>,
+  Extension(reach): Extension<Reach>,
+  Path(id): Path<String>,
+) -> Result<Json<Value>, HostError> {
+  match tools.calls.one(&id).filter(|call| held_by(call, &reach.id.0)) {
+    Some(call) => Ok(Json(call)),
+    None => Err(HostError::UnknownCall(id)),
+  }
+}
+
+// Whether a call was asked under the session the request's token names: the same session alone reads it back.
+fn held_by(call: &Value, session: &str) -> bool {
+  call["session"].as_str() == Some(session)
 }
 
 // What the control socket's routes and the console face's reads stand on: the records, the host it asks for the

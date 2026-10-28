@@ -158,7 +158,7 @@ fn text(answer: &Value) -> String {
 async fn serve(records: Arc<Records>, host: Arc<Host>) -> u16 {
   let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
   let port = listener.local_addr().unwrap().port();
-  let app = server::tools(records, host);
+  let app = server::tools(records, host, std::env::temp_dir().join("mcp-host-calls"));
 
   tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
   port

@@ -365,8 +365,8 @@ async fn serve(
     streaming.placed.events.stop();
   });
 
-  let sessions =
-    axum::serve(tcp, server::tools(records.clone(), host.clone())).with_graceful_shutdown(stopped());
+  let sessions = axum::serve(tcp, server::tools(records.clone(), host.clone(), data_root.to_path_buf()))
+    .with_graceful_shutdown(stopped());
   let screens = async {
     match console {
       Some((listener, screen)) => {
