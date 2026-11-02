@@ -12,7 +12,7 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
-axum = "0.8.4"
+axum = { version = "0.8.9", features = ["macros", "multipart", "ws"] }
 # A schedule's time, in the host machine's local zone.
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.5.40", features = ["derive", "env", "string"] }
@@ -22,8 +22,8 @@ croner = "4.0.1"
 futures-util = { version = "0.3.34", default-features = false }
 http = "1.3.1"
 http-body-util = "0.1.3"
-hyper = { version = "1.6.0", features = ["client", "http1"] }
-hyper-util = { version = "0.1.16", features = ["tokio"] }
+hyper = { version = "1.12.0", features = ["client", "http1", "http2", "server"] }
+hyper-util = { version = "0.1.21", features = ["client", "client-legacy", "client-proxy", "client-proxy-system", "http1", "http2", "server", "service", "tokio"] }
 dotenvy = "0.15.7"
 jsonschema = { version = "0.58.6", default-features = false }
 libc = "0.2.177"
@@ -37,7 +37,7 @@ strum = { version = "0.28.0", features = ["derive"] }
 sha2 = "0.10.9"
 tempfile = "3.20.0"
 thiserror = "2.0.18"
-tokio = { version = "1.47.0", features = ["macros", "rt", "rt-multi-thread", "net", "time", "signal", "io-util", "process"] }
+tokio = { version = "1.53.3", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt", "rt-multi-thread", "signal", "sync", "test-util", "time"] }
 toml = { version = "0.8.23", default-features = false, features = ["parse"] }
 url = "2.5.8"
 

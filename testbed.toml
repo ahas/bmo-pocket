@@ -24,8 +24,12 @@ setup = [
 ]
 
 [check]
-quick = ["layout", "dependencies", "cargo-profile"]
+quick = ["layout", "dependencies", "cargo-profile", "shared-versions"]
 base_libraries = ["bmo-chat", "bmo-chat-client", "bmo-ui"]
+
+# The repository whose root holds the shared versions the manifests and the lock hold to.
+[check.shared_versions]
+repository = "bmo-chat"
 
 [[check.step]]
 id = "check"
