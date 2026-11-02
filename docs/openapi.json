@@ -140,7 +140,7 @@
           },
           {
             "const": "tool-failed",
-            "description": "The tool exited uncleanly, answered what is not a tool result, or ran past its timeout.",
+            "description": "The tool exited uncleanly, or answered what is not a tool result.",
             "type": "string"
           }
         ]
@@ -451,12 +451,6 @@
             "$ref": "#/components/schemas/ReachedBy",
             "description": "What reaches a tool whose annotations carry no read-only hint."
           },
-          "timeout": {
-            "description": "In seconds: the bound on connecting and listing, and each call's timeout.",
-            "format": "uint64",
-            "minimum": 0,
-            "type": "integer"
-          },
           "transport": {
             "$ref": "#/components/schemas/Transport"
           }
@@ -468,7 +462,6 @@
           "address",
           "capabilities",
           "reachedBy",
-          "timeout",
           "listed",
           "error"
         ],

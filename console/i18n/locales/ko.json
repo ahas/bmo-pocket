@@ -43,7 +43,6 @@
       "output": "출력 스키마",
       "reached_by": "부르는 도구",
       "shown": "이름으로 보임",
-      "timeout": "제한 시간",
       "variables": "변수"
     },
     "status": {
@@ -66,7 +65,6 @@
       "not_listed": "목록 없음",
       "read_only": "읽기 전용",
       "running": "실행 중",
-      "seconds": "{count}초",
       "system": "시스템 전용",
       "unknown": "알 수 없음",
       "yes": "예"

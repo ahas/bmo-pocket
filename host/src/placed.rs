@@ -575,7 +575,15 @@ impl Placed {
     let dir = self.dir.clone();
 
     tokio::spawn(async move {
-      placed.refresh().await;
+      // The external servers are listed beside the watch, never in its way: a server that has not yet answered
+      // holds back no reading of the tools placed meanwhile.
+      let listing = |placed: &Arc<Self>| {
+        let placed = placed.clone();
+
+        tokio::spawn(async move { placed.refresh().await });
+      };
+
+      listing(&placed);
 
       loop {
         let woken = if placed.externals.wanting() {
@@ -619,7 +627,7 @@ impl Placed {
         }
 
         placed.reread();
-        placed.refresh().await;
+        listing(&placed);
       }
     });
 

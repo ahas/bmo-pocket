@@ -8,7 +8,6 @@ name = "echo"
 protocol = 1
 language = "python"
 run = ["python3", "echo.py"]
-timeout = 30
 
 [[entry]]
 namespace = "garden"
@@ -49,32 +48,36 @@ fn a_manifest_breaking_a_rule_is_refused_with_why() {
 
   assert_eq!(refused(MANIFEST_TEXT, "other"), "its name `echo` is not its folder's, `other`");
   assert!(refused(&MANIFEST_TEXT.replace("protocol = 1", "protocol = 2"), "echo").contains("protocol 2"));
-  assert!(refused(&MANIFEST_TEXT.replace("timeout = 30\n", ""), "echo").contains("timeout"));
   assert!(refused(&MANIFEST_TEXT.replace("language", "speech"), "echo").contains("speech"));
   assert!(
     refused(&MANIFEST_TEXT.replace(r#"capabilities = ["graph.read"]"#, ""), "echo")
       .contains("asks for no capability")
   );
   assert!(refused(&MANIFEST_TEXT.replace("echo.json", "../echo.json"), "echo").contains("beside"));
-  assert!(
-    refused(&MANIFEST_TEXT.replace("hints =", "unbounded = true\ntimeout = 5\nhints ="), "echo")
-      .contains("unbounded and has a timeout")
-  );
   assert!(refused(&MANIFEST_TEXT.replace(r#""garden""#, r#""toolbook""#), "echo").contains("namespace"));
   assert_eq!(
     refused(&format!("{MANIFEST_TEXT}\n[helper]\ndescription = \"x\"\n"), "echo"),
     "a shared helper's manifest has entries"
   );
   assert_eq!(
-    refused(&MANIFEST_TEXT.replace("timeout = 30\n", "timeout = 30\nafter_deploy = []\n"), "echo"),
+    refused(&MANIFEST_TEXT.replace("run = [", "after_deploy = []\nrun = ["), "echo"),
     "its after-deploy command names nothing to run"
   );
 }
 
 #[test]
+fn a_timeout_a_manifest_still_carries_reads_and_bounds_nothing() {
+  let carried = MANIFEST_TEXT
+    .replace("run = [", "timeout = 30\nrun = [")
+    .replace("hints =", "unbounded = true\ntimeout = 5\nhints =");
+
+  assert!(Manifest::parse(&carried, "echo").is_ok());
+  assert!(Manifest::parse(&MANIFEST_TEXT.replace("run = [", "timeout = 0\nrun = ["), "echo").is_ok());
+}
+
+#[test]
 fn a_tool_may_name_what_is_run_once_it_is_placed() {
-  let declared =
-    MANIFEST_TEXT.replace("timeout = 30\n", "timeout = 30\nafter_deploy = [\"bun\", \"sync.ts\"]\n");
+  let declared = MANIFEST_TEXT.replace("run = [", "after_deploy = [\"bun\", \"sync.ts\"]\nrun = [");
 
   assert_eq!(
     Manifest::parse(&declared, "echo").unwrap().tool.after_deploy.unwrap(),
@@ -85,7 +88,7 @@ fn a_tool_may_name_what_is_run_once_it_is_placed() {
 
 #[test]
 fn a_helper_has_no_entries_and_a_system_entry_needs_no_capability() {
-  let helper = "[tool]\nname = \"web\"\nprotocol = 1\nrun = [\"web-helper\"]\ntimeout = 5\n\n[helper]\ndescription = \"A record's web session.\"\n";
+  let helper = "[tool]\nname = \"web\"\nprotocol = 1\nrun = [\"web-helper\"]\n\n[helper]\ndescription = \"A record's web session.\"\n";
 
   assert!(Manifest::parse(helper, "web").unwrap().helper.is_some());
 
@@ -96,7 +99,7 @@ fn a_helper_has_no_entries_and_a_system_entry_needs_no_capability() {
 
 #[test]
 fn a_tool_serving_resources_alone_needs_no_entry_and_one_serving_nothing_is_refused() {
-  let bare = "[tool]\nname = \"papers\"\nprotocol = 1\nrun = [\"papers\"]\ntimeout = 5\n";
+  let bare = "[tool]\nname = \"papers\"\nprotocol = 1\nrun = [\"papers\"]\n";
   let served = format!("{bare}\n[resources]\nnamespace = \"papers\"\ncapabilities = [\"papers.read\"]\n");
 
   assert_eq!(Manifest::parse(&served, "papers").unwrap().resources.unwrap().namespace, "papers");

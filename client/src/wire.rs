@@ -434,8 +434,6 @@ pub struct Server {
   pub capabilities: Vec<String>,
   /// What reaches a tool whose annotations carry no read-only hint.
   pub reached_by: ReachedBy,
-  /// In seconds: the bound on connecting and listing, and each call's timeout.
-  pub timeout: u64,
   /// How many tools its server last listed; null before it first answered.
   pub listed: Option<u32>,
   /// Why its last connection or listing failed, where it did.

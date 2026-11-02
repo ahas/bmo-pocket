@@ -120,8 +120,8 @@ flowchart TD
 - **A configuration names each server by its URL and an `Authorization` header of `Bearer ${BMO_MCP_TOKEN}`,**
   which a harness expands from its own environment, so no token is written into a configuration file. A client that
   takes the bearer token from a named variable is handed `BMO_MCP_TOKEN` as that variable.
-- **A call takes as long as its tool does.** A client is told to wait on a call as long as it can be told to,
-  since an unbounded entry waits for what it set off; how each harness is told so is its issuer's.
+- **A call takes as long as its tool does.** The host keeps no clock on a call, so a client is told to wait on a
+  call as long as it can be told to; how each harness is told so is its issuer's.
 - **The protocol revision a client negotiates may refuse a result that does not say enough:**
   - every result the host builds says it is complete (`resultType`);
   - a listing or a resource read also says how long it may be kept and by whom: never past its answer, and by the
@@ -165,7 +165,7 @@ flowchart TD
 - **A manifest that does not read leaves its tool out,** said in the host's log with why, and every other tool goes
   on being served. It does not read where:
   - it is not a manifest, or names a field the manifest does not have;
-  - it speaks a protocol version the host does not, or names no timeout;
+  - it speaks a protocol version the host does not;
   - its name is not its folder's, or it has neither an entry nor resources, or a helper's has entries;
   - an entry has no description, or asks for no capability without being for the system alone;
   - an entry's schema file is missing, or is not a JSON Schema;
@@ -196,15 +196,16 @@ flowchart TD
   error goes to the host's log.
   - An exit that is not clean, or an answer that does not read as a tool result, is a failed call, named with its
     exit and the last lines it wrote on standard error.
-  - A call past its timeout — the entry's, or the tool's — has its process group ended, and is said to have failed.
-    An unbounded entry's call has none: it ends when it answers or its caller goes away.
+  - A call waits for its process to answer and end, however long that takes: the host keeps no clock on it, and a
+    `timeout` or `unbounded` a manifest still carries is read and given no effect.
   - A call whose caller goes away before it answers — a control request or a session's request closed, the process
     that asked it stopped — has its process group ended as well, so a caller's cap or stop reaches every process
     the call started.
 - **A server:** a process speaking MCP over standard input and output, started at a record's first call of the tool
   and handed, in its `BMO_TOOL_START` variable, the same object less the call — the protocol version, the record,
   its call-back socket and its helpers' sockets. Each call is a `tools/call` of the entry's name; the server ends
-  with the record. A call past its timeout fails and ends the server, and the record's next call starts it again.
+  with the record. Its start and each call wait for the server's answer; a call that fails ends the server, and the
+  record's next call starts it again.
 - **A clean environment,** each layer laid over the one before it: the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`
   and each variable `--pass-env` names from the host's own environment; the record's `variables`; the object its
   `variablesFile` holds, where the file stands and reads as an object of strings, a file that does not being said
@@ -234,11 +235,11 @@ flowchart TD
   table in place of entries. A tool names the helpers its calls use, by name.
 - **Started at the record's first call of a tool naming it:** its run command in its placed folder, in the clean
   environment of a call, handed on standard input the protocol version, the kind `helper`, the record and the
-  socket it is to listen on. The host waits, within the helper's timeout, for its first line on standard output,
+  socket it is to listen on. The host waits for its first line on standard output, or for it to end without one,
   which says it listens there, and hands that socket to every call of the record naming the helper; what it writes
   after goes to the host's log.
-- **Ended with the record:** asked to end by `SIGTERM`, given ten seconds to close what it holds, then its process
-  group ended and its socket taken away. It ends so at the record's revocation, its lapse, or the host stopping,
+- **Ended with the record:** asked to end by `SIGTERM` and waited on until it has closed what it holds and ended,
+  then whatever it left standing in its process group ended and its socket taken away. It ends so at the record's revocation, its lapse, or the host stopping,
   and a helper ends with the host by the parent-death signal where the host itself is gone.
 - **A helper placed anew serves the records started after it;** a record's helper already running goes on as it
   is.
@@ -248,8 +249,8 @@ flowchart TD
 - **An external server is an MCP server registered by configuration** (`docs/api.md`, 「The registration of an
   external server」): a command the host starts and speaks to on standard input and output, or a streamable HTTP
   address with its headers and token file; the namespace its tools are listed under, the capabilities a record
-  must hold to be shown them, which of `call` and `act` reaches a tool its annotations do not mark, the timeout,
-  and a manual for any of its tools. Nothing is built for it: `bmo-pocket put --mcp` places the registration and
+  must hold to be shown them, which of `call` and `act` reaches a tool its annotations do not mark, and a
+  manual for any of its tools. Nothing is built for it: `bmo-pocket put --mcp` places the registration and
   the manuals it names (`docs/registry.md`).
 - **Its tools are entries like any placed tool's.** The host reads each listed tool as an entry under the
   registration's namespace and capabilities (`docs/api.md`, 「How a listed tool reads as an entry」), so the
@@ -267,10 +268,12 @@ flowchart TD
 - **Its tools join the catalogue once listed.** A listing that differs from the last one has the catalogue read
   again; a server that says its tool list changed is listed again. A registration with no listing yet stands out
   of the catalogue, said in the log with why, and is tried again at each reading and every 30 seconds while it
-  stays unlisted.
+  stays unlisted. A listing runs beside the reading of the placed tools and never holds it back, and a server whose
+  listing is still under way is not asked again until it answers.
 - **A call is a `tools/call` of the tool's own name,** as the server listed it, on the registration's connection,
-  within the registration's timeout; its result is answered unchanged. A call that fails on the connection — the
-  server gone, unreachable, or past the timeout — ends the connection, and the next call or reading connects and
+  waiting for the server's answer however long it takes; its result is answered unchanged. Connecting and listing
+  wait for the server the same way. A call that fails on the connection — the server gone or unreachable — ends
+  the connection, and the next call or reading connects and
   lists again, so a server that died is started again on demand. An error the server answers in the protocol
   fails that call alone and leaves the connection standing.
 - **A registration taken or replaced** leaves the catalogue at the next reading, and its connection ends once no
@@ -430,7 +433,7 @@ flowchart TD
   runs; a claim whose claimant's grant the record lacks is not granted and says why.
 - **Placed tools:** a tool placed while the host runs is listed by the toolbook, described, and called through
   `call` and `act` under the schema, capability and grant checks; its call-back socket reaches another entry only
-  as the session could; a call past its timeout fails; taken away, it is gone from the list and refused as unknown,
+  as the session could; a call waits for its answer; taken away, it is gone from the list and refused as unknown,
   the host's process the same one throughout. A shared helper, registered, serves one record's calls and no
   other's and ends with the record; a server tool is spoken to over MCP and keeps one process across a record's
   calls. A manifest that does not read is said in the log and leaves the rest served.

@@ -48,8 +48,9 @@ pub struct ToolPart {
   pub run: Vec<String>,
   #[serde(default)]
   pub mode: Mode,
-  /// A call's timeout in seconds, or a helper's bound on coming up.
-  pub timeout: u64,
+  /// Read and given no effect: no call, helper or server has a span it must answer within.
+  #[serde(default)]
+  pub timeout: Option<u64>,
   /// The shared helpers a call of it is handed.
   #[serde(default)]
   pub shared: Vec<String>,
@@ -166,10 +167,10 @@ pub struct Entry {
   /// The resource a session's grants must hold for a call of it to run.
   #[serde(default)]
   pub grant: Option<String>,
+  /// Read and given no effect, as the tool's own `timeout` is.
   #[serde(default)]
   pub timeout: Option<u64>,
-  /// A call that waits on what it set off for as long as that takes, so no timeout ends it: only its own answer
-  /// or its caller going away.
+  /// Read and given no effect: every call waits for its own answer or its caller going away.
   #[serde(default)]
   pub unbounded: bool,
   /// For the system alone: never shown to a session or callable by one.
@@ -335,10 +336,6 @@ impl Manifest {
       return Err(format!("its name `{}` is not its folder's, `{folder}`", tool.name));
     }
 
-    if tool.timeout == 0 {
-      return Err("its timeout is no time at all".to_owned());
-    }
-
     if tool.run.first().is_none_or(|word| word.trim().is_empty()) {
       return Err("it names no run command".to_owned());
     }
@@ -394,14 +391,6 @@ impl Manifest {
 
       if entry.grant.as_deref().is_some_and(|grant| grant.trim().is_empty()) {
         return Err(format!("{at}: a grant with no name"));
-      }
-
-      if entry.timeout == Some(0) {
-        return Err(format!("{at}: its timeout is no time at all"));
-      }
-
-      if entry.unbounded && entry.timeout.is_some() {
-        return Err(format!("{at}: it is unbounded and has a timeout"));
       }
 
       if let Some((schedule, why)) =

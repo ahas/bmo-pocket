@@ -1284,7 +1284,7 @@ hints = { read_only = true }
 [[entry]]
 namespace = "garden"
 name = "echo_slow"
-description = "Never answers in time."
+description = "Answers after the timeout it still carries."
 input = "echo.json"
 capabilities = ["garden.read"]
 timeout = 1
@@ -1349,7 +1349,7 @@ if handed["kind"] == "claim":
 entry, arguments = handed["entry"], handed["arguments"]
 
 if entry.endswith("echo_slow"):
-    time.sleep(30)
+    time.sleep(2)
 
 if "hold" in arguments:
     import subprocess
@@ -1518,14 +1518,11 @@ async fn a_tool_folder_placed_into_a_running_hosts_tree_is_served_through_the_to
     r#"seeker:c claimed {"arguments": {"page": "https://www.example.org/p"}, "entry": "web/echo_page"}"#
   );
 
-  // A call past its timeout, and one that ends badly, fail saying so.
-  let started = std::time::Instant::now();
-
-  assert!(
-    text(&through(&host, &token, "call", "garden/echo_slow", json!({ "text": "s" })).await)
-      .contains("did not answer within 1 seconds")
+  // A call waits for its answer past a timeout its entry still carries, and one that ends badly fails saying so.
+  assert_eq!(
+    text(&through(&host, &token, "call", "garden/echo_slow", json!({ "text": "s" })).await),
+    "seeker:s"
   );
-  assert!(started.elapsed() < Duration::from_secs(10));
   assert_eq!(
     text(&through(&host, &token, "call", "garden/echo_broken", json!({ "text": "b" })).await),
     "ERROR: garden/echo_broken failed: it ended with code 3: it broke"

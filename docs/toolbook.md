@@ -104,7 +104,7 @@
   - for a tool declaring a grant, the record's grants must hold it (`docs/mcp-host.md`, 「Grants」);
   - the tool runs with the session's record and its answer is returned unchanged.
 - **A call takes as long as its tool does either way.** The toolbook adds no wait and no cut of its own, so an
-  unbounded entry called through `act` waits for its work exactly as it does called directly.
+  entry called through `act` waits for its work exactly as it does called directly.
 - **The arguments are checked against the tool's schema in the host,** before the tool runs, with a maintained
   JSON Schema validator, the `jsonschema` crate. A refusal names each argument that failed and why, and carries the
   tool's schema, so the caller can call again without asking `describe` first.

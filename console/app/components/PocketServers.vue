@@ -43,8 +43,7 @@ function rowsOf(server: Server): BarProperty[] {
     { label: t("pocket.field.namespace"), value: server.namespace, mono: true },
     { label: t("pocket.field.address"), value: server.address, mono: true },
     { label: t("pocket.field.capabilities"), value: server.capabilities.join(", "), mono: true },
-    { label: t("pocket.field.reached_by"), value: server.reachedBy },
-    { label: t("pocket.field.timeout"), value: t("pocket.status.seconds", { count: server.timeout }) }
+    { label: t("pocket.field.reached_by"), value: server.reachedBy }
   ];
 
   if (server.error !== null) rows.push({ label: t("pocket.field.error"), value: server.error });

@@ -488,7 +488,7 @@ impl Host {
       arguments,
     };
 
-    match ask(self, &entry.tool, Some(entry.declared()), session, asked).await {
+    match ask(self, &entry.tool, session, asked).await {
       Ok(value) => checked_result(value).map_err(Refusal::Failed),
       Err(why) => Err(Refusal::Failed(format!("{} failed: {why}", entry.full_name()))),
     }
@@ -548,7 +548,7 @@ impl Host {
         address: address.to_owned(),
       };
 
-      match ask(self, &entry.tool, Some(declared), session, asked).await {
+      match ask(self, &entry.tool, session, asked).await {
         Ok(answer) => {
           let Some(arguments) = claimed(&answer) else {
             continue;
@@ -590,7 +590,7 @@ impl Host {
     let mut listed = Vec::new();
 
     for tool in self.serving(session, namespace) {
-      match ask(self, &tool, None, session, Asked::ResourcesList).await {
+      match ask(self, &tool, session, Asked::ResourcesList).await {
         Ok(answer) => listed.extend(answer["resources"].as_array().cloned().unwrap_or_default()),
         Err(why) => eprintln!("mcp-host: tools/{} could not list its resources: {why}", tool.folder),
       }
@@ -614,7 +614,7 @@ impl Host {
         uri: uri.to_owned(),
       };
 
-      match ask(self, &tool, None, session, asked).await {
+      match ask(self, &tool, session, asked).await {
         Ok(answer) if answer.get("contents").is_some_and(Value::is_array) => return Ok(answer),
         Ok(answer) => {
           if let Some(said) = answer.get("error").and_then(Value::as_str) {

@@ -29,7 +29,7 @@ pub enum ErrorCode {
   ArgumentsMisfit,
   /// The host failed.
   Failed,
-  /// The tool exited uncleanly, answered what is not a tool result, or ran past its timeout.
+  /// The tool exited uncleanly, or answered what is not a tool result.
   ToolFailed,
 }
 

@@ -139,7 +139,6 @@ describe("asynchronous calls", () => {
       memory: "what it was waiting for",
       room: 42,
       agent: "tester",
-      maxSeconds: 30,
     });
 
     expect(status).toBe(200);
@@ -196,18 +195,17 @@ describe("asynchronous calls", () => {
     expect(refused.answer.error).toContain("notes/nope");
   });
 
-  test("a call that runs past its longest run ends failed, and its agent is woken with the failure", async () => {
+  test("a field the host does not read is given no effect, and the call runs to its answer", async () => {
     const token = await session();
     const started = await ask(token, "/use", {
       tool: "notes/keep_note",
-      arguments: { text: "too long" },
+      arguments: { text: "kept" },
       maxSeconds: 1,
     });
 
-    // The tool answers in well under a second; the limit is what the record names, not what it takes.
     const call = await ended(token, started.answer.id);
 
-    expect(["done", "failed"]).toContain(call.state);
-    expect(call.maxSeconds).toBe(1);
+    expect(call.state).toBe("done");
+    expect(call.maxSeconds).toBeUndefined();
   });
 });

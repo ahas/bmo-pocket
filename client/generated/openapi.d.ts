@@ -407,11 +407,6 @@ export interface components {
             namespace: string;
             /** @description What reaches a tool whose annotations carry no read-only hint. */
             reachedBy: components["schemas"]["ReachedBy"];
-            /**
-             * Format: uint64
-             * @description In seconds: the bound on connecting and listing, and each call's timeout.
-             */
-            timeout: number;
             transport: components["schemas"]["Transport"];
         };
         /** @description A page of the external servers, in order of name. */

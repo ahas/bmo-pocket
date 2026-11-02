@@ -39,7 +39,7 @@ tables, its files or its process. The host calls no other unit; a console reache
 | 410 | `gone` | `GET /events`, where an event after the cursor is no longer held: one older than the window the host holds, or a cursor of an earlier run of the host (「Events」) |
 | 422 | `arguments-misfit` | `POST /tool-calls`, where the input does not fit the entry's schema in the form the session holds; the sentence names each misfit and carries the schema |
 | 500 | `failed` | the host failed, as where a record could not be kept or taken back on disk; the sentence is the failure |
-| 502 | `tool-failed` | `POST /tool-calls`, where the tool exited uncleanly, answered what is not a tool result, or ran past its timeout, or its external server could not be reached or failed the call |
+| 502 | `tool-failed` | `POST /tool-calls`, where the tool exited uncleanly, answered what is not a tool result, or its external server could not be reached or failed the call |
 
 ## The OpenAPI document and the clients
 
@@ -118,17 +118,16 @@ tables, its files or its process. The host calls no other unit; a console reache
 ## Asynchronous calls
 
 - **`POST /use` asks the host to run one call beyond the request,** on the tools face under the caller's tool
-  session token, so a caller's shell writes nothing: the record, the timer and the wake stand with the host. The
-  body is camelCase: `tool`, a full name `namespace/name`; `arguments`, the tool's own arguments as one object; and,
-  each optional, `memory`, `room`, `agent`, `via` and `maxSeconds`, a positive number of seconds, 86400 where it is
-  absent.
+  session token, so a caller's shell writes nothing: the record and the wake stand with the host. The body is
+  camelCase: `tool`, a full name `namespace/name`; `arguments`, the tool's own arguments as one object; and, each
+  optional, `memory`, `room`, `agent` and `via`. Any other field is read and given no effect.
 - **The answer is `{id, state, record}`:** the call's id, `running`, and the folder the host keeps it in under its
   data root. An unknown tool, or one the session does not hold, is refused before anything is kept, in the common
   error shape.
 - **The call runs under the caller's own session record,** with its namespaces, capabilities, grants and variables,
   so it reaches exactly what a synchronous call of that session reaches. The host keeps `request.json` before it
   starts and `answer.json` once the tool answered or refused.
-- **Its longest run** is `maxSeconds`; a call still running then is ended as `failed`, its answer naming the limit.
+- **It runs until the tool answers or refuses,** however long that takes; no span of the host's ends it.
 - **The wake:** once the answer is kept, the host queues a fact with the receiver's `POST /instructions`, at
   `RECEIVER_ADDRESS` with `RECEIVER_TOKEN` as the bearer, each from the environment or the data root's
   `env/receiver.env`. The fact names the call by `use` and `tool` with its `state`, `summary` and the caller's
@@ -463,7 +462,6 @@ What `GET /tool-sessions` answers of each session that stands, issued and neithe
 | `address` | string | Where it is reached: the command's words joined by spaces, or the address |
 | `capabilities` | array of strings | What a record must hold to be shown its tools |
 | `reachedBy` | `call` or `act` | What reaches a tool whose annotations carry no `readOnlyHint` |
-| `timeout` | integer | In seconds, the bound on connecting and listing, and each call's timeout |
 | `listed` | integer or null | How many tools its server last listed; null before it first answered |
 | `error` | string or null | Why its last connection or listing failed, where it did |
 
@@ -546,10 +544,10 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
   goes to the host's log.
 - **A refusal a model reads** is a tool result with `isError` true and an English text; a tool that could not read
   what it answers out of answers its reason after `ERROR: `.
-- **A call past its timeout,** the entry's or the tool's, has its process group ended and fails; an unbounded entry
-  has none. A call whose caller goes away has its process group ended.
+- **A call waits for its tool's answer,** however long it takes: no span of the host's ends it. A call whose caller
+  goes away has its process group ended.
 - **A server** keeps one process per record across its calls, ends with the record, and is started again at the
-  record's next call after a call past its timeout ended it.
+  record's next call after a failed call ended it.
 
 ### The call-back socket
 
@@ -564,7 +562,8 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 ### A shared helper's socket
 
 - **The helper's own protocol,** between it and the tools that name it: the host only starts it, hands its socket to
-  each call of the record naming it, and ends it with the record — `SIGTERM`, ten seconds, then its process group.
+  each call of the record naming it, and ends it with the record — `SIGTERM`, waited on until the helper has
+  ended, then whatever it left standing in its process group.
 
 ## The manifest
 
@@ -581,7 +580,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | `check` | string | Its tests, run through `sh` in the tool's source folder |
 | `run` | array of strings, required | The run command as words: the first is a file of the placed folder where one of that name stands there, and found on the path otherwise |
 | `mode` | `call` or `server` | A process per call, or one MCP server per record; `call` by default |
-| `timeout` | integer, required | A call's timeout in seconds, or a helper's bound on coming up; more than 0 |
+| `timeout` | integer | Read and given no effect: no call, helper or server has a span to answer within |
 | `shared` | array of strings | The shared helpers its calls are handed, by name |
 | `after_deploy` | array of strings | A command as words run from the placed folder once the tool is placed |
 
@@ -599,8 +598,8 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | `hints` | table | `read_only`, `destructive`, `open_world` (booleans) and `idempotent`; a read-only entry is reached by `call`, any other by `act` |
 | `capabilities` | array of strings | What a record must hold to be shown it whole; required unless `system` |
 | `grant` | string | The resource a session's grants must hold for a call of it to run (`docs/mcp-host.md`, 「Grants」) |
-| `timeout` | integer | A timeout of its own, in seconds |
-| `unbounded` | boolean | A call that waits on what it set off as long as that takes, with no timeout; not with `timeout` |
+| `timeout` | integer | Read and given no effect |
+| `unbounded` | boolean | Read and given no effect: every call waits for its own answer |
 | `system` | boolean | For the system alone: shown to no session, reached through the call-back socket and `POST /tool-calls` |
 
 - **`[entry.bundle.<capability>]`:** the narrower form a record holding that capability is shown the entry in:
@@ -623,11 +622,10 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 
 ### What does not read
 
-- A protocol other than 1, a name other than its folder's, a timeout of 0 or a run command naming nothing.
+- A protocol other than 1, a name other than its folder's, or a run command naming nothing.
 - Neither an entry nor resources, or a helper's manifest with entries.
 - An entry with a namespace or name outside its alphabet, declared twice, with no description, asking for no
-  capability without being for the system alone, with a capability or a grant with no name, unbounded with a
-  timeout, naming a schema file not beside the manifest or not a JSON Schema, or naming a manual outside the
+  capability without being for the system alone, with a capability or a grant with no name, naming a schema file not beside the manifest or not a JSON Schema, or naming a manual outside the
   tool's folder or one that does not stand there.
 - A schedule whose pattern does not read.
 - Resources naming no namespace or no capability; a server tool declaring claims or resources.
@@ -645,7 +643,7 @@ name is refused, naming it.
 | `namespace` | string, required | The namespace its tools are listed under, in an entry's namespace alphabet; never `toolbook` |
 | `capabilities` | array of strings, required | What a record must hold to be shown its tools; at least one |
 | `reached_by` | `call` or `act` | Which of the toolbook's `call` and `act` reaches a tool whose annotations carry no `readOnlyHint`; `act` where it is left out |
-| `timeout` | integer, required | In seconds, the bound on connecting and listing, and each call's timeout; more than 0 |
+| `timeout` | integer | Read and given no effect: connecting, listing and each call wait for the server's answer |
 
 - **`[stdio]`:** a server the host starts: `command`, the command as words, the first a path or a name found on
   the path; `env`, a table of strings laid over the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`.
@@ -675,7 +673,7 @@ name is refused, naming it.
 ### What does not read
 
 - Neither `[stdio]` nor `[http]`, or both; a command naming nothing; an address that is not `http` or `https`.
-- A name or a namespace outside its alphabet, no capability or one with no name, or a timeout of 0.
+- A name or a namespace outside its alphabet, or no capability or one with no name.
 - A manual named by a path leaving the registration's folder, or one that does not stand there.
 
 ## Schedules

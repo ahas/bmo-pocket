@@ -19,9 +19,6 @@ pub const NOUNS: [&str; 5] = ["tool", "tool list", "tool describe", "tool call",
 /// The most members one page asks for; the pages go on until none stands past the last.
 const PAGE: u32 = 1000;
 
-/// How long a call's session stands where the command does not take it back.
-const SESSION_TTL_MS: u64 = 60 * 60 * 1000;
-
 /// The `tool` nouns as they are asked.
 #[derive(Subcommand, Debug)]
 pub enum Noun {
@@ -266,7 +263,8 @@ async fn call(
 ) -> Result<Answered, String> {
   let tool = entry(client, target).await?;
   // A session of its own: the entry's namespace, the capabilities it asks for and the grant it declares, and the
-  // entry shown by its full name.
+  // entry shown by its full name. It stands until the command takes it back after the answer, so no span of it
+  // ends the call under it.
   let asked = SessionRequest {
     holder_name: "shell".to_owned(),
     namespaces: BTreeSet::from([tool.namespace.clone()]),
@@ -279,7 +277,7 @@ async fn call(
       })
       .collect(),
     shown: BTreeSet::from([target.full()]),
-    ttl_ms: Some(SESSION_TTL_MS),
+    ttl_ms: None,
     ..SessionRequest::default()
   };
   let session = client

@@ -24,7 +24,7 @@ use serde_json::Value;
 use tokio::process::Command;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::running::{Bound, KEPT, ended_with_host};
+use crate::running::{KEPT, ended_with_host};
 
 /// The registration's file name, in the file a person writes and in its placed version.
 pub const REGISTRATION: &str = "server.toml";
@@ -79,8 +79,9 @@ pub struct Registration {
   pub capabilities: Vec<String>,
   #[serde(default = "acts")]
   pub reached_by: ReachedBy,
-  /// In seconds: the bound on connecting and listing, and each call's timeout.
-  pub timeout: u64,
+  /// Read and given no effect: connecting, listing and each call wait for the server's answer.
+  #[serde(default)]
+  pub timeout: Option<u64>,
   #[serde(default)]
   pub stdio: Option<StdioPart>,
   #[serde(default)]
@@ -148,10 +149,6 @@ impl Registration {
 
     if self.capabilities.iter().any(|one| one.trim().is_empty()) {
       return Err("a capability with no name".to_owned());
-    }
-
-    if self.timeout == 0 {
-      return Err("its timeout is no time at all".to_owned());
     }
 
     match (&self.stdio, &self.http) {
@@ -314,7 +311,7 @@ pub fn entries(
       check: None,
       run: Vec::new(),
       mode: Mode::Server,
-      timeout: registration.timeout,
+      timeout: None,
       shared: Vec::new(),
       after_deploy: None,
     },
@@ -367,6 +364,9 @@ pub struct Link {
   why: Mutex<Option<String>>,
   /// Whether the server said its tool list changed since it was last listed.
   stale: AtomicBool,
+  /// Whether a listing of it is under way, so a reading that comes while its server has not yet answered does not
+  /// queue another behind it.
+  listing_now: AtomicBool,
   connection: tokio::sync::Mutex<Option<Arc<Connection>>>,
   poke: Option<UnboundedSender<()>>,
 }
@@ -409,7 +409,6 @@ impl Link {
       address,
       capabilities: registration.capabilities.clone(),
       reached_by: registration.reached_by,
-      timeout: registration.timeout,
       listed: self.listing().map(|listed| u32::try_from(listed.len()).unwrap_or(u32::MAX)),
       error: self.why(),
     }
@@ -488,9 +487,8 @@ impl Link {
     Ok(config)
   }
 
-  // A new connection to its server, its tools listed on it, within the registration's timeout.
+  // A new connection to its server, its tools listed on it.
   async fn connect(self: &Arc<Self>) -> Result<(Arc<Connection>, Vec<Listed>), String> {
-    let bound = Duration::from_secs(self.registration.timeout);
     let watch = Watch {
       link: Arc::downgrade(self),
     };
@@ -525,9 +523,7 @@ impl Link {
 
       Ok((running, listed))
     };
-    let (running, listed) = tokio::time::timeout(bound, made)
-      .await
-      .map_err(|_| format!("it did not connect and list its tools within {} seconds", bound.as_secs()))??;
+    let (running, listed) = made.await?;
 
     Ok((
       Arc::new(Connection {
@@ -575,7 +571,7 @@ impl Link {
   /// Its server listed where it is wanting — never listed, or said to have changed — connecting first where no
   /// connection stands; whether the listing moved. A failure is kept and said in the log.
   pub async fn list(self: &Arc<Self>) -> bool {
-    if !self.wanting() {
+    if !self.wanting() || self.listing_now.swap(true, Ordering::SeqCst) {
       return false;
     }
 
@@ -584,37 +580,32 @@ impl Link {
     let listed = async {
       match self.connection().await? {
         (_, Some(moved)) => Ok(moved),
-        (connection, None) => {
-          let bound = Bound(Some(Duration::from_secs(self.registration.timeout)));
-
-          match bound.on(connection.peer.list_all_tools()).await {
-            Ok(Ok(listed)) => Ok(self.keep(listed)),
-            Ok(Err(why)) => {
-              self.disconnect(&connection).await;
-              Err(format!("its tools could not be listed: {why}"))
-            }
-            Err(why) => {
-              self.disconnect(&connection).await;
-              Err(why)
-            }
+        (connection, None) => match connection.peer.list_all_tools().await {
+          Ok(listed) => Ok(self.keep(listed)),
+          Err(why) => {
+            self.disconnect(&connection).await;
+            Err(format!("its tools could not be listed: {why}"))
           }
-        }
+        },
       }
     };
 
-    match listed.await {
+    let moved = match listed.await {
       Ok(moved) => moved,
       Err(why) => {
         self.failed(&why);
         false
       }
-    }
+    };
+
+    self.listing_now.store(false, Ordering::SeqCst);
+    moved
   }
 
-  /// One `tools/call` of the server's tool of this name, within `bound`: its result as the server answered it. A
+  /// One `tools/call` of the server's tool of this name: its result as the server answered it. A
   /// call failing on the connection ends it, and the next call connects again; an error the server answers in
   /// the protocol fails the call alone.
-  pub async fn call(self: &Arc<Self>, name: &str, arguments: Value, bound: Bound) -> Result<Value, String> {
+  pub async fn call(self: &Arc<Self>, name: &str, arguments: Value) -> Result<Value, String> {
     let (connection, moved) = match self.connection().await {
       Ok(made) => made,
       Err(why) => {
@@ -633,13 +624,12 @@ impl Link {
       asked = asked.with_arguments(arguments);
     }
 
-    let why = match bound.on(connection.peer.call_tool(asked)).await {
-      Ok(Ok(result)) => return serde_json::to_value(result).map_err(|why| why.to_string()),
-      Ok(Err(ServiceError::McpError(refused))) => {
+    let why = match connection.peer.call_tool(asked).await {
+      Ok(result) => return serde_json::to_value(result).map_err(|why| why.to_string()),
+      Err(ServiceError::McpError(refused)) => {
         return Err(format!("its server refused the call: {}", refused.message));
       }
-      Ok(Err(why)) => format!("its server failed the call: {why}"),
-      Err(why) => why,
+      Err(why) => format!("its server failed the call: {why}"),
     };
 
     self.disconnect(&connection).await;
@@ -657,13 +647,13 @@ pub struct External {
 
 impl External {
   /// One call of an entry, by its full name, forwarded to the server under the server's own name of it.
-  pub async fn call(&self, entry: &str, arguments: Value, bound: Bound) -> Result<Value, String> {
+  pub async fn call(&self, entry: &str, arguments: Value) -> Result<Value, String> {
     let name = entry.rsplit('/').next().unwrap_or(entry);
     let Some(own) = self.names.get(name) else {
       return Err(format!("its server lists no tool for {entry}"));
     };
 
-    self.link.call(own, arguments, bound).await
+    self.link.call(own, arguments).await
   }
 }
 
@@ -695,6 +685,7 @@ impl Externals {
           listing: Mutex::new(None),
           why: Mutex::new(None),
           stale: AtomicBool::new(false),
+          listing_now: AtomicBool::new(false),
           connection: tokio::sync::Mutex::new(None),
           poke: self.poke.get().cloned(),
         })

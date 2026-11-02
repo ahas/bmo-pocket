@@ -35,7 +35,8 @@ fn a_registration_reads_with_act_by_default_and_names_what_does_not_read() {
   assert!(refused(&STDIO.replace("[\"stand-in\"]", "[]")).contains("names nothing to run"));
   assert!(refused(&STDIO.replace("\"outer\"", "\"toolbook\"")).contains("no namespace's name"));
   assert!(refused(&STDIO.replace("[\"outer.use\"]", "[]")).contains("asks for no capability"));
-  assert!(refused(&STDIO.replace("timeout = 5", "timeout = 0")).contains("no time at all"));
+  assert!(Registration::parse(&STDIO.replace("timeout = 5", "timeout = 0")).is_ok());
+  assert!(Registration::parse(&STDIO.replace("timeout = 5\n", "")).is_ok());
   assert!(
     refused(&format!("{STDIO}\n[tools.echo]\nmanual = \"../echo.md\"\n")).contains("does not stand inside")
   );

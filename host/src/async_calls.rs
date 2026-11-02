@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::hash::{BuildHasher as _, RandomState};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use bmo_tool::Session;
 use http_body_util::{BodyExt as _, Full};
@@ -29,17 +29,11 @@ pub const ANSWER: &str = "answer.json";
 /// The file a call's end is kept in.
 pub const END: &str = "end.json";
 
-/// A call's longest run where the caller names none: one day, in seconds.
-pub const DEFAULT_MAX_SECONDS: u64 = 86_400;
-
 /// The sort every wake is queued under.
 pub const SORT: &str = "use-ended";
 
 // The longest summary a wake carries, in characters.
 const SUMMARY_CHARS: usize = 160;
-
-// How long the receiver is given to answer.
-const RECEIVER_WITHIN: Duration = Duration::from_secs(30);
 
 /// A call as the caller asked it.
 #[derive(Debug, Clone, Deserialize)]
@@ -62,13 +56,6 @@ pub struct Asked {
   /// The road the caller's turn was read on.
   #[serde(default)]
   pub via: Option<String>,
-  /// The call's longest run, in seconds.
-  #[serde(default = "one_day")]
-  pub max_seconds: u64,
-}
-
-fn one_day() -> u64 {
-  DEFAULT_MAX_SECONDS
 }
 
 /// A call as it was asked, kept before it runs.
@@ -85,7 +72,6 @@ pub struct Kept {
   pub room: Option<i64>,
   pub agent: Option<String>,
   pub via: Option<String>,
-  pub max_seconds: u64,
   pub started_at: i64,
 }
 
@@ -145,7 +131,6 @@ impl AsyncCalls {
       room: asked.room,
       agent: asked.agent,
       via: asked.via,
-      max_seconds: asked.max_seconds,
       started_at: now_ms(),
     };
     let place = self.place(&id);
@@ -160,17 +145,13 @@ impl AsyncCalls {
 
     tokio::spawn(async move {
       let started = Instant::now();
-      let run = tokio::time::timeout(
-        Duration::from_secs(request.max_seconds),
-        host.attempt(&found, &session, arguments),
-      )
-      .await;
+      let run = host.attempt(&found, &session, arguments).await;
       let (answer, state, summary) = match run {
-        Ok(Ok(result)) => {
+        Ok(result) => {
           let summary = answered_summary(&request.tool, &result);
           (result, "done", summary)
         }
-        Ok(Err(refusal)) => {
+        Err(refusal) => {
           let why = refusal.said().to_owned();
           let code = match &refusal {
             Refusal::Misfit(_) => "arguments-misfit",
@@ -179,11 +160,6 @@ impl AsyncCalls {
           };
           let summary = line(&format!("{} was refused: {code}: {}", request.tool, first_line(&why)));
           (json!({ "code": code, "error": why }), "refused", summary)
-        }
-        Err(_) => {
-          let why = format!("its run passed its longest run of {} seconds", request.max_seconds);
-          let summary = line(&format!("{} failed: {why}", request.tool));
-          (json!({ "code": "failed", "error": why }), "failed", summary)
         }
       };
       let spent = started.elapsed().as_millis();
@@ -361,9 +337,8 @@ async fn post_json(address: &str, path: &str, token: &str, body: &Value) -> Resu
     .ok_or_else(|| format!("the receiver address `{address}` names no host"))?
     .to_owned();
   let port = base.port_u16().unwrap_or(80);
-  let stream = tokio::time::timeout(RECEIVER_WITHIN, TcpStream::connect((host.as_str(), port)))
+  let stream = TcpStream::connect((host.as_str(), port))
     .await
-    .map_err(|_| format!("the receiver at {address} did not answer within its wait"))?
     .map_err(|why| format!("the receiver at {address} is out of reach: {why}"))?;
   let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
     .await
@@ -380,9 +355,9 @@ async fn post_json(address: &str, path: &str, token: &str, body: &Value) -> Resu
     .header("content-type", "application/json")
     .body(Full::new(Bytes::from(written)))
     .map_err(|why| format!("the wake could not be built: {why}"))?;
-  let answer = tokio::time::timeout(RECEIVER_WITHIN, sender.send_request(request))
+  let answer = sender
+    .send_request(request)
     .await
-    .map_err(|_| format!("the receiver at {address} did not answer within its wait"))?
     .map_err(|why| format!("the receiver at {address} is out of reach: {why}"))?;
   let status = answer.status();
   let body = answer

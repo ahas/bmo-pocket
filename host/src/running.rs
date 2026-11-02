@@ -8,9 +8,8 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::Duration;
 
-use bmo_tool::manifest::{Entry as Declared, Mode};
+use bmo_tool::manifest::Mode;
 use bmo_tool::protocol::{Asked, CallBack, Handed, START_VARIABLE};
 use bmo_tool::{Answer, Kept, Session};
 use rmcp::model::CallToolRequestParams;
@@ -29,9 +28,6 @@ use crate::placed::PlacedTool;
 
 // How many lines of what a failed call wrote on standard error its answer carries.
 const SAID_LINES: usize = 5;
-
-// How long a helper asked to end is given before its group is ended.
-const HELPER_GRACE: Duration = Duration::from_secs(10);
 
 /// A tool result in the protocol's shape, saying the call failed and why.
 pub fn failed(why: impl std::fmt::Display) -> Value {
@@ -179,48 +175,18 @@ fn answer_call_back<'a>(
   })
 }
 
-/// How long one call may take: the entry's timeout, else the tool's, or none for an entry declared unbounded,
-/// whose call waits on what it set off for as long as that takes.
-#[derive(Clone, Copy)]
-pub struct Bound(pub Option<Duration>);
-
-impl Bound {
-  pub fn of(declared: Option<&Declared>, tool_seconds: u64) -> Self {
-    if declared.is_some_and(|entry| entry.unbounded) {
-      return Self(None);
-    }
-
-    let seconds = declared.and_then(|entry| entry.timeout).unwrap_or(tool_seconds);
-
-    Self(Some(Duration::from_secs(seconds)))
-  }
-
-  /// The work run to its end within the bound, or that it ran past it.
-  pub async fn on<T>(self, work: impl Future<Output = T>) -> Result<T, String> {
-    match self.0 {
-      Some(bound) => tokio::time::timeout(bound, work)
-        .await
-        .map_err(|_| format!("it did not answer within {} seconds", bound.as_secs())),
-      None => Ok(work.await),
-    }
-  }
-}
-
 /// One placed entry asked one thing under a record, answered as the tool answered or with why it did not: a
 /// call through a process of its own or the record's server, each with what it needs started first.
 pub async fn ask(
   host: &Arc<Host>,
   tool: &Arc<PlacedTool>,
-  declared: Option<&Declared>,
   session: &Session,
   asked: Asked,
 ) -> Result<Value, String> {
-  let bound = Bound::of(declared, tool.manifest.tool.timeout);
-
   // An external server's tool is asked for its calls alone, on its registration's connection.
   if let Some(external) = &tool.external {
     return match asked {
-      Asked::Call { entry, arguments } => external.call(&entry, arguments, bound).await,
+      Asked::Call { entry, arguments } => external.call(&entry, arguments).await,
       _ => Err("an external server's tool is asked for its calls alone".to_owned()),
     };
   }
@@ -235,7 +201,7 @@ pub async fn ask(
   if let (Mode::Server, Asked::Call { entry, arguments }) = (tool.manifest.tool.mode, &asked) {
     let name = entry.rsplit('/').next().unwrap_or(entry).to_owned();
 
-    return keeping.served(host, tool, session, shared, name, arguments.clone(), bound).await;
+    return keeping.served(host, tool, session, shared, name, arguments.clone()).await;
   }
 
   let callback =
@@ -245,7 +211,7 @@ pub async fn ask(
   handed.callback = Some(callback.path.clone());
   handed.shared = shared;
 
-  let result = once(host, tool, session, &handed, bound).await;
+  let result = once(host, tool, session, &handed).await;
 
   drop(callback);
   // A version a take or an upgrade retired while this call ran is taken away once nothing else holds it.
@@ -254,13 +220,7 @@ pub async fn ask(
 }
 
 // One process run to its end for one thing asked, its answer read off its standard output.
-async fn once(
-  host: &Host,
-  tool: &PlacedTool,
-  session: &Session,
-  handed: &Handed,
-  bound: Bound,
-) -> Result<Value, String> {
+async fn once(host: &Host, tool: &PlacedTool, session: &Session, handed: &Handed) -> Result<Value, String> {
   let input = serde_json::to_vec(handed).map_err(|why| format!("the call could not be written: {why}"))?;
   let mut child = command(host, tool, session)
     .stdin(Stdio::piped())
@@ -268,8 +228,8 @@ async fn once(
     .stderr(Stdio::piped())
     .spawn()
     .map_err(|why| format!("tools/{} could not be started: {why}", tool.folder))?;
-  // Ended with its whole group unless it ends of itself: a call that runs past its bound, or whose caller
-  // goes away and drops the asking, leaves nothing it started behind.
+  // Ended with its whole group unless it ends of itself: a call whose caller goes away and drops the asking
+  // leaves nothing it started behind.
   let mut group = Group(child.id());
 
   // Written beside the reading of its answer, so a call that answers before it has read everything never
@@ -280,7 +240,7 @@ async fn once(
     });
   }
 
-  let done = match bound.on(child.wait_with_output()).await? {
+  let done = match child.wait_with_output().await {
     Ok(done) => done,
     Err(why) => return Err(format!("its process could not be read: {why}")),
   };
@@ -343,8 +303,9 @@ struct Helper {
 }
 
 impl Helper {
-  // Asked to end first, so it ends what it holds outside its own group — the branches it opened give their
-  // pool places back — then its group ended, whatever still stands of it, and its socket taken away.
+  // Asked to end, and waited for until it has ended, so it ends what it holds outside its own group — the
+  // branches it opened give their pool places back — then whatever it left standing in its group ended, and
+  // its socket taken away.
   async fn end(mut self) {
     if let Some(pid) = self.child.id().and_then(|pid| i32::try_from(pid).ok()) {
       // SAFETY: a signal to the helper this record started, which has not been waited for, so its pid is its own.
@@ -352,7 +313,7 @@ impl Helper {
         libc::kill(pid, libc::SIGTERM);
       }
 
-      let _ = tokio::time::timeout(HELPER_GRACE, self.child.wait()).await;
+      let _ = self.child.wait().await;
       end_group(Some(pid as u32));
     }
 
@@ -382,15 +343,15 @@ impl Kept for Placements {
   }
 }
 
-// Waits, within `bound`, for a helper to say on its standard output that it listens.
-async fn listening(child: &mut Child, bound: Duration) -> Result<(), String> {
+// Waits for a helper to say on its standard output that it listens, or to end without saying so.
+async fn listening(child: &mut Child) -> Result<(), String> {
   let Some(stdout) = child.stdout.take() else {
     return Err("its output could not be read".to_owned());
   };
   let mut lines = BufReader::new(stdout).lines();
 
-  match tokio::time::timeout(bound, lines.next_line()).await {
-    Ok(Ok(Some(_))) => {
+  match lines.next_line().await {
+    Ok(Some(_)) => {
       // What it says after it listens goes to the log, so a full pipe never stops it.
       tokio::spawn(async move {
         while let Ok(Some(line)) = lines.next_line().await {
@@ -399,8 +360,7 @@ async fn listening(child: &mut Child, bound: Duration) -> Result<(), String> {
       });
       Ok(())
     }
-    Ok(_) => Err("it ended before it listened".to_owned()),
-    Err(_) => Err(format!("it did not listen within {} seconds", bound.as_secs())),
+    _ => Err("it ended before it listened".to_owned()),
   }
 }
 
@@ -448,7 +408,7 @@ impl Placements {
   }
 
   /// One call of a server tool, on the record's server of it, started first where none stands; a call that
-  /// fails or outlasts its bound ends the server, and the next call starts it again.
+  /// fails ends the server, and the next call starts it again.
   #[allow(clippy::too_many_arguments)]
   async fn served(
     &self,
@@ -458,7 +418,6 @@ impl Placements {
     shared: BTreeMap<String, PathBuf>,
     name: String,
     arguments: Value,
-    bound: Bound,
   ) -> Result<Value, String> {
     let server = {
       let mut servers = self.servers.lock().await;
@@ -479,10 +438,9 @@ impl Placements {
       asked = asked.with_arguments(arguments);
     }
 
-    let why = match bound.on(server.peer.call_tool(asked)).await {
-      Ok(Ok(result)) => return serde_json::to_value(result).map_err(|why| why.to_string()),
-      Ok(Err(why)) => format!("its server failed the call: {why}"),
-      Err(why) => why,
+    let why = match server.peer.call_tool(asked).await {
+      Ok(result) => return serde_json::to_value(result).map_err(|why| why.to_string()),
+      Err(why) => format!("its server failed the call: {why}"),
     };
 
     if let Some(gone) = self.servers.lock().await.remove(&tool.folder) {
@@ -525,7 +483,7 @@ async fn start_helper(
     _tool: helper.clone(),
   };
 
-  if let Err(why) = listening(&mut started.child, Duration::from_secs(helper.manifest.tool.timeout)).await {
+  if let Err(why) = listening(&mut started.child).await {
     started.end().await;
     return Err(why);
   }
@@ -555,12 +513,7 @@ async fn start_server(
     .stderr(Stdio::inherit())
     .spawn()
     .map_err(|why| format!("tools/{} could not be started: {why}", tool.folder))?;
-  let bound = Duration::from_secs(tool.manifest.tool.timeout);
-  let running = match tokio::time::timeout(bound, ().serve(process)).await {
-    Ok(Ok(running)) => running,
-    Ok(Err(why)) => return Err(format!("its server did not start: {why}")),
-    Err(_) => return Err(format!("its server did not start within {} seconds", bound.as_secs())),
-  };
+  let running = ().serve(process).await.map_err(|why| format!("its server did not start: {why}"))?;
 
   Ok(Server {
     peer: running.peer().clone(),

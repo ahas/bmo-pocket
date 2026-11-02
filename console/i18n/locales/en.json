@@ -43,7 +43,6 @@
       "output": "Output schema",
       "reached_by": "Reached by",
       "shown": "Shown by name",
-      "timeout": "Timeout",
       "variables": "Variables"
     },
     "status": {
@@ -66,7 +65,6 @@
       "not_listed": "Not listed",
       "read_only": "Read-only",
       "running": "Running",
-      "seconds": "{count} s",
       "system": "System only",
       "unknown": "Not known",
       "yes": "Yes"

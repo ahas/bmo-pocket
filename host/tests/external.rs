@@ -425,10 +425,7 @@ async fn each_registration_read_is_answered_on_the_servers_route_listed_or_not()
   let server = &before.items[0];
 
   assert_eq!((server.name.as_str(), server.namespace.as_str()), ("stand-in", "outer"));
-  assert_eq!(
-    (server.transport, server.reached_by, server.timeout),
-    (Transport::Stdio, ReachedBy::Call, 20)
-  );
+  assert_eq!((server.transport, server.reached_by), (Transport::Stdio, ReachedBy::Call));
   assert!(
     server.address.starts_with("python3 ") && server.address.ends_with("stand_in.py"),
     "{}",
