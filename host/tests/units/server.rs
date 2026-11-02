@@ -16,7 +16,7 @@ use mcp_host::server::{page_by_name, page_by_time};
 use serde_json::{Value, json};
 use tokio::net::{TcpStream, UnixStream};
 
-use crate::fixture::{Fixture, ISSUER};
+use crate::units::fixture::{Fixture, ISSUER};
 
 #[test]
 fn a_page_by_name_answers_the_names_after_its_cursor_and_says_whether_more_stand() {

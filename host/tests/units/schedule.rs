@@ -3,7 +3,7 @@ use std::sync::Arc;
 use mcp_host::schedule::{self, Schedules};
 use serde_json::json;
 
-use crate::fixture::Fixture;
+use crate::units::fixture::Fixture;
 
 // A schedule is due at its pattern's first time after the beat that first sees it, and is called once at a beat past
 // that time, under a record of its own: the holder `schedule`, the entry's own namespace and capabilities, and the

@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+# One test target, the harness at tests/main.rs (bmo-chat's docs/conventions.md, 「Rust builds」).
+autotests = false
 
 # Its binaries hold no tests of their own, so `cargo test` links no test binary of them: the host, and the
 # registry's command, which `bmo pocket` hands its words to.
@@ -52,3 +54,7 @@ url.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

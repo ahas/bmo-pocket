@@ -14,7 +14,7 @@ use mcp_host::console::Bundle;
 use serde_json::{Value, json};
 use tokio::net::TcpStream;
 
-use crate::fixture::{CONSOLE, Fixture, ISSUER};
+use crate::units::fixture::{CONSOLE, Fixture, ISSUER};
 
 const MODULE: &str = "export default { routes: [] };\n";
 const STYLESHEET: &str = ".pocket {}\n";

@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+# One test target, the harness at tests/main.rs (bmo-chat's docs/conventions.md, 「Rust builds」).
+autotests = false
 
 [dependencies]
 bmo-pocket-client = { path = "../client" }
@@ -18,3 +20,7 @@ tokio = { workspace = true, features = ["io-std", "sync"] }
 axum.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "net", "time"] }
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

@@ -5,6 +5,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+# One test target, the harness at tests/main.rs (bmo-chat's docs/conventions.md, 「Rust builds」).
+autotests = false
 
 [dependencies]
 # The session record a caller issues, which the tool contract defines.
@@ -21,3 +23,7 @@ thiserror.workspace = true
 tokio.workspace = true
 # A route's path segments and query, encoded.
 url.workspace = true
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

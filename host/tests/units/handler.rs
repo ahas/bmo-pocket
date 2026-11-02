@@ -5,7 +5,7 @@ use mcp_host::handler::{Host, Refusal, as_result, misfits};
 use mcp_host::placed::{PLACED, Placed};
 use serde_json::json;
 
-use crate::fixture::Fixture;
+use crate::units::fixture::Fixture;
 
 #[test]
 fn arguments_are_checked_against_the_schema_and_a_null_one_reads_as_left_out() {
