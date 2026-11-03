@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+
+import { BUILDING_MS, built } from "../../tests/host-build";
 
 import { type Pocket, pocketClient } from "../index";
 
@@ -9,7 +11,7 @@ import { type Pocket, pocketClient } from "../index";
 // the agent woken through the receiver. The host is the workspace's build, run on a scratch data root with one
 // placed tool; the caller is this test, which writes nothing.
 
-const binary = process.env.MCP_HOST_BINARY ?? resolve(import.meta.dir, "../../target/debug/mcp-host");
+let binary = "";
 
 const MANIFEST = `[tool]
 name = "notes"
@@ -46,9 +48,7 @@ let port = 0;
 const woken: any[] = [];
 
 beforeAll(async () => {
-  if (!existsSync(binary)) {
-    throw new Error(`${binary} is not built: cargo build -p mcp-host`);
-  }
+  binary = process.env.MCP_HOST_BINARY ?? (await built("mcp-host"));
 
   scratch = mkdtempSync(join(tmpdir(), "pocket-calls-"));
   sockets = mkdtempSync("/tmp/pk-");
@@ -81,7 +81,7 @@ beforeAll(async () => {
 
   expect(port).toBeGreaterThan(0);
   issuer = pocketClient({ socket, token: readFileSync(join(scratch, "data", "tool-host", "issuer-token"), "utf8").trim() });
-});
+}, BUILDING_MS);
 
 afterAll(async () => {
   host?.kill();

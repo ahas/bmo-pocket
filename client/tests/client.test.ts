@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
+import { BUILDING_MS, built } from "../../tests/host-build";
 
 import { type Pocket, PocketError, pocketClient } from "../index";
 
@@ -9,7 +11,7 @@ import { type Pocket, PocketError, pocketClient } from "../index";
 // one `MCP_HOST_BINARY` names, started on a scratch data root with one placed tool, each route asked through the
 // client as a caller asks it.
 
-const binary = process.env.MCP_HOST_BINARY ?? resolve(import.meta.dir, "../../target/debug/mcp-host");
+let binary = "";
 
 const MANIFEST = `[tool]
 name = "almanac"
@@ -66,9 +68,7 @@ let host: ReturnType<typeof Bun.spawn> | undefined;
 let issuer: Pocket;
 
 beforeAll(async () => {
-  if (!existsSync(binary)) {
-    throw new Error(`${binary} is not built: cargo build -p mcp-host`);
-  }
+  binary = process.env.MCP_HOST_BINARY ?? (await built("mcp-host"));
 
   scratch = mkdtempSync(join(tmpdir(), "pocket-client-"));
   sockets = mkdtempSync("/tmp/pc-");
@@ -91,7 +91,7 @@ beforeAll(async () => {
 
   expect(said).toContain("listening");
   issuer = pocketClient({ socket, token: readFileSync(join(scratch, "data", "tool-host", "issuer-token"), "utf8").trim() });
-});
+}, BUILDING_MS);
 
 afterAll(async () => {
   host?.kill();

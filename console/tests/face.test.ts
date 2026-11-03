@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+
+import { BUILDING_MS, built } from "../../tests/host-build";
 
 import { consoleManifest } from "bmo-ui/shared/console-manifest";
 
@@ -9,7 +11,7 @@ import { consoleManifest } from "bmo-ui/shared/console-manifest";
 // the one `MCP_HOST_BINARY` names, started with a console port and a bundle folder, its manifest read through
 // bmo-ui's own reading of the contract, and each file it names answered to the console token and the role.
 
-const binary = process.env.MCP_HOST_BINARY ?? resolve(import.meta.dir, "../../target/debug/mcp-host");
+let binary = "";
 const MODULE = "export default { routes: [] };\n";
 const STYLESHEET = ".pocket {}\n";
 
@@ -21,9 +23,7 @@ let token = "";
 let words = "";
 
 beforeAll(async () => {
-  if (!existsSync(binary)) {
-    throw new Error(`${binary} is not built: cargo build -p mcp-host`);
-  }
+  binary = process.env.MCP_HOST_BINARY ?? (await built("mcp-host"));
 
   scratch = mkdtempSync(join(tmpdir(), "pocket-console-"));
   sockets = mkdtempSync("/tmp/pk-");
@@ -52,7 +52,7 @@ beforeAll(async () => {
   expect(port).toBeDefined();
   base = `http://127.0.0.1:${port}`;
   token = readFileSync(join(scratch, "data", "tool-host", "console-token"), "utf8").trim();
-});
+}, BUILDING_MS);
 
 afterAll(async () => {
   host?.kill();
