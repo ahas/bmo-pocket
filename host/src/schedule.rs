@@ -235,12 +235,18 @@ pub async fn call(host: Arc<Host>, schedules: Arc<Schedules>, due: Due) {
   schedules.finished(&due.key, error);
 }
 
-/// The schedules kept for as long as the host serves: a beat every `every`, each schedule it finds due called on
-/// a task of its own.
+/// The schedules kept until the host is asked to stop: a beat every `every`, each schedule it finds due called on
+/// a task of its own, which the stop waits on.
 pub async fn keep(host: Arc<Host>, schedules: Arc<Schedules>, every: Duration) {
-  loop {
+  while !host.drain.is_stopping() {
     for due in schedules.beat(&host.every(), now_ms()) {
-      tokio::spawn(call(host.clone(), schedules.clone(), due));
+      let finishing = host.drain.finishing();
+      let called = call(host.clone(), schedules.clone(), due);
+
+      tokio::spawn(async move {
+        called.await;
+        drop(finishing);
+      });
     }
 
     tokio::time::sleep(every).await;

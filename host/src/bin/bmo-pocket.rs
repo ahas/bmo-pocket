@@ -74,6 +74,8 @@ enum Verb {
     #[arg(long)]
     json: bool,
   },
+  /// Says whether a stop of the running host would wait on any call: ends 0 where it would not, and 1 naming how many.
+  Quiet,
   /// Serves the harness plugin's MCP server on standard input and output, under one tool session.
   Mcp {
     /// The control socket; `BMO_MCP_HOST_SOCKET`, or `bmo/mcp-host.sock` under the user's runtime directory.
@@ -132,6 +134,22 @@ fn tool(noun: command::Noun, data_root: &Path, issuer_token_file: Option<&Path>)
   }
 }
 
+// Whether a stop of the running host would wait on any call, said on standard output and by the exit.
+fn quiet(data_root: &Path, issuer_token_file: Option<&Path>) -> ExitCode {
+  let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    Ok(runtime) => runtime,
+    Err(why) => {
+      eprintln!("bmo-pocket: {why}");
+      return ExitCode::FAILURE;
+    }
+  };
+  let (quiet, said) = runtime.block_on(command::quiet(data_root, issuer_token_file));
+
+  println!("{said}");
+
+  if quiet { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+}
+
 fn default_data_root() -> PathBuf {
   std::env::var_os("HOME")
     .map_or_else(|| PathBuf::from("/"), PathBuf::from)
@@ -177,6 +195,7 @@ fn main() -> ExitCode {
       ExitCode::SUCCESS
     }
     Verb::Tool { noun } => tool(noun, &data_root, cli.issuer_token_file.as_deref()),
+    Verb::Quiet => quiet(&data_root, cli.issuer_token_file.as_deref()),
     Verb::Mcp { socket, token } => mcp(socket, token),
     Verb::Put {
       tool,

@@ -183,6 +183,37 @@ pub async fn ask(
   session: &Session,
   asked: Asked,
 ) -> Result<Value, String> {
+  if ends_at_stop(tool, &asked) {
+    return tokio::select! {
+      answer = asking(host, tool, session, asked) => answer,
+      () = host.drain.stopping() => Err("the host stopped while it ran".to_owned()),
+    };
+  }
+
+  let _held = host.drain.call();
+
+  asking(host, tool, session, asked).await
+}
+
+// Whether what is asked is a call of an entry declaring that it does not hold the host's stop.
+fn ends_at_stop(tool: &PlacedTool, asked: &Asked) -> bool {
+  let Asked::Call { entry, .. } = asked else {
+    return false;
+  };
+
+  tool
+    .manifest
+    .entries
+    .iter()
+    .any(|declared| declared.ends_at_stop && declared.full_name() == *entry)
+}
+
+async fn asking(
+  host: &Arc<Host>,
+  tool: &Arc<PlacedTool>,
+  session: &Session,
+  asked: Asked,
+) -> Result<Value, String> {
   // An external server's tool is asked for its calls alone, on its registration's connection.
   if let Some(external) = &tool.external {
     return match asked {

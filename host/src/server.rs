@@ -337,11 +337,12 @@ impl Control {
   }
 }
 
-async fn health() -> Json<Health> {
+async fn health(State(state): State<Control>) -> Json<Health> {
   Json(Health {
     ready: true,
     reason: None,
     version: env!("CARGO_PKG_VERSION").to_owned(),
+    calls_in_hand: state.host.drain.calls_in_hand() as u64,
   })
 }
 

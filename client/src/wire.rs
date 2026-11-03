@@ -9,13 +9,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-/// What `GET /health` answers: whether the host is ready, why not where it is not, and its version.
+/// What `GET /health` answers: whether the host is ready, why not where it is not, its version, and how many calls
+/// a stop of the host would wait on.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Health {
   pub ready: bool,
   pub reason: Option<String>,
   pub version: String,
+  pub calls_in_hand: u64,
 }
 
 /// Where a page of a collection keyed by name begins and how much of it is answered: the last name a page

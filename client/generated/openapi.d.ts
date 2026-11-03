@@ -314,8 +314,13 @@ export interface components {
         Granted: {
             resource: string;
         };
-        /** @description What `GET /health` answers: whether the host is ready, why not where it is not, and its version. */
+        /**
+         * @description What `GET /health` answers: whether the host is ready, why not where it is not, its version, and how many calls
+         *     a stop of the host would wait on.
+         */
         Health: {
+            /** Format: uint64 */
+            callsInHand: number;
             ready: boolean;
             reason: string | null;
             version: string;

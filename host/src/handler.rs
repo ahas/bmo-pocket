@@ -21,6 +21,7 @@ use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use crate::drain::Drain;
 use crate::placed::{Placed, PlacedTool};
 use crate::records::Reach;
 use crate::residency;
@@ -32,6 +33,8 @@ pub struct Host {
   pub placed: Arc<Placed>,
   /// The variables of the host's own environment a call's clean environment is handed beside its own.
   pub pass_env: Vec<String>,
+  /// The host's stop, and what it waits on.
+  pub drain: Drain,
 }
 
 /// One namespace as the protocol serves it, made for each request on its path.

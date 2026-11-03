@@ -84,6 +84,8 @@ impl Scratch {
       .arg("--tools")
       .arg(self.tools())
       .args(["--settle-ms", "50"])
+      .env_remove("RECEIVER_ADDRESS")
+      .env_remove("RECEIVER_TOKEN")
       .stdout(Stdio::piped())
       .stderr(fs::File::create(self.data.path().join("host.log")).unwrap())
       .spawn()
@@ -1805,4 +1807,331 @@ async fn a_shared_helper_serves_one_records_calls_and_ends_with_it_and_a_server_
   until("the helper's end", move || async move { !alive(ended) }).await;
   assert!(alive(&helper_two));
   assert_eq!(text(&through(&host, &two, "call", "garden/tally", json!({})).await), "2");
+}
+
+// A tool whose every call says it started, then waits for its release; its second entry declares it does not hold the
+// host's stop, and its calls share a helper.
+const HOLDER_MANIFEST: &str = r#"
+[tool]
+name = "holder"
+protocol = 1
+language = "python"
+run = ["python3", "holder.py"]
+shared = ["keeper"]
+
+[[entry]]
+namespace = "garden"
+name = "hold"
+description = "Holds until it is released."
+input = "any.json"
+capabilities = ["garden.read"]
+hints = { read_only = true }
+
+[[entry]]
+namespace = "garden"
+name = "hold_past_stop"
+description = "Holds until it is released, and does not hold the host's stop."
+input = "any.json"
+capabilities = ["garden.read"]
+ends_at_stop = true
+hints = { read_only = true }
+"#;
+
+const HOLDER_SCRIPT: &str = r#"
+import json, os, sys, time
+
+given = json.load(sys.stdin)["arguments"]
+open(given["started"], "w").write(str(os.getpid()))
+
+while not os.path.exists(given["released"]):
+    time.sleep(0.01)
+
+print(json.dumps({"content": [{"type": "text", "text": given["say"]}], "isError": False}))
+"#;
+
+const KEEPER_MANIFEST: &str = "[tool]\nname = \"keeper\"\nprotocol = 1\nrun = [\"python3\", \"keeper.py\"]\n\n[helper]\ndescription = \"Says when it is asked to end.\"\n";
+
+const KEEPER_SCRIPT: &str = r#"
+import json, os, signal, socket, sys
+
+handed = json.load(sys.stdin)
+
+def ended(*_):
+    open(os.environ["KEEPER_ASKED"], "w").write("asked")
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, ended)
+listener = socket.socket(socket.AF_UNIX)
+listener.bind(handed["socket"])
+listener.listen()
+print("listening", flush=True)
+
+while True:
+    listener.accept()[0].close()
+"#;
+
+// An external stdio MCP server whose one tool holds as the holder does.
+const OUTER_SERVER: &str = r#"
+import json, os, sys, time
+
+def say(message):
+    print(json.dumps(dict(message, jsonrpc="2.0")), flush=True)
+
+for line in sys.stdin:
+    asked = json.loads(line)
+    if "id" not in asked:
+        continue
+    method, params = asked.get("method"), asked.get("params") or {}
+    if method == "initialize":
+        say({"id": asked["id"], "result": {"protocolVersion": params["protocolVersion"],
+             "capabilities": {"tools": {}}, "serverInfo": {"name": "outer", "version": "1"}}})
+    elif method == "tools/list":
+        say({"id": asked["id"], "result": {"tools": [{"name": "hold", "description": "Holds until it is released.",
+             "inputSchema": {"type": "object"}, "annotations": {"readOnlyHint": True}}]}})
+    elif method == "tools/call":
+        given = params["arguments"]
+        open(given["started"], "w").write(str(os.getpid()))
+        while not os.path.exists(given["released"]):
+            time.sleep(0.01)
+        say({"id": asked["id"], "result": {"content": [{"type": "text", "text": given["say"]}], "isError": False}})
+"#;
+
+// One JSON request on the tools face, on a connection of its own, with what it answered.
+async fn on_tools_face(port: u16, token: String, path: &str, body: Value) -> (StatusCode, Value) {
+  let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+  let (mut link, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream)).await.unwrap();
+
+  tokio::spawn(connection);
+
+  let asked = Request::post(path)
+    .header("host", "127.0.0.1")
+    .header("content-type", "application/json")
+    .header("accept", "application/json, text/event-stream")
+    .header("mcp-protocol-version", "2025-06-18")
+    .header("authorization", format!("Bearer {token}"))
+    .body(Full::new(Bytes::from(body.to_string())))
+    .unwrap();
+  let response = link.send_request(asked).await.unwrap();
+  let status = response.status();
+  let bytes = response.into_body().collect().await.unwrap().to_bytes();
+
+  (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+// `bmo-pocket quiet` against this host: its exit and what it said.
+fn quiet(scratch: &Scratch, host: &Running) -> (Option<i32>, String) {
+  let said = Command::new(env!("CARGO_BIN_EXE_bmo-pocket"))
+    .arg("--data-root")
+    .arg(scratch.data.path())
+    .arg("quiet")
+    .env("BMO_MCP_HOST_SOCKET", &host.control)
+    .output()
+    .unwrap();
+
+  (said.status.code(), String::from_utf8_lossy(&said.stdout).into_owned())
+}
+
+// "Asked to stop ... the host takes no new call and ends none it holds" (docs/mcp-host.md, 「The host's stop」): calls
+// by every road run to their end through the stop, a new connection is refused on each face, a call of an
+// `ends_at_stop` entry is ended at once, and the process exits after the last, its helper asked to end first.
+#[tokio::test]
+async fn a_stop_takes_no_new_call_lets_each_one_in_hand_end_and_exits_after_the_last() {
+  let scratch = Scratch::new();
+  let root = scratch.data.path().to_path_buf();
+  let keeper = root.join("keeper-source");
+  let outer = root.join("outer-source");
+  let any = r#"{ "type": "object" }"#;
+
+  fs::create_dir_all(&keeper).unwrap();
+  fs::write(keeper.join("tool.toml"), KEEPER_MANIFEST).unwrap();
+  fs::write(keeper.join("keeper.py"), KEEPER_SCRIPT).unwrap();
+  fs::create_dir_all(&outer).unwrap();
+  fs::write(outer.join("outer.py"), OUTER_SERVER).unwrap();
+  fs::write(
+    outer.join("server.toml"),
+    format!(
+      "name = \"outer\"\nnamespace = \"outer\"\ncapabilities = [\"outer.use\"]\n\n[stdio]\ncommand = [\"python3\", \"{}\"]\n",
+      outer.join("outer.py").display()
+    ),
+  )
+  .unwrap();
+
+  for put in [
+    vec![keeper.to_str().unwrap()],
+    vec!["--mcp", outer.join("server.toml").to_str().unwrap(), "--allow", "outer.use"],
+  ] {
+    let registered = Command::new(env!("CARGO_BIN_EXE_bmo-pocket"))
+      .arg("--data-root")
+      .arg(&root)
+      .arg("put")
+      .args(&put)
+      .output()
+      .unwrap();
+
+    assert!(registered.status.success(), "{}", String::from_utf8_lossy(&registered.stderr));
+  }
+
+  place(
+    &scratch.tools(),
+    "holder",
+    &[("tool.toml", HOLDER_MANIFEST), ("any.json", any), ("holder.py", HOLDER_SCRIPT)],
+  );
+
+  let mut host = scratch.start();
+  let keeper_asked = root.join("keeper.asked");
+  let token = issue(
+    &host,
+    &record(
+      &["garden.read", "outer.use"],
+      json!({
+        "namespaces": ["garden", "outer"],
+        "variables": { "KEEPER_ASKED": keeper_asked.to_string_lossy() },
+      }),
+    ),
+  )
+  .await;
+
+  until("the external server's listing", || async {
+    let path = "/namespaces/outer/tools/hold";
+
+    control(&host, Method::GET, path, Some(&host.issuer), None).await.status == StatusCode::OK
+  })
+  .await;
+
+  assert_eq!(quiet(&scratch, &host), (Some(0), "no tool call in hand\n".to_owned()));
+
+  let started = |call: &str| root.join(format!("{call}.started"));
+  let released = |call: &str| root.join(format!("{call}.released"));
+  let holding = |call: &str| {
+    json!({
+      "started": started(call).to_string_lossy(),
+      "released": released(call).to_string_lossy(),
+      "say": format!("{call} ended"),
+    })
+  };
+  let by_control = |namespace: &str, name: &str, input: Value| {
+    let asked = json!({ "namespace": namespace, "name": name, "input": input });
+    let (socket, token) = (host.control.clone(), token.clone());
+
+    tokio::spawn(async move {
+      request(&socket, Method::POST, "/tool-calls", Some(&token), Some(&asked)).await.unwrap()
+    })
+  };
+
+  // One call in hand by each road: the control socket, the tools face, an asynchronous call and an external server;
+  // and one that does not hold the stop.
+  let controlled = by_control("garden", "hold", holding("controlled"));
+  let external = by_control("outer", "hold", holding("external"));
+  let past_stop = by_control("garden", "hold_past_stop", holding("past-stop"));
+  let on_face = tokio::spawn(on_tools_face(
+    host.port,
+    token.clone(),
+    "/mcp/garden",
+    json!({
+      "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+      "params": { "name": "hold", "arguments": holding("on-face") },
+    }),
+  ));
+  let (status, kept) = on_tools_face(
+    host.port,
+    token.clone(),
+    "/use",
+    json!({ "tool": "garden/hold", "arguments": holding("kept") }),
+  )
+  .await;
+
+  assert_eq!(status, StatusCode::OK, "{kept}");
+
+  let kept_end = root.join("use").join(kept["id"].as_str().unwrap());
+
+  until("every call's start", || {
+    let all = ["controlled", "external", "past-stop", "on-face", "kept"].map(started);
+
+    async move { all.iter().all(|file| fs::read_to_string(file).is_ok_and(|pid| !pid.is_empty())) }
+  })
+  .await;
+
+  assert_eq!(issued_ask(&host, Method::GET, "/health").await["callsInHand"], 4);
+  assert_eq!(quiet(&scratch, &host), (Some(1), "4 tool calls in hand\n".to_owned()));
+
+  // SAFETY: a signal to the host this test started, which has not been waited for, so its pid is its own.
+  assert_eq!(unsafe { libc::kill(host.child.id() as i32, libc::SIGTERM) }, 0);
+
+  // The call that does not hold the stop is ended at once and says why, and every face stops listening.
+  let cut = past_stop.await.unwrap();
+  let said = String::from_utf8_lossy(&cut.body).into_owned();
+
+  assert!(said.contains("the host stopped"), "{said}");
+  assert!(!cut.status.is_success(), "{said}");
+
+  let cut_pid = fs::read_to_string(started("past-stop")).unwrap();
+
+  until("the ended call's process to go", || {
+    let cut_pid = cut_pid.clone();
+
+    async move { !alive(&cut_pid) }
+  })
+  .await;
+  until("the faces to stop listening", || async {
+    let tools = TcpStream::connect(("127.0.0.1", host.port)).await;
+    let socket = tokio::net::UnixStream::connect(&host.control).await;
+
+    let refused = |error: &std::io::Error| error.kind() == std::io::ErrorKind::ConnectionRefused;
+
+    tools.as_ref().err().is_some_and(refused) && socket.as_ref().err().is_some_and(refused)
+  })
+  .await;
+
+  let (code, said) = quiet(&scratch, &host);
+
+  assert_eq!(code, Some(0));
+  assert!(said.contains("could not be read"), "{said}");
+
+  // Each call in hand ends only as it is released, answered to its own caller, the host running through it all.
+  assert!(!controlled.is_finished() && !external.is_finished() && !on_face.is_finished());
+  assert!(host.child.try_wait().unwrap().is_none());
+
+  fs::write(released("controlled"), "").unwrap();
+
+  let answer: Value = controlled.await.unwrap().json().unwrap();
+
+  assert_eq!(answer["result"]["content"][0]["text"], "controlled ended");
+  assert!(host.child.try_wait().unwrap().is_none());
+
+  fs::write(released("external"), "").unwrap();
+
+  let answer: Value = external.await.unwrap().json().unwrap();
+
+  assert_eq!(answer["result"]["content"][0]["text"], "external ended");
+  assert!(host.child.try_wait().unwrap().is_none());
+
+  fs::write(released("on-face"), "").unwrap();
+
+  let (status, answer) = on_face.await.unwrap();
+
+  assert_eq!(status, StatusCode::OK);
+  assert_eq!(text(&answer), "on-face ended");
+  assert!(host.child.try_wait().unwrap().is_none());
+  assert!(!keeper_asked.exists(), "a helper was ended while a call could still use it");
+
+  fs::write(released("kept"), "").unwrap();
+
+  let mut exited = None;
+
+  until("the host's exit after its last call", || {
+    exited = host.child.try_wait().unwrap();
+
+    let done = exited.is_some();
+
+    async move { done }
+  })
+  .await;
+
+  assert!(exited.unwrap().success());
+
+  let end: Value = serde_json::from_slice(&fs::read(kept_end.join("end.json")).unwrap()).unwrap();
+
+  assert_eq!(end["state"], "done");
+  assert!(keeper_asked.exists(), "the helper was not asked to end");
+  assert!(!host.control.exists());
 }

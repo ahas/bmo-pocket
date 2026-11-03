@@ -20,6 +20,7 @@ use std::time::Duration;
 use bmo_tool::SessionRequest;
 use clap::{Args, Parser, Subcommand};
 use mcp_host::console::{Bundle, bundle_beside_binary};
+use mcp_host::drain::Drain;
 use mcp_host::handler::Host;
 use mcp_host::placed::Placed;
 use mcp_host::records::{Records, kept_token, now_ms};
@@ -162,6 +163,7 @@ impl Reach {
     Host {
       placed,
       pass_env: self.pass_env,
+      drain: Drain::default(),
     }
   }
 }
@@ -267,17 +269,38 @@ fn bind_control(socket: &Path) -> io::Result<UnixListener> {
   Ok(listener)
 }
 
-async fn stopped() {
-  let (Ok(mut term), Ok(mut interrupt)) =
-    (signal(SignalKind::terminate()), signal(SignalKind::interrupt()))
-  else {
-    return std::future::pending().await;
-  };
+// Ends once the host is asked to stop. The signals are taken as this is called, so one that comes from then on is
+// the host's to answer.
+fn stop_asked() -> impl Future<Output = ()> {
+  let signals = (signal(SignalKind::terminate()), signal(SignalKind::interrupt()));
 
-  tokio::select! {
-    _ = term.recv() => {}
-    _ = interrupt.recv() => {}
+  async move {
+    let (Ok(mut term), Ok(mut interrupt)) = signals else {
+      return std::future::pending().await;
+    };
+
+    tokio::select! {
+      _ = term.recv() => {}
+      _ = interrupt.recv() => {}
+    }
   }
+}
+
+// What the host keeps ended at its stop, once nothing is left that uses it: each record's servers and shared helpers,
+// each waited on as a revocation waits, and each external server's connection.
+async fn end_what_is_kept(records: &Records, host: &Host) {
+  let mut ending = tokio::task::JoinSet::new();
+  let lapsed = records.prune().into_iter().map(|(_, session)| session);
+
+  for session in records.standing().into_iter().map(|(_, session)| session).chain(lapsed) {
+    ending.spawn(async move { session.kept.close().await });
+  }
+
+  for link in host.placed.externals.every() {
+    ending.spawn(async move { link.end().await });
+  }
+
+  ending.join_all().await;
 }
 
 // How often the host sweeps its records and versions, reads its schedules, and how long changes under the tools
@@ -327,6 +350,7 @@ async fn serve(
     },
     None => None,
   };
+  let asked_to_stop = stop_asked();
   let bound = tcp.local_addr().map_or(port, |address| address.port());
   let screen_at = console
     .as_ref()
@@ -357,30 +381,43 @@ async fn serve(
 
   tokio::spawn(schedule::keep(host.clone(), schedules.clone(), beats.schedule));
 
-  // Every event stream ended as the host stops, so the control socket's serving lets go of it.
-  let streaming = host.clone();
+  // The stop told everywhere it is waited for, and every event stream ended, so the control socket's serving lets
+  // go of it.
+  let stopping = host.clone();
 
   tokio::spawn(async move {
-    stopped().await;
-    streaming.placed.events.stop();
+    asked_to_stop.await;
+    stopping.drain.stop();
+    stopping.placed.events.stop();
   });
 
+  // Each face stops listening at the stop and ends once it has answered the requests it holds.
+  let stop = || {
+    let host = host.clone();
+
+    async move { host.drain.stopping().await }
+  };
   let sessions = axum::serve(tcp, server::tools(records.clone(), host.clone(), data_root.to_path_buf()))
-    .with_graceful_shutdown(stopped());
+    .with_graceful_shutdown(stop());
   let screens = async {
     match console {
       Some((listener, screen)) => {
         let face = server::console(records.clone(), host.clone(), schedules.clone(), screen);
 
-        axum::serve(listener, face).with_graceful_shutdown(stopped()).await
+        axum::serve(listener, face).with_graceful_shutdown(stop()).await
       }
       None => Ok(()),
     }
   };
   let issuers =
     axum::serve(unix, server::control(records.clone(), host.clone(), schedules.clone(), issuer))
-      .with_graceful_shutdown(stopped());
+      .with_graceful_shutdown(stop());
   let (served, controlled, shown) = tokio::join!(sessions, issuers, screens);
+
+  // What the faces do not hold is waited on too, however long it takes: an asynchronous call, a scheduled one.
+  host.drain.emptied().await;
+  end_what_is_kept(&records, &host).await;
+
   let _ = fs::remove_file(control);
 
   match served.and(controlled).and(shown) {

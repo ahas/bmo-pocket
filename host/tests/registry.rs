@@ -114,6 +114,7 @@ impl Scratch {
     Arc::new(Host {
       placed: Arc::new(placed),
       pass_env: Vec::new(),
+      drain: mcp_host::drain::Drain::default(),
     })
   }
 
@@ -460,6 +461,7 @@ async fn a_registry_tool_displaced_by_a_name_collision_is_served_again_once_the_
   let host = Arc::new(Host {
     placed: Arc::new(placed),
     pass_env: Vec::new(),
+    drain: mcp_host::drain::Drain::default(),
   });
   let session = scratch.session(&[]);
   let pointer = registry.get("echo").unwrap();

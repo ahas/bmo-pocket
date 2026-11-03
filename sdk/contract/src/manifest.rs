@@ -173,6 +173,10 @@ pub struct Entry {
   /// Read and given no effect: every call waits for its own answer or its caller going away.
   #[serde(default)]
   pub unbounded: bool,
+  /// A call of it may wait on what stops the host, so it does not hold the host's stop: it is ended as the stop
+  /// begins.
+  #[serde(default)]
+  pub ends_at_stop: bool,
   /// For the system alone: never shown to a session or callable by one.
   #[serde(default)]
   pub system: bool,

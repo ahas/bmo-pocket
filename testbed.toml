@@ -81,10 +81,10 @@ units = ["deploy/*.service"]
 # Answers 0 once the host answers on its control socket, under the issuer token the host writes
 # under the data root at its first start.
 health = 'curl -sf -H "Authorization: Bearer $(cat "${BMO_DATA_DIR:-$HOME/.local/share/bmo/data}/tool-host/issuer-token")" --unix-socket "${XDG_RUNTIME_DIR:-/tmp}/bmo/mcp-host.sock" http://localhost/health'
-# Answers 0 where no chat turn, research run or job's run stands under way that the restart would cut: the
-# receiver's own `quiet` command, by its deployed path, with every job's run counted, since this restart can cut a
-# worker's tool calls mid-turn; waited on before the flip (the testbed's docs/deploy.md).
-quiet = "~/.local/share/bmo-receiver/deploy/bin/bmo-receiver --config ~/.local/share/bmo-receiver/deploy/settings.toml quiet --with-jobs"
+# Answers 0 where the running host holds no call a stop would wait on, so the restart stands a few seconds; a job
+# between two calls holds nothing. Run from the release and waited on before the flip (docs/mcp-host.md, 「The host's
+# stop」; the testbed's docs/deploy.md).
+quiet = "bin/bmo-pocket quiet"
 
 # The CLI, linked into the folder holding `bmo`, the first folder `bmo` looks for unit commands in, so `bmo
 # pocket <verb>` and the `tool` nouns are served wherever `bmo` is (docs/api.md, "The CLI"). The link names this

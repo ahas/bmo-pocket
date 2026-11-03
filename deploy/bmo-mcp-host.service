@@ -16,8 +16,10 @@ Environment=PATH=%h/.local/bin:%h/.bun/bin:%h/.cargo/bin:/usr/local/sbin:/usr/lo
 ExecStart=%h/.local/share/bmo-pocket/deploy/bin/mcp-host serve --data-root %h/.local/share/bmo/data --tools %h/.local/share/bmo-pocket/deploy/tools
 Restart=always
 RestartSec=2
-# A stop waits for the host to end: on SIGTERM it ends its event streams and answers the requests it holds, then
-# exits, so no span of systemd's ends a call still being answered.
+# A stop reaches the host alone and waits for it to end: on SIGTERM it takes no new call, lets every call in hand
+# run to its end and exits, so neither a signal nor a span of systemd's ends a call (docs/mcp-host.md, 「The host's
+# stop」). What is left in the unit once it has exited is killed.
+KillMode=mixed
 TimeoutStopSec=infinity
 
 [Install]

@@ -119,6 +119,7 @@ impl Fixture {
     let host = Arc::new(Host {
       placed: Arc::new(placed),
       pass_env: Vec::new(),
+      drain: mcp_host::drain::Drain::default(),
     });
 
     Self { dir, sockets, host }

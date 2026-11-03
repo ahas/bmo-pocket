@@ -108,6 +108,22 @@ pub async fn run(
   }
 }
 
+/// Whether a stop of the running host would wait on anything: true where it would not, with the line that says
+/// so. A host that cannot be read holds nothing it could be told of, so it is answered true, saying why.
+pub async fn quiet(data_root: &Path, issuer_token_file: Option<&Path>) -> (bool, String) {
+  let read = match issuer_token(data_root, issuer_token_file) {
+    Ok(issuer) => Pocket::standing(issuer).health().await.map_err(|why| why.to_string()),
+    Err(why) => Err(why),
+  };
+
+  match read.map(|health| health.calls_in_hand) {
+    Ok(0) => (true, "no tool call in hand".to_owned()),
+    Ok(1) => (false, "1 tool call in hand".to_owned()),
+    Ok(calls) => (false, format!("{calls} tool calls in hand")),
+    Err(why) => (true, format!("the tool host could not be read, so no call is waited on: {why}")),
+  }
+}
+
 // The issuer token the host keeps, read where it stands.
 fn issuer_token(data_root: &Path, named: Option<&Path>) -> Result<String, String> {
   let file = named.map_or_else(|| data_root.join("tool-host/issuer-token"), Path::to_path_buf);

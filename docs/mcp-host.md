@@ -139,6 +139,41 @@ flowchart TD
 - **A placed tool that fails a read or a call** fails that one alone, named in its answer: the next starts its
   executable afresh.
 
+## The host's stop
+
+- **Asked to stop, by `SIGTERM` or `SIGINT`, the host takes no new call and ends none it holds.** Every listening
+  socket closes at once, so a new request on any face is refused at its connection, and no schedule is called from
+  then on. Every call already taken runs to its end, however long that takes, with no clock on the wait:
+  - a request in flight on the tools face or the control socket, answered before its connection closes;
+  - a placed tool's process, a server tool's call and a stdio or streamable HTTP external server's call, its server
+    and its connection standing until the call has answered;
+  - a call a call in hand makes through its call-back socket, which stands as long as that call does;
+  - an asynchronous call, as far as its answer kept, its wake asked and its end kept;
+  - a scheduled call.
+- **Idle connections and the event streams end at once,** so they hold nothing back.
+- **After the last call the host ends what it keeps, then exits.** Each record's servers and shared helpers end as
+  they do at a revocation, a helper asked by `SIGTERM` and waited on, and each external server's connection is
+  ended. The records stay on disk, so the host started next serves the same tokens.
+- **The unit's stop reaches the host alone:** `KillMode=mixed` sends `SIGTERM` to the main process and no other, and
+  no stop timeout stands, so a call's process never hears of the stop. Whatever is left in the unit's control group
+  once the host has exited is killed.
+- **A call that waits on what stops the host declares it.** Such a call would wait on its own host's stop, which
+  would wait on it in turn. An entry's `ends_at_stop` (`docs/api.md`, 「The manifest」) says its calls do not hold
+  the stop: at the first moment of the stop the call's process group is ended and the call answers as failed,
+  saying the host stopped. What the call started outside its group goes on. Nothing else is ended by a stop.
+- **`callsInHand` on `GET /health` says what a stop would wait on:** the tool processes and external servers the
+  host is asking now, each call, claim and resource read one, a call through a call-back socket counted beside the
+  call that made it, and a call of an `ends_at_stop` entry left out.
+- **A deployment waits for no call in hand before its flip.** `bmo-pocket quiet` (`docs/api.md`, 「The CLI」) answers
+  0 only where `callsInHand` is 0, so a long call holds the flip and never every session's tools: the restart that
+  follows stands a few seconds. A session's turn, a job and a harness between two calls hold nothing, since no
+  protocol session stands to lose. A call that starts between that answer and the stop is drained like any other,
+  and a deployment asked to go on regardless cuts nothing either: it leaves new calls refused until the longest
+  call in hand has ended. A host that does not answer holds nothing, so `quiet` answers 0 for it and says why.
+- **A harness that calls during the restart** has its connection refused and retries as its MCP client already does
+  for a server not answering. A call in hand reaches other tools through its call-back socket; the control socket
+  refuses it as it refuses anyone until the next host is up.
+
 ## Placed tools
 
 ### The catalogue
@@ -240,8 +275,9 @@ flowchart TD
   which says it listens there, and hands that socket to every call of the record naming the helper; what it writes
   after goes to the host's log.
 - **Ended with the record:** asked to end by `SIGTERM` and waited on until it has closed what it holds and ended,
-  then whatever it left standing in its process group ended and its socket taken away. It ends so at the record's revocation, its lapse, or the host stopping,
-  and a helper ends with the host by the parent-death signal where the host itself is gone.
+  then whatever it left standing in its process group ended and its socket taken away. It ends so at the record's
+  revocation, its lapse, or the host's stop once its last call has ended (「The host's stop」), and a helper ends
+  with the host by the parent-death signal where the host itself is gone.
 - **A helper placed anew serves the records started after it;** a record's helper already running goes on as it
   is.
 
@@ -262,8 +298,10 @@ flowchart TD
   record. So no record's variables, labels, call-back socket or shared helpers reach the server, and it holds
   nothing of one record for that record alone.
   - A stdio server is started in the registration's placed folder, in its own process group, with a clean
-    environment: the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`, and the registration's `env` laid over them. It
-    ends with the host by the parent-death signal, and what it writes on standard error goes to the host's log.
+    environment: the host's `PATH`, `HOME` and `XDG_RUNTIME_DIR`, and the registration's `env` laid over them. Its
+    connection is ended at the host's stop once the last call has ended (「The host's stop」), it ends with the host
+    by the parent-death signal where the host itself is gone, and what it writes on standard error goes to the
+    host's log.
   - A streamable HTTP server is sent the registration's headers and, where it names a token file, the file's text
     as its bearer token, read afresh at each connection.
 - **Its tools join the catalogue once listed.** A listing that differs from the last one has the catalogue read
@@ -347,7 +385,7 @@ flowchart TD
   at its pattern's first time after that beat, and one whose entry has left the catalogue is dropped.
 - **A schedule due is called once,** at the first beat at or past its time, and is then due at its pattern's next
   time after that beat. So a beat that comes late calls it once, never once per time it passed, and a time that
-  passed while the host was not running is not made up.
+  passed while the host was not running or stopping is not made up.
 - **One call of a schedule runs at a time:** a time that comes while its last call still runs is passed over.
 - **A scheduled call is dispatched as `POST /tool-calls` dispatches one,** through the schema, capability and grant
   checks, under a record of its own made for that call: `holderName` `schedule`, the entry's namespace, its
@@ -387,7 +425,8 @@ flowchart TD
   first of:
   - the record being revoked;
   - the record's `expiresAt` passing, which the host's sweep looks for, dropping the record;
-  - the host stopping, every process it started ending with it by the parent-death signal.
+  - the host's stop, once its last call has ended (「The host's stop」), and the parent-death signal where the host
+    itself is gone, every process it started ending with it.
 
 ## Grants
 
@@ -475,5 +514,11 @@ flowchart TD
 - **The harness plugin:** `bmo-pocket mcp`, started as a harness starts it with a session's token, lists the four
   fixed tools and the hosted tools of the session's namespaces exactly, leaves a colliding name out, and calls each
   through the control socket.
+- **The host's stop:** a host asked to stop refuses a new connection on the tools face and the control socket and
+  stays running while a placed tool's call, a call of a stdio external server and an asynchronous call are in hand;
+  each then finishes, the first two answered to their callers and the third's end kept; a call of an
+  `ends_at_stop` entry is ended at the stop and answers that the host stopped, holding neither the stop nor
+  `callsInHand`; a shared helper is asked to end by `SIGTERM`; and the process exits 0 after the last.
+  `bmo-pocket quiet` ends 1 naming how many calls stand in hand, and 0 where none does or no host answers.
 - **The harness's header:** an installed Claude Code CLI, named by `BMO_LIVE_CLAUDE`, connects to the host with the
   header read from `BMO_MCP_TOKEN` and fails with a wrong one; the suite names none and skips it.

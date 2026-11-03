@@ -289,6 +289,7 @@ pub fn entries(
       grant: None,
       timeout: None,
       unbounded: false,
+      ends_at_stop: false,
       system: false,
       bundle: BTreeMap::new(),
       listing: None,
@@ -600,6 +601,15 @@ impl Link {
 
     self.listing_now.store(false, Ordering::SeqCst);
     moved
+  }
+
+  /// Its connection ended where one stands, as the host stops.
+  pub async fn end(&self) {
+    let held = self.connection.lock().await.take();
+
+    if let Some(connection) = held {
+      connection.end().await;
+    }
   }
 
   /// One `tools/call` of the server's tool of this name: its result as the server answered it. A

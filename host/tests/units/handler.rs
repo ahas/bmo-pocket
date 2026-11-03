@@ -54,6 +54,7 @@ fn a_tool_is_added_as_one_folder_and_listed_by_name_where_a_record_shows_it() {
   let host = Host {
     placed: Arc::new(placed),
     pass_env: Vec::new(),
+    drain: mcp_host::drain::Drain::default(),
   };
   let session = |namespaces: &[&str], capabilities: &[&str], shown: &[&str]| -> Session {
     serde_json::from_value(json!({

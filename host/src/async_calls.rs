@@ -142,8 +142,10 @@ impl AsyncCalls {
     let arguments = Value::Object(asked.arguments);
     let under = id.clone();
     let kept = place.clone();
+    let finishing = host.drain.finishing();
 
     tokio::spawn(async move {
+      let _finishing = finishing;
       let started = Instant::now();
       let run = host.attempt(&found, &session, arguments).await;
       let (answer, state, summary) = match run {

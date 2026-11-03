@@ -62,3 +62,20 @@ fn a_scheduled_record_holds_its_entrys_grant() {
   assert!(record.holds(&["notes.write"]));
   assert_eq!(record.variables["BMO_SCHEDULED_AT"], "5");
 }
+
+// "no schedule is called from then on" (docs/mcp-host.md, 「The host's stop」): the beats end as the stop is asked for,
+// so the wait for them ends though their beat is far off, and nothing was called.
+#[tokio::test]
+async fn the_schedules_are_kept_no_longer_once_the_host_is_stopping() {
+  let fixture = Fixture::new();
+
+  fixture.host.drain.stop();
+  schedule::keep(
+    fixture.host.clone(),
+    Arc::new(Schedules::default()),
+    std::time::Duration::from_secs(3600),
+  )
+  .await;
+
+  assert!(fixture.handed().is_empty());
+}

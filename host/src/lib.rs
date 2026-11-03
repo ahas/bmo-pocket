@@ -4,6 +4,7 @@
 pub mod async_calls;
 pub mod command;
 pub mod console;
+pub mod drain;
 pub mod error;
 pub mod events;
 pub mod external;

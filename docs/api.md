@@ -215,11 +215,9 @@ HTTP on a loopback port of the face's own.
   screen, said in its log, and the face answers its manifest 404, which a console reads as a unit with no screen.
 - **A deployment builds the bundle before the flip** into the release it deploys (`testbed.toml`), so a release's
   host serves the screen of its own commit.
-- **A deployment waits for quiet before its flip** (`testbed.toml`, `quiet`): the receiver's `quiet`
-  command, run by its deployed path with `--with-jobs`, says whether a chat turn, a research run or a job's run,
-  since this restart can cut a worker's tool calls mid-turn, stands under way that the
-  restart of the tool host would cut, and the testbed waits on it before it flips (the receiver's
-  `docs/boundary-api.md`, 「The service and its commands」; the testbed's `docs/deploy.md`).
+- **A deployment waits for no call in hand before its flip** (`testbed.toml`, `quiet`): `bmo-pocket quiet`, run from
+  the release, answers 0 where a stop of the host would wait on nothing, and the testbed waits on it before it
+  flips (`docs/mcp-host.md`, 「The host's stop」; the testbed's `docs/deploy.md`).
 - **What the screen shows:** the namespaces and their tools, each tool with its description, manual, input and
   output schemas, capabilities, grant, hints and how the toolbook reaches it; the schedules and where each
   stands; the tool sessions standing; and the external servers, each with where it is reached and whether its
@@ -245,7 +243,7 @@ HTTP on a loopback port of the face's own.
 
 | Route | Token | Answer |
 |---|---|---|
-| `GET /health` | either | 200 `{ready, reason, version}`: `ready` true and `reason` null once the catalogue is read, and `version` the repository's |
+| `GET /health` | either | 200 `{ready, reason, version, callsInHand}`: `ready` true and `reason` null once the catalogue is read, `version` the repository's, and `callsInHand` how many calls a stop of the host would wait on (`docs/mcp-host.md`, 「The host's stop」) |
 
 ### Discipline
 
@@ -601,6 +599,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | `timeout` | integer | Read and given no effect |
 | `unbounded` | boolean | Read and given no effect: every call waits for its own answer |
 | `system` | boolean | For the system alone: shown to no session, reached through the call-back socket and `POST /tool-calls` |
+| `ends_at_stop` | boolean | A call of it may wait on what stops the host, so it does not hold the host's stop: it is ended as the stop begins and answers as failed (`docs/mcp-host.md`, 「The host's stop」) |
 
 - **`[entry.bundle.<capability>]`:** the narrower form a record holding that capability is shown the entry in:
   `shown`, the arguments it shows, and `required`, those it requires.
@@ -706,6 +705,10 @@ name is refused, naming it.
   standard output and why it refused on standard error, and ends 0 where it did what was asked, 1 where it refused,
   and 2 where its words do not read. The `tool` nouns end the same way: 0 where the host answered, 1 where it
   refused or the tool answered that it failed, and 2 where their words do not read.
+- **`bmo-pocket quiet` says whether a stop of the host would wait on anything,** for a deployment's wait before its
+  flip (`docs/mcp-host.md`, 「The host's stop」). It reads `GET /health` with the issuer token and writes one line on
+  standard output: it ends 0 where `callsInHand` is 0, and 1 naming how many stand in hand otherwise. A host it
+  cannot read holds nothing it could be told of, so it ends 0 there as well, saying why.
 - **The `tool` nouns read the running host on the control socket** (「The control socket」), at the path
   `BMO_MCP_HOST_SOCKET` names or the default, with the issuer token kept in the file `--issuer-token-file` names,
   else `tool-host/issuer-token` under the data root. Where that file does not stand, the host has not started, and

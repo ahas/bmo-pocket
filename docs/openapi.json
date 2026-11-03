@@ -222,8 +222,13 @@
         "type": "object"
       },
       "Health": {
-        "description": "What `GET /health` answers: whether the host is ready, why not where it is not, and its version.",
+        "description": "What `GET /health` answers: whether the host is ready, why not where it is not, its version, and how many calls\na stop of the host would wait on.",
         "properties": {
+          "callsInHand": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "ready": {
             "type": "boolean"
           },
@@ -240,7 +245,8 @@
         "required": [
           "ready",
           "reason",
-          "version"
+          "version",
+          "callsInHand"
         ],
         "type": "object"
       },
