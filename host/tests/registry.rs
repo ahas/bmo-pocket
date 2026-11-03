@@ -20,7 +20,7 @@ use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
 use mcp_host::handler::Host;
 use mcp_host::install::{self, Put};
-use mcp_host::placed::Placed;
+use mcp_host::placed::{PLACED, Placed};
 use mcp_host::records::Records;
 use mcp_host::registry::Registry;
 use mcp_host::server;
@@ -92,6 +92,17 @@ impl Scratch {
   // An echo tool's source folder under its own name, answering with `mark`.
   fn echo(&self, name: &str, entry: &str, mark: &str) -> PathBuf {
     self.source(name, &manifest(name, entry, "", ""), mark)
+  }
+
+  // An echo tool placed in a tools root's folder, its built folder under `.placed`, answering with `mark`.
+  fn placed_in(&self, tools: &Path, folder: &str, manifest: &str, mark: &str) {
+    let placed = tools.join(folder).join(PLACED);
+
+    fs::create_dir_all(&placed).unwrap();
+    fs::write(placed.join("tool.toml"), manifest).unwrap();
+    fs::write(placed.join("echo.json"), ECHO_SCHEMA).unwrap();
+    fs::write(placed.join("echo.py"), ECHO_SCRIPT).unwrap();
+    fs::write(placed.join("mark.txt"), mark).unwrap();
   }
 
   // A host serving the registry alone, its catalogue read once.
@@ -427,6 +438,47 @@ async fn an_upgrade_moves_the_pointer_onto_a_new_version_and_a_take_takes_the_to
 
   assert!(host.find(&session, "fixture", "echo_back").is_none());
   assert!(!second.dir.exists());
+}
+
+// A registry tool a tools-root folder displaces keeps its version while its pointer names it, and is served again
+// once the colliding folder goes (docs/registry.md, 「Versions」).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_registry_tool_displaced_by_a_name_collision_is_served_again_once_the_tools_root_folder_goes() {
+  let scratch = Scratch::new();
+  let registry = scratch.registry();
+  let folder = scratch.echo("echo", "echo_back", "registry");
+
+  put(&registry, &put_of(folder.to_string_lossy())).unwrap();
+
+  let root = scratch.dir.path().join("tools");
+  fs::create_dir_all(&root).unwrap();
+
+  let placed =
+    Placed::new(Some(root.clone()), scratch.sockets.path().to_owned()).registered(registry.clone());
+  placed.reread();
+
+  let host = Arc::new(Host {
+    placed: Arc::new(placed),
+    pass_env: Vec::new(),
+  });
+  let session = scratch.session(&[]);
+  let pointer = registry.get("echo").unwrap();
+
+  assert_eq!(called(&host, &session, "echo_back", json!({ "text": "a" })).await, "registry:a");
+
+  // A folder of the tools root takes the full name, and the registry's tool is left out of the catalogue.
+  scratch.placed_in(&root, "echo", &manifest("echo", "echo_back", "", ""), "root");
+  host.placed.reread();
+
+  assert_eq!(called(&host, &session, "echo_back", json!({ "text": "a" })).await, "root:a");
+  assert!(pointer.dir.exists(), "a displaced version stays while its pointer names it");
+
+  // The colliding folder goes, and the pointer's version is served again.
+  fs::remove_dir_all(root.join("echo")).unwrap();
+  host.placed.reread();
+
+  assert_eq!(called(&host, &session, "echo_back", json!({ "text": "a" })).await, "registry:a");
+  assert!(pointer.dir.exists());
 }
 
 #[tokio::test]

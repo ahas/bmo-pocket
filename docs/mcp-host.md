@@ -160,8 +160,9 @@ flowchart TD
   path now lies elsewhere — a deploy tree's link flipped onto a new release — the host watches the new folder in
   place of the old and reads it.
 - **A call keeps the tool it started with.** A call holds the placed tool it was dispatched to until it answers,
-  and a placed folder that has left the catalogue is taken away only once no call holds it, so a tool replaced or
-  taken away mid-call never breaks the call (`docs/registry.md`, 「Versions」).
+  and a registry version is taken away only once no pointer names it and no call, server or shared helper started
+  from it holds it, so a tool replaced, taken away or displaced by a name collision mid-call never breaks the call
+  (`docs/registry.md`, 「Versions」).
 - **A manifest that does not read leaves its tool out,** said in the host's log with why, and every other tool goes
   on being served. It does not read where:
   - it is not a manifest, or names a field the manifest does not have;

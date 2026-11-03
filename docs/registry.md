@@ -28,11 +28,13 @@
 
 - **Each put places a version of its own,** named by the moment it was put and a random suffix, and never writes
   into a version already placed. An upgrade is a put that places a new version and moves the pointer onto it.
-- **A version stays as long as anything holds it.** The host takes a version folder away only once it has left
-  the catalogue and no call, server or shared helper started from it still runs, which it looks for each time it
-  reads the catalogue, each time a call ends and on its sweep. So a take or an upgrade never breaks a call in
-  flight: the call goes on in the version it started in, and the next call is answered by the catalogue as it
-  then stands.
+- **A version stays while a pointer names it and while anything holds it.** The host takes a version folder away
+  only once no pointer names it and no call, server or shared helper started from it still runs, which it looks
+  for each time it reads the catalogue, each time a call ends and on its sweep. A take or an upgrade moves the
+  pointer off a version and it is taken away that way. A version a name collision with a tools-root tool displaces
+  from the catalogue keeps its pointer and its folder, and is served again once the colliding folder goes. So a
+  take, an upgrade or a displacement never breaks a call in flight: the call goes on in the version it started in,
+  and the next call is answered by the catalogue as it then stands.
 - **A record's server or shared helper already running goes on in the version it started in** until the record
   ends, as a helper placed anew serves the records started after it.
 - **A version no pointer names when the host starts** is one no call can hold, and is taken away then, under the

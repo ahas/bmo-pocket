@@ -1,7 +1,7 @@
 //! The placed tools' catalogue (docs/mcp-host.md, 「The catalogue」): read from the tools root — each folder's
 //! `.placed/` alone — and from the registry's pointers (docs/registry.md), and read again whole once the changes
 //! under either settle, so a tool placed, replaced or taken away is served from the next call with nothing
-//! restarted. A registered version that has left the catalogue is taken away once nothing holds it. An external
+//! restarted. A registered version is taken away once no pointer names it and nothing holds it. An external
 //! server's registration in the registry adds the tools its server last listed (docs/mcp-host.md, 「External
 //! servers」). Each reading after the first tells the event stream which tools it placed and removed (docs/api.md,
 //! 「Events」).
@@ -395,7 +395,8 @@ impl Placed {
   }
 
   /// The tools root and the registry read again whole and put in place at once, each tool left out said in the
-  /// log; every registered version that left the catalogue is retired, and taken away once nothing holds it.
+  /// log; every registered version no pointer names that left the catalogue is retired, and taken away once
+  /// nothing holds it.
   pub fn reread(&self) {
     if self.dir.is_none() && self.registry.is_none() {
       return;
@@ -433,7 +434,7 @@ impl Placed {
       .tools
       .iter()
       .chain(old.helpers.values())
-      .filter(|tool| !kept.contains(&tool.dir) && self.is_version(&tool.dir))
+      .filter(|tool| !kept.contains(&tool.dir) && self.is_version(&tool.dir) && !self.named(&tool.dir))
       .cloned()
       .collect();
 
@@ -469,14 +470,25 @@ impl Placed {
     self.registry.as_ref().is_some_and(|registry| dir.starts_with(registry.versions()))
   }
 
-  /// Every retired version nothing holds any longer taken away: no call, server or helper started from it runs.
+  // Whether a registry pointer names the folder: a version a name collision displaced keeps its pointer, so it
+  // stays and is served again once the colliding folder goes.
+  fn named(&self, dir: &Path) -> bool {
+    self
+      .registry
+      .as_ref()
+      .is_some_and(|registry| registry.entries().0.iter().any(|pointer| pointer.dir == dir))
+  }
+
+  /// Every retired version no pointer names and nothing holds any longer taken away: no call, server or helper
+  /// started from it runs.
   pub fn sweep(&self) {
     let serving = self.current().dirs();
     let mut retired = self.retired.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 
     retired.retain(|tool| {
-      // A folder the catalogue serves again is no longer retired, whatever held it.
-      if serving.contains(&tool.dir) {
+      // A folder the catalogue serves again, or a pointer still names, is no longer retired: only a version no
+      // pointer names is the host's to take away.
+      if serving.contains(&tool.dir) || self.named(&tool.dir) {
         return false;
       }
 
