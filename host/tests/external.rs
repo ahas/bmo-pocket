@@ -350,7 +350,7 @@ fn a_registration_is_refused_naming_what_failed_and_nothing_is_placed() {
 
   fs::write(
     &both,
-    format!("{}\n[http]\nurl = \"http://127.0.0.1:1/mcp\"\n", fs::read_to_string(&both).unwrap()),
+    format!("{}\n[http]\nurl = \"http://[::1]:1/mcp\"\n", fs::read_to_string(&both).unwrap()),
   )
   .unwrap();
   assert!(

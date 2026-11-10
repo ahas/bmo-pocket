@@ -31,7 +31,7 @@ fn a_registration_reads_with_act_by_default_and_names_what_does_not_read() {
   let refused = |text: &str| Registration::parse(text).unwrap_err();
 
   assert!(refused(&STDIO.replace("[stdio]\ncommand = [\"stand-in\"]", "")).contains("neither"));
-  assert!(refused(&format!("{STDIO}\n[http]\nurl = \"http://127.0.0.1:1/mcp\"\n")).contains("both"));
+  assert!(refused(&format!("{STDIO}\n[http]\nurl = \"http://[::1]:1/mcp\"\n")).contains("both"));
   assert!(refused(&STDIO.replace("[\"stand-in\"]", "[]")).contains("names nothing to run"));
   assert!(refused(&STDIO.replace("\"outer\"", "\"toolbook\"")).contains("no namespace's name"));
   assert!(refused(&STDIO.replace("[\"outer.use\"]", "[]")).contains("asks for no capability"));
