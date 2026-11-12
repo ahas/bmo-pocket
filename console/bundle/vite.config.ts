@@ -4,26 +4,25 @@ import { fileURLToPath } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
 import vue from "@vitejs/plugin-vue";
+import { consoleBundle } from "bmo-ui/bundle/console-bundle.js";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { defineConfig } from "vite";
 
 import type { Plugin } from "vite";
 
-// The tool host's screen as the browser module a console loads (docs/api.md, 「The console face」). What a
-// console shares — `vue`, `vue-router`, `vue-i18n`, `nuxt/app`, `@nuxt/ui` and bmo-ui — stays an import of the
-// package's own path, which the console resolves to its copy; everything else is carried in the module. The
-// names Nuxt would import and register by itself are read from the declarations `nuxi prepare` writes, so the
-// module takes each from the package a console shares. The build writes three files, the module, its
-// stylesheet and its words, into the folder `BMO_POCKET_CONSOLE_OUT` names, which the host serves.
+// The tool host's screen as the browser module a console loads (docs/api.md, 「The bundle」), built with bmo-ui's
+// bundle build: what a console shares stays an import of the package's own path, which the console resolves to
+// its copy, everything else is carried in the module, and the layer the bundle is built on is written beside it.
+// The names Nuxt would import and register by itself are read from the declarations `nuxi prepare` writes, so
+// the module takes each from the package a console shares. The build writes the module, its stylesheet, its
+// words and the layer into the folder `BMO_POCKET_CONSOLE_OUT` names, which the host serves.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const generated = join(root, ".nuxt");
 const packages = join(root, "node_modules");
 const out = process.env.BMO_POCKET_CONSOLE_OUT ?? join(root, ".output", "console");
-
-const SHARED = /^(?:vue|vue-router|vue-i18n|nuxt\/app|@nuxt\/ui(?:\/.*)?|bmo-ui\/.+)$/;
 
 const PAGE_MACRO = join(here, "page-meta.ts");
 
@@ -180,6 +179,7 @@ export default defineConfig({
   root,
   logLevel: "warn",
   plugins: [
+    consoleBundle(),
     sharedOnly(),
     vue({ isProduction: true }),
     AutoImport({
@@ -223,7 +223,6 @@ export default defineConfig({
       cssFileName: "style"
     },
     rollupOptions: {
-      external: (id) => SHARED.test(id),
       output: { codeSplitting: false }
     }
   }

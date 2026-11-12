@@ -1,12 +1,13 @@
 <template>
   <!-- The catalogue (docs/api.md, 「Namespaces」 and 「Tools」; docs/mcp-host.md, 「How the screen reads」): the
        namespaces beside the tools of the one chosen, and the tool opened beside them, in as many columns as the
-       screen's own box has room for: three side by side, the open tool in the tool list's place, or each alone. -->
-  <div ref="box" class="flex min-h-0 flex-1" :class="room === 'one' ? 'flex-col' : 'flex-row'" :data-room="room">
+       box under the toolbar has room for: three side by side, the open tool in the tool list's place, or each
+       alone. The way back from a column standing in another's place is the toolbar's. -->
+  <div class="flex min-h-0 flex-1" :class="props.room === 'one' ? 'flex-col' : 'flex-row'" :data-room="props.room">
     <nav
-      v-if="room !== 'one' || props.place.namespace === null"
+      v-if="props.room !== 'one' || props.place.namespace === null"
       class="flex min-h-0 flex-col overflow-y-auto border-default"
-      :class="room === 'one' ? '' : 'w-56 shrink-0 border-e'"
+      :class="props.room === 'one' ? '' : 'w-56 shrink-0 border-e'"
       :aria-label="t('pocket.label.namespaces')"
     >
       <PocketState :loading="namespaceList.loading.value" :failed="namespaceList.failed.value" :empty="namespaceList.items.value.length === 0" :empty-text="t('pocket.status.no_namespaces')">
@@ -27,12 +28,9 @@
     <section
       v-if="listShown"
       class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto"
-      :class="room === 'three' && openTool !== null ? 'min-w-80' : ''"
+      :class="props.room === 'three' && openTool !== null ? 'min-w-80' : ''"
       :aria-label="t('pocket.label.tools')"
     >
-      <div v-if="room === 'one'" class="border-b border-default px-2 py-1">
-        <UButton icon="i-material-symbols-arrow-back" color="neutral" variant="ghost" :label="t('pocket.label.namespaces')" @click="emit('go', { namespace: null, tool: null })" />
-      </div>
       <p v-if="props.place.namespace === null" class="p-6 text-center text-sm text-muted">{{ t("pocket.status.choose_namespace") }}</p>
       <PocketState v-else :loading="toolList.loading.value" :failed="toolList.failed.value" :empty="shownTools.length === 0" :empty-text="t(props.place.q === '' ? 'pocket.status.no_tools' : 'pocket.status.no_match')">
         <button
@@ -58,32 +56,29 @@
     <aside
       v-if="openTool !== null"
       class="flex min-h-0 min-w-0 flex-col overflow-y-auto border-default"
-      :class="room === 'three' ? 'w-[28rem] shrink-0 border-s' : 'flex-1'"
+      :class="props.room === 'three' ? 'w-[28rem] shrink-0 border-s' : 'flex-1'"
       :aria-label="t('pocket.label.tool')"
     >
-      <!-- Where the open tool stands in the tool list's place, the way back to the list stands over it. -->
-      <div v-if="room !== 'three'" class="border-b border-default px-2 py-1">
-        <UButton icon="i-material-symbols-arrow-back" color="neutral" variant="ghost" :label="t('pocket.label.tools')" @click="emit('go', { tool: null })" />
-      </div>
-      <PocketTool :tool="openTool" @close="emit('go', { tool: null })" />
+      <!-- Beside the tool list the open tool closes itself; in the list's place the toolbar's way back leads to it. -->
+      <PocketTool :tool="openTool" :closable="props.room === 'three'" @close="emit('go', { tool: null })" />
     </aside>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, useTemplateRef, watch } from "vue";
+import { computed, onMounted, watch } from "vue";
 
 import * as api from "../domain/pocket-api";
 import { firstSentence, matches } from "../domain/pocket-place";
 import { reading } from "../domain/pocket-read";
-import { useRoom } from "../domain/pocket-room";
 import PocketState from "./PocketState.vue";
 import PocketTool from "./PocketTool.vue";
 
 import type { Place } from "../domain/pocket-place";
+import type { CatalogueRoom } from "../domain/pocket-room";
 
-const props = defineProps<{ place: Place; changes: number }>();
-const emit = defineEmits<{ go: [place: Partial<Place>] }>();
+const props = defineProps<{ place: Place; room: CatalogueRoom; changes: number }>();
+const emit = defineEmits<{ go: [place: Partial<Place>]; read: [] }>();
 
 const { t } = useI18n();
 
@@ -95,19 +90,21 @@ const shownTools = computed(() =>
 );
 const openTool = computed(() => toolList.items.value.find((tool) => tool.name === props.place.tool) ?? null);
 
-// How many columns the screen's own box holds, and whether the tool list stands: beside the open tool only where
+// Whether the tool list stands in the columns the box under the toolbar holds: beside the open tool only where
 // three fit, and alone at a phone's width only once a namespace is chosen.
-const room = useRoom(useTemplateRef<HTMLElement>("box"));
 const listShown = computed(() => {
-  if (openTool.value !== null && room.value !== "three") return false;
+  if (openTool.value !== null && props.room !== "three") return false;
 
-  return room.value !== "one" || props.place.namespace !== null;
+  return props.room !== "one" || props.place.namespace !== null;
 });
 
-onMounted(() => {
-  void namespaceList.read();
-  void toolList.read();
-});
+// Both lists read, said to the screen once both have landed.
+async function read(): Promise<void> {
+  await Promise.all([namespaceList.read(), toolList.read()]);
+  emit("read");
+}
+
+onMounted(() => void read());
 
 watch(
   () => props.place.namespace,
@@ -119,9 +116,6 @@ watch(
 
 watch(
   () => props.changes,
-  () => {
-    void namespaceList.read();
-    void toolList.read();
-  }
+  () => void read()
 );
 </script>

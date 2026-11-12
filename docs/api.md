@@ -197,6 +197,7 @@ HTTP on a loopback port of the face's own.
 | `icon` | `i-material-symbols-home-repair-service-outline` |
 | `screenPath` | `/pocket` |
 | `serviceName` | `pocket` |
+| `layer` | the version of bmo-ui the bundle was built on, as the bundle build wrote it in `layer.json` |
 | `bundle` | `/console-bundle/module.<digest>.js`, `<digest>` the first 16 hex digits of the module's SHA-256 |
 | `stylesheet` | `/console-bundle/style.<digest>.css`, the same of the stylesheet's; null where the build wrote none |
 | `words` | `/console-bundle/words` |
@@ -216,15 +217,16 @@ HTTP on a loopback port of the face's own.
 ### The bundle
 
 - **The screen's sources stand in `console/`,** the package `bmo-pocket-console`: a Nuxt layer on bmo-ui at the
-  version the console runs, vendored as that release's archive in `console/vendor/`, and calling the routes above
-  through the layer's relay under the service name `pocket`. It reads the types of what it reads from
-  `@bmo/pocket-client`.
-- **Its build, `bun run bundle`,** writes three files into the folder `BMO_POCKET_CONSOLE_OUT` names: `module.js`,
-  the ES module whose default export holds the screen's route under `/pocket`, every import of what a console
-  shares left unbundled; `style.css`, the utilities its sources use beyond the layer's own; and `words.json`, each
-  locale's words under `pocket`.
+  release the console runs, vendored as that release's packed file in `console/vendor/` as the layer's releases
+  ledger names its bytes, and calling the routes above through the layer's relay under the service name `pocket`.
+  It reads the types of what it reads from `@bmo/pocket-client`.
+- **Its build, `bun run bundle`,** is the layer's bundle build, and writes four files into the folder
+  `BMO_POCKET_CONSOLE_OUT` names: `module.js`, the ES module whose default export holds the screen's route under
+  `/pocket`, every import of what a console shares left unbundled; `style.css`, the utilities its sources use
+  beyond the layer's own; `words.json`, each locale's words under `pocket`; and `layer.json`, naming the layer's
+  version the bundle was built on.
 - **The host reads the bundle once, as it starts,** from the folder `--console-bundle` names, else `console-bundle/` in
-  the release its binary stands in, beside its `bin/`, a folder apart from the screen's sources in `console/`. A folder holding no module or no words leaves the host with no
+  the release its binary stands in, beside its `bin/`, a folder apart from the screen's sources in `console/`. A folder holding no module, no words or no layer leaves the host with no
   screen, said in its log, and the face answers its manifest 404, which a console reads as a unit with no screen.
 - **A deployment builds the bundle before the flip** into the release it deploys (`testbed.toml`), so a release's
   host serves the screen of its own commit.
@@ -510,7 +512,7 @@ What `GET /tool-sessions` answers of each session that stands, issued and neithe
 |---|---|---|
 | `BMO_MCP_HOST_PORT` | the host; a harness's configuration | The loopback port the tools face listens on |
 | `BMO_MCP_HOST_CONSOLE_PORT` | the host; a console's settings | The loopback port the console face listens on, where it is opened (「The console face」) |
-| `BMO_POCKET_CONSOLE_OUT` | the console bundle's build | The folder the bundle's three files are written into |
+| `BMO_POCKET_CONSOLE_OUT` | the console bundle's build | The folder the bundle's files are written into |
 | `BMO_DATA_DIR` | the host; `bmo-pocket` | The data root whose `tool-host/` folder holds the records, the registry and the issuer token |
 | `BMO_MCP_HOST_SOCKET` | the clients; the plugin; `bmo-pocket`'s `tool` nouns | Where the control socket stands, where it does not stand at the default path |
 | `BMO_POCKET_TOKEN` | `bmo-pocket mcp` | The tool session's token it calls with |

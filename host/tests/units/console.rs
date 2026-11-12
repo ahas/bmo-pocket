@@ -19,6 +19,7 @@ use crate::units::fixture::{CONSOLE, Fixture, ISSUER};
 const MODULE: &str = "export default { routes: [] };\n";
 const STYLESHEET: &str = ".pocket {}\n";
 const WORDS: &str = r#"{"en":{"pocket":{"title":{"screen":"Tools"}}}}"#;
+const LAYER: &str = "0.1.0-rev.1";
 
 // A bundle as the build of `console/` writes it, read from a folder of its own.
 fn bundle(stylesheet: bool) -> Bundle {
@@ -26,6 +27,7 @@ fn bundle(stylesheet: bool) -> Bundle {
 
   std::fs::write(folder.path().join("module.js"), MODULE).unwrap();
   std::fs::write(folder.path().join("words.json"), WORDS).unwrap();
+  std::fs::write(folder.path().join("layer.json"), format!(r#"{{"layer":"{LAYER}"}}"#)).unwrap();
 
   if stylesheet {
     std::fs::write(folder.path().join("style.css"), STYLESHEET).unwrap();
@@ -164,6 +166,7 @@ async fn the_manifest_names_the_bundles_files_by_their_digests_and_each_is_answe
       "icon": "i-material-symbols-home-repair-service-outline",
       "screenPath": "/pocket",
       "serviceName": "pocket",
+      "layer": LAYER,
       "bundle": manifest["bundle"],
       "stylesheet": manifest["stylesheet"],
       "words": "/console-bundle/words",
@@ -234,6 +237,11 @@ async fn a_host_holding_no_bundle_answers_no_manifest_and_still_reads() {
 
   assert!(Bundle::read(folder.path()).unwrap().is_none());
   std::fs::write(folder.path().join("module.js"), MODULE).unwrap();
+  std::fs::write(folder.path().join("words.json"), WORDS).unwrap();
+  assert!(Bundle::read(folder.path()).unwrap().is_none(), "a bundle naming no layer is none");
+  std::fs::write(folder.path().join("layer.json"), "{}").unwrap();
+  assert!(Bundle::read(folder.path()).is_err(), "a layer file naming no layer does not read");
+  std::fs::write(folder.path().join("layer.json"), format!(r#"{{"layer":"{LAYER}"}}"#)).unwrap();
   std::fs::write(folder.path().join("words.json"), "[]").unwrap();
   assert!(Bundle::read(folder.path()).is_err(), "words that are not one object do not read");
 }

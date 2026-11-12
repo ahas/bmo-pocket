@@ -11,7 +11,7 @@
         <PropertyList :rows="rowsOf(session)" />
         <!-- The labels the issuer gave the session, one row each, the name beside its value. -->
         <section v-if="labelRows(session).length > 0" class="flex flex-col gap-1">
-          <p class="text-xs font-medium text-muted">{{ t("pocket.field.labels") }}</p>
+          <p class="text-sm font-medium text-muted">{{ t("pocket.field.labels") }}</p>
           <PropertyList :rows="labelRows(session)" />
         </section>
       </article>
@@ -32,6 +32,7 @@ import type { StandingSession } from "../domain/pocket-api";
 import type { BarProperty } from "bmo-ui/app/domain/tabs";
 
 const props = defineProps<{ q: string; changes: number }>();
+const emit = defineEmits<{ read: [] }>();
 
 const { t } = useI18n();
 
@@ -59,6 +60,12 @@ function rowsOf(session: StandingSession): BarProperty[] {
   ];
 }
 
-onMounted(() => void list.read());
-watch(() => props.changes, () => void list.read());
+// Each read of the list, said to the screen once it has landed.
+async function read(): Promise<void> {
+  await list.read();
+  emit("read");
+}
+
+onMounted(() => void read());
+watch(() => props.changes, () => void read());
 </script>

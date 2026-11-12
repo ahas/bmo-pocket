@@ -383,13 +383,22 @@ flowchart TD
 
 - **It stands under the console's title bar where the console offers one** (bmo-web's `docs/web.md`, 「The title
   bar」): its route asks for the console's bar in its meta, and where the console provides the offer the screen draws
-  no bar of its own; read where nothing offers it, it draws its own. Under the bar stands the screen's own row: the
-  view switch, the search, and at the row's end the button that reads the view again, which stays in the row at a
-  phone's width, the search giving up its width first.
-- **The catalogue's columns follow the room the screen has,** measured on its own box and never on the window:
+  no bar of its own; read where nothing offers it, it draws its own. Either bar holds the screen's name and mark
+  alone.
+- **Under the bar stands the screen's own row, its toolbar, and it is the only row there.** At its left end stands
+  the way back where the catalogue shows one of its columns in another's place, then the view switch and the
+  search, and at its right end the button that reads the view again, spinning until the view's lists are read,
+  which stays in the row at a phone's width, the search giving up its width first.
+  - Every button in it is the layer's small button at its own size, centred in the row, its hover and press
+    filling its own rounded shape alone; the way back and the reread are small square icon buttons, each named by
+    its tooltip.
+  - The way back leads to the tool list where the open tool stands in the tool list's place, and to the namespaces
+    where the tool list stands alone; where every column the catalogue holds stands, there is none.
+- **The catalogue's columns follow the room the screen has,** measured on the box under the toolbar and never on
+  the window:
   - wide, the namespaces, the namespace's tools and the open tool stand side by side, the tools keeping a width
-    a line of their description reads at;
-  - narrower, the open tool stands in the place of the tool list, with a way back to it, beside the namespaces;
+    a line of their description reads at, and the open tool carries a button that closes it;
+  - narrower, the open tool stands in the place of the tool list beside the namespaces;
   - at a phone's width, each of the three stands alone in turn.
 - **No value is shown as JSON.** A value stands as what it is: a list as its rows, an object as its named fields,
   a moment as a moment, a yes or a no as a state word.

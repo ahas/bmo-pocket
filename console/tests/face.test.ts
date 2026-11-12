@@ -5,11 +5,12 @@ import { join } from "node:path";
 
 import { BUILDING_MS, built } from "../../tests/host-build";
 
-import { consoleManifest } from "bmo-ui/shared/console-manifest";
+import { LAYER_VERSION, consoleManifest, onThisLayer } from "bmo-ui/shared/console-manifest";
 
 // The console face as a console meets it (docs/api.md, 「The console face」): the workspace's build of `mcp-host`, or
 // the one `MCP_HOST_BINARY` names, started with a console port and a bundle folder, its manifest read through
-// bmo-ui's own reading of the contract, and each file it names answered to the console token and the role.
+// bmo-ui's own reading of the contract, and each file it names answered to the console token and the role. The
+// bundle names the layer this package installs, as the layer's bundle build writes it.
 
 let binary = "";
 const MODULE = "export default { routes: [] };\n";
@@ -40,6 +41,7 @@ beforeAll(async () => {
   writeFileSync(join(bundle, "module.js"), MODULE);
   writeFileSync(join(bundle, "style.css"), STYLESHEET);
   writeFileSync(join(bundle, "words.json"), words);
+  writeFileSync(join(bundle, "layer.json"), JSON.stringify({ layer: LAYER_VERSION }));
 
   host = Bun.spawn(
     [binary, "serve", "--port", "0", "--data-root", join(scratch, "data"), "--control", join(sockets, "c.sock"), "--tools", join(scratch, "tools"), "--console-port", "0", "--console-bundle", bundle],
@@ -79,6 +81,7 @@ test("the manifest reads through the contract's own reading and names the screen
   expect([manifest.name, manifest.serviceName, manifest.screenPath, manifest.role]).toEqual(["pocket", "pocket", "/pocket", "administrator"]);
   expect([manifest.apiPrefix, manifest.ownerKey, manifest.events, manifest.calls]).toEqual(["/", false, false, []]);
   expect(manifest.title).toBe("pocket.title.screen");
+  expect(onThisLayer(manifest)).toBe(true);
 });
 
 test("the words are answered with no role, and the module and the stylesheet to the administrator alone", async () => {

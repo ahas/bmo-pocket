@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 
-import { roomOf } from "../app/domain/pocket-room";
+import { roomOf, wayBack } from "../app/domain/pocket-room";
 import { schemaFields, stateWord, valueRows } from "../app/domain/pocket-value";
 
 // What the screen shows of a value, a schema and the room its box has (docs/mcp-host.md, 「How the screen reads」):
-// never JSON, a schema as its fields, and the catalogue's columns by its own box.
+// never JSON, a schema as its fields, the catalogue's columns by the box under the toolbar, and the toolbar's way
+// back from a column standing in another's place.
 
 const t = (key: string, values?: Record<string, unknown>) => (values === undefined ? key : `${key} ${JSON.stringify(values)}`);
 
@@ -54,8 +55,19 @@ test("a schema stands as its fields: type, whether required, what it is for and 
   expect(schemaFields(t, { type: "string" })).toEqual([]);
 });
 
-test("the catalogue's columns follow the width of its own box", () => {
+test("the catalogue's columns follow the width of the box under the toolbar", () => {
   expect(roomOf(360)).toBe("one");
   expect(roomOf(768)).toBe("two");
   expect(roomOf(1280)).toBe("three");
+});
+
+test("the toolbar's way back leads to the column the one standing took the place of, and nowhere where all stand", () => {
+  const open = { view: "catalogue" as const, namespace: "web", tool: "fetch", q: "" };
+  const listed = { ...open, tool: null };
+
+  expect(wayBack(open, "one")).toEqual({ to: { tool: null }, names: "pocket.label.tools" });
+  expect(wayBack(open, "two")).toEqual({ to: { tool: null }, names: "pocket.label.tools" });
+  expect(wayBack(listed, "one")).toEqual({ to: { namespace: null, tool: null }, names: "pocket.label.namespaces" });
+  expect([wayBack(open, "three"), wayBack(listed, "two"), wayBack({ ...listed, namespace: null }, "one")]).toEqual([null, null, null]);
+  expect(wayBack({ ...open, view: "servers" }, "one")).toBeNull();
 });

@@ -29,6 +29,7 @@ import type { Schedule } from "../domain/pocket-api";
 import type { BarProperty } from "bmo-ui/app/domain/tabs";
 
 const props = defineProps<{ q: string; changes: number }>();
+const emit = defineEmits<{ read: [] }>();
 
 const { t } = useI18n();
 
@@ -54,6 +55,12 @@ function rowsOf(schedule: Schedule): BarProperty[] {
   return rows;
 }
 
-onMounted(() => void list.read());
-watch(() => props.changes, () => void list.read());
+// Each read of the list, said to the screen once it has landed.
+async function read(): Promise<void> {
+  await list.read();
+  emit("read");
+}
+
+onMounted(() => void read());
+watch(() => props.changes, () => void read());
 </script>

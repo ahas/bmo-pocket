@@ -8,7 +8,7 @@
           <span class="font-mono text-sm text-highlighted">{{ server.name }}</span>
           <UBadge :label="server.transport" color="neutral" variant="subtle" size="sm" />
           <UBadge
-            :label="server.listed === null ? t('pocket.status.not_listed') : t('pocket.status.listed', { count: server.listed })"
+            :label="server.listed === null ? t('pocket.status.not_listed') : t('pocket.status.listed', { count: server.listed.toLocaleString() })"
             :color="server.listed === null ? 'warning' : 'success'"
             variant="subtle"
             size="sm"
@@ -32,6 +32,7 @@ import type { Server } from "../domain/pocket-api";
 import type { BarProperty } from "bmo-ui/app/domain/tabs";
 
 const props = defineProps<{ q: string; changes: number }>();
+const emit = defineEmits<{ read: [] }>();
 
 const { t } = useI18n();
 
@@ -51,6 +52,12 @@ function rowsOf(server: Server): BarProperty[] {
   return rows;
 }
 
-onMounted(() => void list.read());
-watch(() => props.changes, () => void list.read());
+// Each read of the list, said to the screen once it has landed.
+async function read(): Promise<void> {
+  await list.read();
+  emit("read");
+}
+
+onMounted(() => void read());
+watch(() => props.changes, () => void read());
 </script>

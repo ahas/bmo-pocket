@@ -1,6 +1,6 @@
 //! The console bundle the host serves on its console face (docs/api.md, 「The console face」): the screen's module,
 //! stylesheet and words as the build of `console/` wrote them, read once as the host starts, each file named by
-//! its bytes, and the manifest naming them.
+//! its bytes, and the manifest naming them and the layer the build was made on.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -21,6 +21,7 @@ pub const FILES: &str = "/console-bundle";
 const MODULE_FILE: &str = "module.js";
 const STYLESHEET_FILE: &str = "style.css";
 const WORDS_FILE: &str = "words.json";
+const LAYER_FILE: &str = "layer.json";
 
 /// How many hex digits of a file's SHA-256 its name carries.
 const DIGEST_DIGITS: usize = 16;
@@ -34,6 +35,7 @@ pub struct ConsoleManifest {
   pub icon: String,
   pub screen_path: String,
   pub service_name: String,
+  pub layer: String,
   pub bundle: String,
   pub stylesheet: Option<String>,
   pub words: String,
@@ -72,13 +74,21 @@ impl Served {
   }
 }
 
-/// The built bundle: its module, its stylesheet where the build wrote one, and its words.
+/// The built bundle: its module, its stylesheet where the build wrote one, its words and the layer it was built on.
 #[derive(Clone, Debug)]
 pub struct Bundle {
   pub module: Served,
   pub stylesheet: Option<Served>,
   /// Each locale's tree under the locale's code, as the words file holds it.
   pub words: Vec<u8>,
+  /// The version of bmo-ui the bundle was built on, as the layer's bundle build wrote it.
+  pub layer: String,
+}
+
+/// The layer file as the layer's bundle build writes it.
+#[derive(serde::Deserialize)]
+struct LayerFile {
+  layer: String,
 }
 
 // A file of the folder, or none where it does not stand.
@@ -91,12 +101,13 @@ fn read_if_standing(path: &Path) -> io::Result<Option<Vec<u8>>> {
 }
 
 impl Bundle {
-  /// The bundle the folder holds; none where it holds no module or no words, and why where the words are not one
-  /// JSON object.
+  /// The bundle the folder holds; none where it holds no module, no words or no layer, and why where the words
+  /// are not one JSON object or the layer file names no layer.
   pub fn read(folder: &Path) -> io::Result<Option<Self>> {
-    let (Some(module), Some(words)) = (
+    let (Some(module), Some(words), Some(layer)) = (
       read_if_standing(&folder.join(MODULE_FILE))?,
       read_if_standing(&folder.join(WORDS_FILE))?,
+      read_if_standing(&folder.join(LAYER_FILE))?,
     ) else {
       return Ok(None);
     };
@@ -104,12 +115,16 @@ impl Bundle {
     serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(&words).map_err(|why| {
       io::Error::new(io::ErrorKind::InvalidData, format!("the words are not one JSON object: {why}"))
     })?;
+    let LayerFile { layer } = serde_json::from_slice(&layer).map_err(|why| {
+      io::Error::new(io::ErrorKind::InvalidData, format!("the layer file names no layer: {why}"))
+    })?;
 
     Ok(Some(Self {
       module: Served::named("module", "js", "text/javascript; charset=utf-8", module),
       stylesheet: read_if_standing(&folder.join(STYLESHEET_FILE))?
         .map(|bytes| Served::named("style", "css", "text/css; charset=utf-8", bytes)),
       words,
+      layer,
     }))
   }
 
@@ -140,6 +155,7 @@ impl Bundle {
       icon: "i-material-symbols-home-repair-service-outline".to_owned(),
       screen_path: format!("/{NAME}"),
       service_name: NAME.to_owned(),
+      layer: self.layer.clone(),
       bundle: self.module.path(),
       stylesheet: self.stylesheet.as_ref().map(Served::path),
       words: format!("{FILES}/words"),
