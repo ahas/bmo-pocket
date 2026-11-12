@@ -1,0 +1,9 @@
+{
+  "name": "pocket",
+  "title": "pocket.title.screen",
+  "icon": "i-material-symbols-home-repair-service-outline",
+  "screenPath": "/pocket",
+  "serviceName": "pocket",
+  "apiPrefix": "/",
+  "role": "administrator"
+}

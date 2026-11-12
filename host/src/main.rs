@@ -20,7 +20,7 @@ use std::time::Duration;
 use bmo_tool::SessionRequest;
 use clap::{Args, Parser, Subcommand};
 use mcp_host::async_calls::{AsyncCalls, WakeTries};
-use mcp_host::console::{Bundle, bundle_beside_binary};
+use mcp_host::console::{self, bundle_beside_binary};
 use mcp_host::drain::Drain;
 use mcp_host::handler::Host;
 use mcp_host::placed::Placed;
@@ -133,8 +133,8 @@ struct Opened {
 }
 
 impl ConsoleFace {
-  // The face opened where a port is named, its token kept and its bundle read; why not where its token could not be
-  // kept.
+  // The face opened where a port is named, its token kept and its face built from the bundle; why not where its token
+  // could not be kept. A bundle that does not build a face opens none, said in the log, and the host stands on.
   fn open(self, data_root: &Path) -> Result<Option<Opened>, String> {
     let Some(port) = self.console_port else {
       return Ok(None);
@@ -142,15 +142,24 @@ impl ConsoleFace {
     let file = self.console_token_file.unwrap_or_else(|| data_root.join("tool-host/console-token"));
     let token = kept_token(&file)
       .map_err(|why| format!("the console token {} could not be kept: {why}", file.display()))?;
-    let bundle = self
-      .console_bundle
-      .or_else(bundle_beside_binary)
-      .and_then(|folder| Bundle::found(&folder));
+    let Some(folder) = self.console_bundle.or_else(bundle_beside_binary) else {
+      eprintln!("mcp-host: no console bundle folder could be named; the console face is not opened");
+      return Ok(None);
+    };
 
-    Ok(Some(Opened {
-      port,
-      screen: Screen { token, bundle },
-    }))
+    match console::face(&folder, &token) {
+      Ok(face) => Ok(Some(Opened {
+        port,
+        screen: Screen { token, face },
+      })),
+      Err(why) => {
+        eprintln!(
+          "mcp-host: the console bundle in {} builds no console face, so none is opened: {why}",
+          folder.display()
+        );
+        Ok(None)
+      }
+    }
   }
 }
 

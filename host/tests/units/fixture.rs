@@ -5,10 +5,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use bmo_console_face::ConsoleFace;
 use bmo_tool::manifest::{MANIFEST, PLACED};
 use bmo_tool::{Granted, Session};
 use mcp_host::async_calls::{AsyncCalls, WakeTries};
-use mcp_host::console::Bundle;
 use mcp_host::handler::Host;
 use mcp_host::placed::Placed;
 use mcp_host::records::Records;
@@ -173,8 +173,8 @@ impl Fixture {
   }
 
   /// The control socket, as `serve` serves it, and the console face over the same records on a loopback port of
-  /// its own, behind `CONSOLE` and with this bundle; both end with the test's runtime.
-  pub fn serve_with_console(&self, bundle: Option<Bundle>) -> (PathBuf, u16) {
+  /// its own, behind `CONSOLE` and with this face; both end with the test's runtime.
+  pub fn serve_with_console(&self, face: ConsoleFace) -> (PathBuf, u16) {
     let records = Arc::new(Records::load(&self.dir.path().join("sessions")).unwrap());
     let schedules = Arc::new(Schedules::default());
     let socket = self.serve_control(records.clone(), schedules.clone());
@@ -186,7 +186,7 @@ impl Fixture {
     let listener = tokio::net::TcpListener::from_std(bound).unwrap();
     let screen = Screen {
       token: CONSOLE.to_owned(),
-      bundle,
+      face,
     };
     let router = server::console(records, self.host.clone(), schedules, screen);
 

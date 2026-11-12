@@ -27,6 +27,8 @@ bmo-pocket-client = { path = "../client" }
 # The harness plugin, which `bmo-pocket mcp` serves.
 bmo-pocket-plugin = { path = "../plugin" }
 bmo-tool = { path = "../sdk/contract" }
+# The console face by bmo-ui's console contract: the manifest, the bundle's files and the screens' guard.
+bmo-console-face = { path = "../../../base/chat/console-face" }
 # A schedule's time, in the machine's local zone, and its pattern's next one.
 chrono.workspace = true
 clap.workspace = true

@@ -374,10 +374,12 @@ flowchart TD
   its manifest, loads its module and relays the screen's reads on a loopback port of the face's own, opened where
   the deployment names one. The screen shows the catalogue, the schedules, the sessions standing and the external
   servers, read as the issuer reads them.
-- **The face reads and writes nothing of its own.** Its routes are the bundle's files and the control socket's reads,
-  answered by the same code, so the screen never shows the host other than the control socket does.
-- **The host is the guard,** as the contract has a service be: the console token on every route, and
-  `Owner-Role: administrator` on every route the screen uses.
+- **The face reads and writes nothing of its own.** Beside the manifest and the bundle's files, its routes are the
+  control socket's reads, answered by the same code, so the screen never shows the host other than the control
+  socket does.
+- **bmo-chat's `bmo-console-face` keeps the contract for it:** the manifest from the host's declaration and the
+  bundle folder, the files, and the screens' guard over the reads. The host adds its own guard of the reads, the
+  console token and no other (`docs/api.md`, 「The console face」).
 
 #### How the screen reads
 
@@ -537,11 +539,11 @@ flowchart TD
   entries, an upgrade as one more with `replaced`, and a take as one `tool.removed`; a reader resuming after a
   number is answered what followed it, one with a cursor older than the window is answered 410 `gone`, the page
   form answers the same events, and a session's token or none is refused.
-- **The console face:** a request without the console token is refused on every route, the issuer's and a
-  session's tokens among them; the manifest and the words are answered to the token with no role, and the module,
-  the stylesheet and the reads only with `Owner-Role: administrator`; the manifest names the built files by their
-  digests, reads through bmo-ui's own reading of the contract, and is refused where no bundle stands; and every read
-  answers what the control socket answers the issuer. `GET /tool-sessions` pages the standing sessions by
+- **The console face:** the manifest the face answers reads through bmo-ui's own reading of the contract, from the
+  release `console/vendor/` holds, and names the bundle's files the face then answers; a read without the console
+  token is refused, the issuer's and a session's tokens among them, and one with it only with
+  `Owner-Role: administrator`; a bundle folder that does not read opens no face; and every read answers what the
+  control socket answers the issuer. The crate's own refusals of its files are bmo-chat's tests. `GET /tool-sessions` pages the standing sessions by
   `createdAt` with no token or variable's value in them, and `GET /servers` names each registration, listed or not.
 - **Schedules:** a schedule is due at its pattern's first time after it is seen, is called once at a beat past it
   with its arguments under a record of its own, is passed over while its last call runs, begins afresh when its

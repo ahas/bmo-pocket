@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 /// The only packages from another repository a package here may depend on: the base libraries.
-const BASE_LIBRARIES: [&str; 3] = ["bmo-chat", "bmo-chat-client", "bmo-ui"];
+const BASE_LIBRARIES: [&str; 4] = ["bmo-chat", "bmo-chat-client", "bmo-console-face", "bmo-ui"];
 
 /// The dependency tables of a `package.json`.
 const PACKAGE_TABLES: [&str; 4] =

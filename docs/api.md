@@ -155,79 +155,72 @@ tables, its files or its process. The host calls no other unit; a console reache
 
 ## The console face
 
-The host's screen for a console that follows bmo-ui's console plugin contract (`docs/console-bundles.md` in that
-layer): the console reads the host's manifest, loads the screen's module and relays the screen's reads, all over
-HTTP on a loopback port of the face's own.
+The host's screen, a bundle under bmo-ui's console plugin contract (`docs/console-bundles.md` in that layer), served
+on a loopback port of the face's own. The contract is the one statement of the manifest, the bundle's files, the
+roles and the refusals; bmo-chat's console face crate, `bmo-console-face` (`docs/console-face.md` in bmo-chat),
+serves them, so this section states only what the host chooses and adds.
+
+```mermaid
+flowchart TD
+  D["console/declaration.json"] --> F["bmo-console-face"]
+  B["the bundle folder"] --> F
+  T["the console token"] --> F
+  F --> M["the manifest and the bundle's files"]
+  F --> G["the screens' guard"]
+  G --> R["the control socket's reads"]
+  T --> R
+```
 
 - **On the loopback address only,** at the port `--console-port` or `BMO_MCP_HOST_CONSOLE_PORT` names; 0 takes any
   free one. Where neither names one, the face is not opened, and the host serves no screen.
-- **One token reaches it, the console token,** carried as `Authorization: Bearer <token>`: the one the host keeps
-  in `tool-host/console-token` under the data root, or in the file `--console-token-file` names, readable by the
+- **Its credential is the console token,** carried as `Authorization: Bearer <token>`: the one the host keeps in
+  `tool-host/console-token` under the data root, or in the file `--console-token-file` names, readable by the
   host's user alone and made by the host at the first start that opens the face where none stands. The deployment
   hands it to the console's settings. Neither the issuer token nor a session's reaches this face, and the console
   token reaches no other.
-- **The screen's role is `administrator`.** A console sets `Owner-Role` on everything it relays; a route the screen
-  uses, asked with no `Owner-Role` or one other than `administrator`, is refused 403 `forbidden`. The manifest and
-  the words are answered to the console token with no role, since a console reads them for no reader. No route asks
-  for an owner key: what the host holds is the deployment's, not one owner's.
-- **The face only reads.** It issues, revokes and calls nothing: its routes are the manifest, the bundle's files,
-  and the control socket's reads, answered as the control socket answers them to the issuer token.
+- **The host's own choices in the contract:** the screen's role is `administrator`; no route asks for an owner key,
+  since what the host holds is the deployment's, not one owner's; the screen reads no event stream, opens no
+  WebSocket, raises no notice, calls no other service and names no share read.
+- **The face only reads.** It issues, revokes and calls nothing: beside the manifest and the bundle's files, which
+  the crate answers, its routes are the control socket's reads, answered as the control socket answers them to the
+  issuer token, under the crate's screens' guard.
 
-| Route | Reach | Answer |
-|---|---|---|
-| `GET /console-manifest` | the console token | 200 the manifest; 404 `not-found` where the host holds no bundle |
-| `GET /console-bundle/words` | the console token | 200 the bundle's words; 404 `not-found` where the host holds no bundle |
-| `GET /console-bundle/{file}` | the console token and the screen's role | 200 the module or the stylesheet the manifest names, by its name; 404 `not-found` for any other |
-| `GET /namespaces`, `GET /namespaces/{namespace}`, `GET /namespaces/{namespace}/tools`, `GET /namespaces/{namespace}/tools/{toolName}` | the console token and the screen's role | as the control socket answers each to the issuer token (「Namespaces」, 「Tools」) |
-| `GET /schedules` | the console token and the screen's role | as the control socket answers it to the issuer token (「Schedules」) |
-| `GET /tool-sessions` | the console token and the screen's role | as the control socket answers it to the issuer token (「Tool sessions」) |
-| `GET /servers` | the console token and the screen's role | as the control socket answers it to the issuer token (「External servers」) |
-
-- **A request with no token or another one** is refused 401 `unauthorized` on every path, and any path or method
-  the table does not name 404 `no-route`, each in the common error shape.
-- **The OpenAPI document does not state this face:** its reads are the control socket's routes in the shapes the
-  document states, and the manifest's shape is the contract's.
-
-### The manifest
-
-| Field | Value |
+| Read | Answer |
 |---|---|
-| `name` | `pocket`, which is also its words' namespace |
-| `title` | `pocket.title.screen` |
-| `icon` | `i-material-symbols-home-repair-service-outline` |
-| `screenPath` | `/pocket` |
-| `serviceName` | `pocket` |
-| `layer` | the version of bmo-ui the bundle was built on, as the bundle build wrote it in `layer.json` |
-| `bundle` | `/console-bundle/module.<digest>.js`, `<digest>` the first 16 hex digits of the module's SHA-256 |
-| `stylesheet` | `/console-bundle/style.<digest>.css`, the same of the stylesheet's; null where the build wrote none |
-| `words` | `/console-bundle/words` |
-| `apiPrefix` | `/` |
-| `role` | `administrator` |
-| `ownerKey` | false |
-| `events` | false |
-| `websocket` | false |
-| `pushKinds` | none |
-| `calls` | none |
+| `GET /namespaces`, `GET /namespaces/{namespace}`, `GET /namespaces/{namespace}/tools`, `GET /namespaces/{namespace}/tools/{toolName}` | as the control socket answers each to the issuer token (「Namespaces」, 「Tools」) |
+| `GET /schedules` | as the control socket answers it to the issuer token (「Schedules」) |
+| `GET /tool-sessions` | as the control socket answers it to the issuer token (「Tool sessions」) |
+| `GET /servers` | as the control socket answers it to the issuer token (「External servers」) |
 
-- **Every field is written,** null or empty where it holds nothing, so a console reads the manifest whole.
-- **A file's name follows its bytes,** so a console and a browser may keep what they loaded, and a host started on
-  a rebuilt bundle names new paths. The module and the stylesheet are answered as never changing under their names;
-  the manifest and the words are answered afresh at every ask.
+- **A read asked with no token or another one** is refused 401 `unauthorized`, any path or method no route names
+  404 `no-route`, each in the common error shape.
+- **The OpenAPI document does not state this face:** its reads are the control socket's routes in the shapes the
+  document states, and the rest is the contract's.
+
+### The declaration
+
+- **`console/declaration.json`** holds every manifest field the host decides, and nothing the crate fills; the
+  host carries it in its binary.
+- **Its `name`, `serviceName` and words' namespace are `pocket`,** and its `screenPath` is `/pocket`, where the
+  bundle's one route stands.
+- **A test reads the manifest the face answers** through bmo-ui's own reading of the contract, from the release
+  `console/vendor/` holds, so a declaration the contract refuses fails there first.
 
 ### The bundle
 
-- **The screen's sources stand in `console/`,** the package `bmo-pocket-console`: a Nuxt layer on bmo-ui at the
-  release the console runs, vendored as that release's packed file in `console/vendor/` as the layer's releases
-  ledger names its bytes, and calling the routes above through the layer's relay under the service name `pocket`.
-  It reads the types of what it reads from `@bmo/pocket-client`.
-- **Its build, `bun run bundle`,** is the layer's bundle build, and writes four files into the folder
-  `BMO_POCKET_CONSOLE_OUT` names: `module.js`, the ES module whose default export holds the screen's route under
-  `/pocket`, every import of what a console shares left unbundled; `style.css`, the utilities its sources use
-  beyond the layer's own; `words.json`, each locale's words under `pocket`; and `layer.json`, naming the layer's
-  version the bundle was built on.
-- **The host reads the bundle once, as it starts,** from the folder `--console-bundle` names, else `console-bundle/` in
-  the release its binary stands in, beside its `bin/`, a folder apart from the screen's sources in `console/`. A folder holding no module, no words or no layer leaves the host with no
-  screen, said in its log, and the face answers its manifest 404, which a console reads as a unit with no screen.
+- **The screen's sources stand in `console/`,** the package `bmo-pocket-console`: Vue pages typechecked as a Nuxt
+  layer on bmo-ui, calling the reads above through the layer's relay under the service name `pocket`. It reads the
+  types of what it reads from `@bmo/pocket-client`.
+- **bmo-ui is the release bmo-chat's `shared-versions.toml` pins,** vendored in `console/vendor/` as that release's
+  packed file stands; the testbed's shared-versions check holds it there.
+- **Its build, `bun run bundle`,** runs the layer's bundle build and writes into the folder `BMO_POCKET_CONSOLE_OUT`
+  names: `module.js`, whose default export holds the screen's route under `/pocket`; `style.css`, the utilities its
+  sources use beyond the layer's own; `words.json`, each locale's words under `pocket`; and the layer's own
+  `layer.json`.
+- **The host builds the face once, as it starts,** from the declaration and the folder `--console-bundle` names,
+  else `console-bundle/` in the release its binary stands in, beside its `bin/`, a folder apart from the screen's
+  sources in `console/`. Where the folder does not read or the crate refuses the manifest, the host opens no
+  console face and says why in its log, so a console finds no screen there.
 - **A deployment builds the bundle before the flip** into the release it deploys (`testbed.toml`), so a release's
   host serves the screen of its own commit.
 - **A deployment waits for no call in hand before its flip** (`testbed.toml`, `quiet`): `bmo-pocket quiet`, run from

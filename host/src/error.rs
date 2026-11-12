@@ -38,15 +38,6 @@ pub enum HostError {
   /// A token on the console face other than the console token.
   #[error("the console token alone reaches the console face")]
   NotTheConsole,
-  /// A route the screen uses asked with no `Owner-Role` allowing the screen's role.
-  #[error("the screen is the administrator's: `Owner-Role` must allow it")]
-  ScreenRole,
-  /// The host holds no console bundle, so it serves no screen.
-  #[error("the host holds no console bundle")]
-  NoBundle,
-  /// No file of the console bundle goes by that name.
-  #[error("the console bundle has no file `{0}`")]
-  NoBundleFile(String),
   /// What was handed to be issued cannot be a session record.
   #[error("the session record is malformed: {0}")]
   MalformedRecord(String),
@@ -83,15 +74,10 @@ impl HostError {
   pub fn code(&self) -> ErrorCode {
     match self {
       Self::NoToken | Self::UnknownToken | Self::NotTheConsole => ErrorCode::Unauthorized,
-      Self::IssuerOnly | Self::SessionOnly | Self::GrantRefused(_) | Self::ScreenRole => {
-        ErrorCode::Forbidden
+      Self::IssuerOnly | Self::SessionOnly | Self::GrantRefused(_) => ErrorCode::Forbidden,
+      Self::UnknownNamespace(_) | Self::UnknownEntry(_) | Self::UnknownCall(_) | Self::UnknownSession => {
+        ErrorCode::NotFound
       }
-      Self::UnknownNamespace(_)
-      | Self::UnknownEntry(_)
-      | Self::UnknownCall(_)
-      | Self::UnknownSession
-      | Self::NoBundle
-      | Self::NoBundleFile(_) => ErrorCode::NotFound,
       Self::MalformedRecord(_) | Self::MalformedRequest(_) => ErrorCode::BadRequest,
       Self::ArgumentsMisfit(_) => ErrorCode::ArgumentsMisfit,
       Self::ToolFailed(_) => ErrorCode::ToolFailed,

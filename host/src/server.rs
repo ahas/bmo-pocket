@@ -15,6 +15,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, delete, get, post};
 use axum::{Json, Router};
+use bmo_console_face::ConsoleFace;
 use bmo_pocket_client::{
   CallInHand, Claim, ClaimRequest, Event, EventPage, EventQuery, Health, NameQuery, Namespace,
   NamespacePage, Schedule, SchedulePage, Server, ServerPage, SessionPage, SessionQuery, StandingSession,
@@ -26,7 +27,6 @@ use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use serde_json::Value;
 
 use crate::async_calls::{self, Asked, AsyncCalls};
-use crate::console::{Bundle, ConsoleManifest, SCREEN_ROLE};
 use crate::error::HostError;
 use crate::events::Events;
 use crate::handler::{Claimant, Entry, Handler, Host, Refusal};
@@ -843,23 +843,19 @@ pub fn control(
     .with_state(state)
 }
 
-/// What the console face stands on beside the control socket's reads: the console token, and the bundle the host
-/// read as it started, where one stood.
+/// What the console face stands on beside the control socket's reads: the console token, and the face bmo-chat's
+/// crate built from the host's declaration and its bundle.
 pub struct Screen {
   pub token: String,
-  pub bundle: Option<Bundle>,
+  pub face: ConsoleFace,
 }
 
-// Every route of the console face stands behind this: the console token, and no other, reaches it, and its reads
-// are answered as the issuer's.
-async fn authorise_console(
-  State(screen): State<Arc<Screen>>,
-  mut request: Request,
-  next: Next,
-) -> Response {
+// The host's own guard of the reads it lays under the console face: the console token, and no other, reaches them,
+// and they are answered as the issuer's.
+async fn authorise_console(State(token): State<Arc<str>>, mut request: Request, next: Next) -> Response {
   match bearer(&request) {
     None => return HostError::NoToken.into_response(),
-    Some(token) if token != screen.token => return HostError::NotTheConsole.into_response(),
+    Some(given) if given != &*token => return HostError::NotTheConsole.into_response(),
     Some(_) => {}
   }
 
@@ -867,88 +863,35 @@ async fn authorise_console(
   next.run(request).await
 }
 
-// Every route the screen uses stands behind this as well: the `Owner-Role` the console sets allows the screen's.
-async fn screen_role(request: Request, next: Next) -> Response {
-  let role = request.headers().get("owner-role").and_then(|value| value.to_str().ok());
-
-  if role != Some(SCREEN_ROLE) {
-    return HostError::ScreenRole.into_response();
-  }
-
-  next.run(request).await
-}
-
-fn bundle_of(screen: &Screen) -> Result<&Bundle, HostError> {
-  screen.bundle.as_ref().ok_or(HostError::NoBundle)
-}
-
-// Bytes answered under their media type and how long they may be kept.
-fn bytes(body: Vec<u8>, kind: &'static str, kept: &'static str) -> Response {
-  let mut response = (StatusCode::OK, body).into_response();
-  let headers = response.headers_mut();
-
-  headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(kind));
-  headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(kept));
-  headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-  response
-}
-
-async fn console_manifest(Extension(screen): Extension<Arc<Screen>>) -> Result<Response, HostError> {
-  let manifest: ConsoleManifest = bundle_of(&screen)?.manifest();
-  let mut response = Json(manifest).into_response();
-
-  response
-    .headers_mut()
-    .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-  Ok(response)
-}
-
-async fn console_words(Extension(screen): Extension<Arc<Screen>>) -> Result<Response, HostError> {
-  Ok(bytes(bundle_of(&screen)?.words.clone(), "application/json", "no-cache"))
-}
-
-// The module or the stylesheet by the name the manifest gives it, kept as long as a browser likes, since a name
-// changes with its bytes.
-async fn console_file(
-  Extension(screen): Extension<Arc<Screen>>,
-  Path(name): Path<String>,
-) -> Result<Response, HostError> {
-  let served = bundle_of(&screen)?.file(&name).ok_or(HostError::NoBundleFile(name))?;
-
-  Ok(bytes(served.bytes.clone(), served.kind, "private, max-age=31536000, immutable"))
-}
-
-/// The console face, every route behind the console token: the manifest and the words with no role, and the
-/// bundle's module and stylesheet and the control socket's reads, as the issuer is answered them, only with
-/// `Owner-Role` allowing the screen's role. Any other path or method is refused in the common error shape.
+/// The console face: the manifest and the bundle's files as the crate answers them, and the control socket's reads,
+/// as the issuer is answered them, under the crate's screens' guard and the console token. Any other path or method
+/// is refused in the common error shape.
 pub fn console(
   records: Arc<Records>,
   host: Arc<Host>,
   schedules: Arc<Schedules>,
   screen: Screen,
 ) -> Router {
-  let screen = Arc::new(screen);
   let state = Control {
     records,
     host,
     schedules,
   };
-
-  Router::new()
-    .route("/console-bundle/{file}", get(console_file))
+  let reads = Router::new()
     .route("/namespaces", get(namespaces))
     .route("/namespaces/{namespace}", get(one_namespace))
     .route("/namespaces/{namespace}/tools", get(tool_page))
     .route("/namespaces/{namespace}/tools/{toolName}", get(one_tool))
     .route("/schedules", get(schedule_page))
     .route("/tool-sessions", get(tool_session_page))
-    .route("/servers", get(server_page))
-    .route_layer(middleware::from_fn(screen_role))
-    .route("/console-manifest", get(console_manifest))
-    .route("/console-bundle/words", get(console_words))
+    .route("/servers", get(server_page));
+
+  screen
+    .face
+    .guard_screens(reads)
+    .route_layer(middleware::from_fn_with_state(Arc::<str>::from(screen.token), authorise_console))
+    .merge(screen.face.router())
     .fallback(unknown_route)
     .method_not_allowed_fallback(method_not_allowed)
-    .layer(Extension(screen.clone()))
-    .layer(middleware::from_fn_with_state(screen, authorise_console))
     .with_state(state)
 }

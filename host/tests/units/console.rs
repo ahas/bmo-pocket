@@ -1,44 +1,67 @@
-//! The console face served in this process (docs/api.md, 「The console face」): the console token on every route,
-//! the screen's role on every route the screen uses, the manifest naming the bundle's files by their digests, and
-//! the control socket's reads answered as the issuer is answered them.
+//! The host's console face served in this process (docs/api.md, 「The console face」): the manifest it answers from
+//! its declaration, read through bmo-ui's own reading from the release `console/vendor/` holds, the console token
+//! and the screen's role on the control socket's reads, and those reads answered as the issuer is answered them. The
+//! refusals of the bundle's own files are bmo-chat's `bmo-console-face` tests.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use bmo_console_face::{ConsoleFace, read_manifest};
 use bmo_pocket_client::transport::request;
 use bmo_pocket_client::{Granted, Pocket, SessionRequest};
-use http::{HeaderMap, Method, Request, StatusCode};
+use http::{Method, Request, StatusCode};
 use http_body_util::{BodyExt, Empty};
 use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
-use mcp_host::console::Bundle;
+use mcp_host::console;
 use serde_json::{Value, json};
 use tokio::net::TcpStream;
 
 use crate::units::fixture::{CONSOLE, Fixture, ISSUER};
 
 const MODULE: &str = "export default { routes: [] };\n";
-const STYLESHEET: &str = ".pocket {}\n";
-const WORDS: &str = r#"{"en":{"pocket":{"title":{"screen":"Tools"}}}}"#;
-const LAYER: &str = "0.1.0-rev.1";
 
-// A bundle as the build of `console/` writes it, read from a folder of its own.
-fn bundle(stylesheet: bool) -> Bundle {
+// The one release of bmo-ui `console/vendor/` holds, and the version its file is named by.
+fn vendored_release() -> (PathBuf, String) {
+  let vendor = Path::new(env!("CARGO_MANIFEST_DIR")).join("../console/vendor");
+  let mut releases: Vec<PathBuf> = std::fs::read_dir(&vendor)
+    .unwrap()
+    .map(|entry| entry.unwrap().path())
+    .filter(|path| {
+      path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("bmo-ui-"))
+    })
+    .collect();
+
+  assert_eq!(releases.len(), 1, "console/vendor/ holds one release of bmo-ui: {releases:?}");
+  let release = releases.remove(0);
+  let name = release.file_name().unwrap().to_str().unwrap();
+  let version = name
+    .strip_prefix("bmo-ui-")
+    .and_then(|rest| rest.strip_suffix(".tgz"))
+    .unwrap()
+    .to_owned();
+
+  (release, version)
+}
+
+// The host's face over a bundle as the build of `console/` writes it, on the layer `console/vendor/` holds.
+fn face() -> ConsoleFace {
   let folder = tempfile::tempdir().unwrap();
+  let (_, layer) = vendored_release();
 
   std::fs::write(folder.path().join("module.js"), MODULE).unwrap();
-  std::fs::write(folder.path().join("words.json"), WORDS).unwrap();
-  std::fs::write(folder.path().join("layer.json"), format!(r#"{{"layer":"{LAYER}"}}"#)).unwrap();
+  std::fs::write(folder.path().join("style.css"), ".pocket {}\n").unwrap();
+  std::fs::write(folder.path().join("words.json"), r#"{"en":{"pocket":{"title":{"screen":"Tools"}}}}"#)
+    .unwrap();
+  std::fs::write(folder.path().join("layer.json"), json!({ "layer": layer }).to_string()).unwrap();
 
-  if stylesheet {
-    std::fs::write(folder.path().join("style.css"), STYLESHEET).unwrap();
-  }
-
-  Bundle::read(folder.path()).unwrap().unwrap()
+  console::face(folder.path(), CONSOLE).unwrap_or_else(|why| panic!("{why}"))
 }
 
 struct Answer {
   status: StatusCode,
-  headers: HeaderMap,
   body: Bytes,
 }
 
@@ -71,14 +94,9 @@ async fn ask(port: u16, method: Method, path: &str, token: Option<&str>, role: O
 
   let answered = link.send_request(asked.body(Empty::<Bytes>::new()).unwrap()).await.unwrap();
   let status = answered.status();
-  let headers = answered.headers().clone();
   let body = answered.into_body().collect().await.unwrap().to_bytes();
 
-  Answer {
-    status,
-    headers,
-    body,
-  }
+  Answer { status, body }
 }
 
 async fn read(port: u16, path: &str) -> Answer {
@@ -94,11 +112,38 @@ async fn issuers(socket: &Path, path: &str) -> Value {
 }
 
 #[tokio::test]
-async fn the_console_token_alone_reaches_the_face_and_the_screens_routes_need_the_administrator() {
+async fn the_served_manifest_reads_through_the_contract_and_names_files_the_face_answers() {
   let fixture = Fixture::new();
-  let (_, port) = fixture.serve_with_console(Some(bundle(true)));
+  let (_, port) = fixture.serve_with_console(face());
+  let answered = ask(port, Method::GET, "/console-manifest", Some(CONSOLE), None).await;
 
-  for path in ["/console-manifest", "/console-bundle/words", "/namespaces", "/nowhere"] {
+  assert_eq!(answered.status, StatusCode::OK);
+
+  let (release, layer) = vendored_release();
+  let manifest = read_manifest(&answered.json(), &release).unwrap_or_else(|why| panic!("{why}"));
+
+  assert_eq!(manifest["name"], "pocket");
+  assert_eq!(manifest["screenPath"], "/pocket");
+  assert_eq!(manifest["role"], "administrator");
+  assert_eq!(manifest["layer"], layer.as_str());
+
+  let module = read(port, manifest["bundle"].as_str().unwrap()).await;
+
+  assert_eq!((module.status, module.body.as_ref()), (StatusCode::OK, MODULE.as_bytes()));
+  assert_eq!(
+    ask(port, Method::GET, manifest["words"].as_str().unwrap(), Some(CONSOLE), None)
+      .await
+      .status,
+    StatusCode::OK
+  );
+}
+
+#[tokio::test]
+async fn the_reads_answer_the_console_token_alone_and_the_administrator() {
+  let fixture = Fixture::new();
+  let (_, port) = fixture.serve_with_console(face());
+
+  for path in ["/namespaces", "/schedules", "/tool-sessions", "/servers"] {
     let bare = ask(port, Method::GET, path, None, Some("administrator")).await;
 
     assert_eq!(
@@ -113,22 +158,8 @@ async fn the_console_token_alone_reaches_the_face_and_the_screens_routes_need_th
       assert_eq!(refused.status, StatusCode::UNAUTHORIZED, "{path}");
       assert_eq!(refused.json()["error"], "the console token alone reaches the console face");
     }
-  }
 
-  // The manifest and the words to the token with no role; the screen's routes to the administrator alone.
-  assert_eq!(
-    ask(port, Method::GET, "/console-manifest", Some(CONSOLE), None).await.status,
-    StatusCode::OK
-  );
-  assert_eq!(
-    ask(port, Method::GET, "/console-bundle/words", Some(CONSOLE), None).await.status,
-    StatusCode::OK
-  );
-
-  let module = bundle(true).manifest().bundle;
-
-  for path in [module.as_str(), "/namespaces", "/schedules", "/tool-sessions", "/servers"] {
-    for role in [None, Some("member"), Some("Administrator")] {
+    for role in [None, Some("member")] {
       let refused = ask(port, Method::GET, path, Some(CONSOLE), role).await;
 
       assert_eq!(
@@ -150,106 +181,17 @@ async fn the_console_token_alone_reaches_the_face_and_the_screens_routes_need_th
   assert_eq!((written.status, written.code().as_str()), (StatusCode::NOT_FOUND, "no-route"));
 }
 
-#[tokio::test]
-async fn the_manifest_names_the_bundles_files_by_their_digests_and_each_is_answered() {
-  let fixture = Fixture::new();
-  let (_, port) = fixture.serve_with_console(Some(bundle(true)));
-  let answered = ask(port, Method::GET, "/console-manifest", Some(CONSOLE), None).await;
-  let manifest = answered.json();
-
-  assert_eq!(answered.headers["cache-control"], "no-cache");
-  assert_eq!(
-    manifest,
-    json!({
-      "name": "pocket",
-      "title": "pocket.title.screen",
-      "icon": "i-material-symbols-home-repair-service-outline",
-      "screenPath": "/pocket",
-      "serviceName": "pocket",
-      "layer": LAYER,
-      "bundle": manifest["bundle"],
-      "stylesheet": manifest["stylesheet"],
-      "words": "/console-bundle/words",
-      "apiPrefix": "/",
-      "role": "administrator",
-      "ownerKey": false,
-      "events": false,
-      "websocket": false,
-      "pushKinds": [],
-      "calls": [],
-    })
-  );
-
-  let module = manifest["bundle"].as_str().unwrap();
-  let stylesheet = manifest["stylesheet"].as_str().unwrap();
-
-  assert!(module.starts_with("/console-bundle/module.") && module.ends_with(".js"), "{module}");
-  assert_eq!(module.len(), "/console-bundle/module.".len() + 16 + ".js".len());
-  assert!(
-    stylesheet.starts_with("/console-bundle/style.") && stylesheet.ends_with(".css"),
-    "{stylesheet}"
-  );
-
-  let loaded = read(port, module).await;
-
-  assert_eq!(loaded.body, MODULE.as_bytes());
-  assert_eq!(loaded.headers["content-type"], "text/javascript; charset=utf-8");
-  assert_eq!(loaded.headers["cache-control"], "private, max-age=31536000, immutable");
-
-  let styled = read(port, stylesheet).await;
-
-  assert_eq!(styled.body, STYLESHEET.as_bytes());
-  assert_eq!(styled.headers["content-type"], "text/css; charset=utf-8");
-
-  let words = ask(port, Method::GET, "/console-bundle/words", Some(CONSOLE), None).await;
-
-  assert_eq!(words.body, WORDS.as_bytes());
-  assert_eq!(words.headers["content-type"], "application/json");
-
-  let other = read(port, "/console-bundle/module.0000000000000000.js").await;
-
-  assert_eq!((other.status, other.code().as_str()), (StatusCode::NOT_FOUND, "not-found"));
-
-  // A bundle the build wrote no stylesheet for is named with none.
-  let plain = Fixture::new();
-  let (_, bare) = plain.serve_with_console(Some(bundle(false)));
-
-  assert_eq!(
-    ask(bare, Method::GET, "/console-manifest", Some(CONSOLE), None).await.json()["stylesheet"],
-    Value::Null
-  );
-}
-
-#[tokio::test]
-async fn a_host_holding_no_bundle_answers_no_manifest_and_still_reads() {
-  let fixture = Fixture::new();
-  let (_, port) = fixture.serve_with_console(None);
-
-  for path in ["/console-manifest", "/console-bundle/words"] {
-    let absent = ask(port, Method::GET, path, Some(CONSOLE), None).await;
-
-    assert_eq!((absent.status, absent.code().as_str()), (StatusCode::NOT_FOUND, "not-found"), "{path}");
-  }
-
-  assert_eq!(read(port, "/namespaces").await.status, StatusCode::OK);
-
+#[test]
+fn a_bundle_folder_that_does_not_read_builds_no_face() {
   let folder = tempfile::tempdir().unwrap();
 
-  assert!(Bundle::read(folder.path()).unwrap().is_none());
-  std::fs::write(folder.path().join("module.js"), MODULE).unwrap();
-  std::fs::write(folder.path().join("words.json"), WORDS).unwrap();
-  assert!(Bundle::read(folder.path()).unwrap().is_none(), "a bundle naming no layer is none");
-  std::fs::write(folder.path().join("layer.json"), "{}").unwrap();
-  assert!(Bundle::read(folder.path()).is_err(), "a layer file naming no layer does not read");
-  std::fs::write(folder.path().join("layer.json"), format!(r#"{{"layer":"{LAYER}"}}"#)).unwrap();
-  std::fs::write(folder.path().join("words.json"), "[]").unwrap();
-  assert!(Bundle::read(folder.path()).is_err(), "words that are not one object do not read");
+  assert!(console::face(folder.path(), CONSOLE).is_err());
 }
 
 #[tokio::test]
 async fn every_read_answers_what_the_control_socket_answers_the_issuer() {
   let fixture = Fixture::new();
-  let (socket, port) = fixture.serve_with_console(Some(bundle(true)));
+  let (socket, port) = fixture.serve_with_console(face());
   let issuer = Pocket::at(&socket, ISSUER);
   let issued = issuer
     .issue(&SessionRequest {
