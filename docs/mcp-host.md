@@ -524,7 +524,10 @@ flowchart TD
   `bmo-pocket quiet` ends 1 naming how many calls stand in hand, and 0 where none does or no host answers.
 - **An asynchronous call's wake:** against a stand-in receiver that cuts its first connections and then queues, the
   end reads its wake pending with the last reason and then queued with the instruction's id, the wake asked once
-  more for each cut; and a host killed while one call's wake is owed and another call runs is followed by a host
-  that queues the owed wake and ends the other `lost`, with a wake saying so.
+  more for each cut; a receiver that never answers a try, and one that takes the wake and cuts the connection
+  before answering, leave it owed and asked again, the second queuing it more than once; a host stopped by
+  `SIGTERM` with a wake owed exits without waiting on it, and the host started next queues it; and a host killed
+  while one call's wake is owed and another call runs is followed by a host that queues the owed wake and ends the
+  other `lost`, with a wake saying so.
 - **The harness's header:** an installed Claude Code CLI, named by `BMO_LIVE_CLAUDE`, connects to the host with the
   header read from `BMO_MCP_TOKEN` and fails with a wrong one; the suite names none and skips it.

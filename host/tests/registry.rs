@@ -11,7 +11,6 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bmo_pocket_client::{Booked, EventKind, ReachedBy, ToolChange};
 use bmo_tool::Session;
@@ -19,7 +18,7 @@ use http::{Request, StatusCode};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
-use mcp_host::async_calls::AsyncCalls;
+use mcp_host::async_calls::{AsyncCalls, WakeTries};
 use mcp_host::handler::Host;
 use mcp_host::install::{self, Put};
 use mcp_host::placed::{PLACED, Placed};
@@ -626,7 +625,7 @@ async fn a_running_sessions_initialize_and_tools_list_stay_byte_for_byte_while_i
   let app = server::tools(
     records,
     host.clone(),
-    Arc::new(AsyncCalls::new(std::env::temp_dir().join("mcp-host-calls"), Duration::from_secs(1))),
+    Arc::new(AsyncCalls::new(std::env::temp_dir().join("mcp-host-calls"), WakeTries::default())),
   );
 
   tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -2157,11 +2157,22 @@ capabilities = ["garden.read"]
 hints = { read_only = true }
 "#;
 
-// The receiver standing in on a loopback port: while closed it cuts every connection as it opens, and once open it
-// queues each instruction asked of it, numbered from 1, keeping what it was asked.
+// How the stand-in receiver meets a wake: cuts each connection as it opens, holds it open and never answers, reads
+// the wake and keeps it but cuts the connection before answering, or queues it and answers its id.
+#[derive(Clone, Copy, PartialEq)]
+#[repr(u8)]
+enum Meets {
+  Cut,
+  Silent,
+  Swallowed,
+  Queued,
+}
+
+// The receiver standing in on a loopback port, meeting each wake as it is set to; every wake it read is kept, in
+// order, and a queued one is answered with its place in that order.
 struct Receiver {
   port: u16,
-  open: Arc<AtomicBool>,
+  meets: Arc<AtomicU8>,
   connections: Arc<AtomicUsize>,
   queued: Arc<Mutex<Vec<Value>>>,
   serving: tokio::task::JoinHandle<()>,
@@ -2177,33 +2188,46 @@ impl Receiver {
   async fn closed() -> Self {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    let open = Arc::new(AtomicBool::new(false));
+    let meets = Arc::new(AtomicU8::new(Meets::Cut as u8));
     let connections = Arc::new(AtomicUsize::new(0));
     let queued = Arc::new(Mutex::new(Vec::new()));
-    let (opened, counted, kept) = (open.clone(), connections.clone(), queued.clone());
+    let (meeting, counted, kept) = (meets.clone(), connections.clone(), queued.clone());
     let serving = tokio::spawn(async move {
+      // The connections a silent receiver holds, which go with this task.
+      let mut held = Vec::new();
+
       while let Ok((stream, _)) = listener.accept().await {
         counted.fetch_add(1, Ordering::SeqCst);
 
-        if !opened.load(Ordering::SeqCst) {
-          continue;
+        match meeting.load(Ordering::SeqCst) {
+          now if now == Meets::Cut as u8 => continue,
+          now if now == Meets::Silent as u8 => {
+            held.push(stream);
+            continue;
+          }
+          _ => {}
         }
 
-        let kept = kept.clone();
+        let (kept, meeting) = (kept.clone(), meeting.clone());
         let answer = service_fn(move |asked: Request<Incoming>| {
-          let kept = kept.clone();
+          let (kept, meeting) = (kept.clone(), meeting.clone());
 
           async move {
-            let body = asked.into_body().collect().await?.to_bytes();
+            let body = asked.into_body().collect().await.map_err(std::io::Error::other)?.to_bytes();
             let id = {
               let mut kept = kept.lock().unwrap();
 
               kept.push(serde_json::from_slice(&body).unwrap_or(Value::Null));
               kept.len()
             };
+
+            if meeting.load(Ordering::SeqCst) == Meets::Swallowed as u8 {
+              return Err(std::io::Error::other("the stand-in cut the connection before answering"));
+            }
+
             let said = Full::new(Bytes::from(json!({ "id": id }).to_string()));
 
-            Ok::<_, hyper::Error>(http::Response::builder().status(StatusCode::CREATED).body(said).unwrap())
+            Ok(http::Response::builder().status(StatusCode::CREATED).body(said).unwrap())
           }
         });
 
@@ -2213,15 +2237,19 @@ impl Receiver {
 
     Self {
       port,
-      open,
+      meets,
       connections,
       queued,
       serving,
     }
   }
 
+  fn meet(&self, meets: Meets) {
+    self.meets.store(meets as u8, Ordering::SeqCst);
+  }
+
   fn open(&self) {
-    self.open.store(true, Ordering::SeqCst);
+    self.meet(Meets::Queued);
   }
 
   fn queued(&self) -> Vec<Value> {
@@ -2242,7 +2270,7 @@ impl Receiver {
 }
 
 // The waiter placed before the host reads its tools, a session issued that holds it, and the waits an owed wake
-// takes kept short.
+// takes and the span of one try kept short.
 async fn waiting_host(scratch: &Scratch) -> (Running, String) {
   place(
     &scratch.tools(),
@@ -2254,7 +2282,7 @@ async fn waiting_host(scratch: &Scratch) -> (Running, String) {
     ],
   );
 
-  let host = scratch.start_with(&["--wake-retry-ms", "20"]);
+  let host = scratch.start_with(&["--wake-retry-ms", "20", "--wake-try-ms", "200"]);
   let token = issue(&host, &record(&["garden.read"], json!({ "namespaces": ["garden"] }))).await;
 
   (host, token)
@@ -2398,4 +2426,106 @@ async fn the_host_started_after_one_killed_mid_work_queues_its_owed_wake_and_tel
   assert_eq!(told_lost["said"]["fact"]["summary"], lost["summary"]);
   assert_eq!(told_owed["said"]["fact"]["state"], "done");
   assert_eq!(told_owed["said"]["fact"]["summary"], "garden/wait answered: owed ended");
+}
+
+// "A connection cut and a try left unanswered ... all alike" and "the receiver may queue it twice; it is never left
+// untold" (docs/api.md, 「Asynchronous calls」): a receiver that holds the connection and never answers leaves the
+// wake owed once the try's span has passed; one that reads the wake and cuts the connection before answering is
+// asked again, so it reads the same wake more than once; and once it answers, the end names the last of them.
+#[tokio::test]
+async fn a_wake_never_answered_or_cut_once_read_is_asked_again_until_it_is_answered() {
+  let scratch = Scratch::new();
+  let receiver = Receiver::closed().await;
+
+  receiver.meet(Meets::Silent);
+  receiver.publish(&scratch);
+
+  let (host, token) = waiting_host(&scratch).await;
+  let id = wait_call(&scratch, &host, &token, "quick", true).await;
+  let failed_by = |words: &'static str| {
+    let end = end_of(&scratch, &id);
+
+    async move { end.is_some_and(|end| end["wake"]["error"].as_str().is_some_and(|why| why.contains(words))) }
+  };
+
+  until("a try left unanswered", || failed_by("did not answer within 200 ms")).await;
+  assert!(receiver.queued().is_empty());
+
+  receiver.meet(Meets::Swallowed);
+
+  until("a try read and cut", || failed_by("out of reach")).await;
+  assert!(!receiver.queued().is_empty());
+
+  receiver.open();
+
+  until("the wake queued", || {
+    let end = end_of(&scratch, &id);
+
+    async move { end.is_some_and(|end| end["wake"].get("id").is_some()) }
+  })
+  .await;
+
+  let read = receiver.queued();
+
+  assert!(read.len() >= 2, "{read:?}");
+  assert!(read.iter().all(|asked| asked["said"]["fact"]["use"] == id.as_str()), "{read:?}");
+  assert_eq!(end_of(&scratch, &id).unwrap()["wake"], json!({ "id": read.len() }));
+}
+
+// "A stop leaves an owed wake on disk for the host started next" (docs/api.md, 「Asynchronous calls」): a host asked by
+// `SIGTERM` to stop while a wake is owed exits without waiting on it, and the host started after it queues the wake.
+#[tokio::test]
+async fn a_host_stopped_with_a_wake_owed_exits_and_the_host_started_next_queues_it() {
+  let scratch = Scratch::new();
+  let receiver = Receiver::closed().await;
+
+  receiver.publish(&scratch);
+
+  let (mut first, token) = waiting_host(&scratch).await;
+  let id = wait_call(&scratch, &first, &token, "owed", true).await;
+
+  until("the wake owed", || {
+    let end = end_of(&scratch, &id);
+
+    async move {
+      end.is_some_and(|end| end["wake"]["pending"] == true && end["wake"]["tries"].as_u64() >= Some(1))
+    }
+  })
+  .await;
+
+  // SAFETY: a signal to the host this test started, which has not been waited for, so its pid is its own.
+  assert_eq!(unsafe { libc::kill(first.child.id() as i32, libc::SIGTERM) }, 0);
+
+  let mut exited = None;
+
+  until("the stopped host's exit", || {
+    exited = first.child.try_wait().unwrap();
+
+    let done = exited.is_some();
+
+    async move { done }
+  })
+  .await;
+
+  assert!(exited.unwrap().success());
+  assert_eq!(end_of(&scratch, &id).unwrap()["wake"]["pending"], true);
+  assert!(receiver.queued().is_empty());
+
+  receiver.open();
+
+  let _second = scratch.start_with(&["--wake-retry-ms", "20"]);
+
+  until("the wake queued", || {
+    let end = end_of(&scratch, &id);
+
+    async move { end.is_some_and(|end| end["wake"].get("id").is_some()) }
+  })
+  .await;
+
+  let queued = receiver.queued();
+
+  assert_eq!(queued.len(), 1);
+  assert_eq!(queued[0]["said"]["fact"]["use"], id.as_str());
+  assert_eq!(queued[0]["said"]["fact"]["state"], "done");
+  assert_eq!(end_of(&scratch, &id).unwrap()["wake"], json!({ "id": 1 }));
 }

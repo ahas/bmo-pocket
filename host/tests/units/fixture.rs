@@ -4,11 +4,10 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bmo_tool::manifest::{MANIFEST, PLACED};
 use bmo_tool::{Granted, Session};
-use mcp_host::async_calls::AsyncCalls;
+use mcp_host::async_calls::{AsyncCalls, WakeTries};
 use mcp_host::console::Bundle;
 use mcp_host::handler::Host;
 use mcp_host::placed::Placed;
@@ -211,7 +210,7 @@ impl Fixture {
     let router = server::tools(
       records,
       self.host.clone(),
-      Arc::new(AsyncCalls::new(self.dir.path().join("calls"), Duration::from_secs(1))),
+      Arc::new(AsyncCalls::new(self.dir.path().join("calls"), WakeTries::default())),
     );
 
     tokio::spawn(async move { axum::serve(listener, router).await });

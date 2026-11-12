@@ -135,10 +135,9 @@ tables, its files or its process. The host calls no other unit; a console reache
 - **The wake is owed until the receiver queues it.** The end is kept with its `wake` pending before the wake is
   first asked: `{pending: true, tries}`, with `error`, the reason the last try failed, once one has. A wake that
   could not be queued is retried until queued: a refusal, an unreachable receiver, a connection cut and a try left
-  unanswered for thirty seconds all alike, the wait doubling from a second, or what `--wake-retry-ms` names, to a
-  minute. Once queued the end's `wake` reads
-  `{id}`, the instruction's id. A wake whose queuing answer was lost is asked again, so the receiver may queue it
-  twice; it is never left untold.
+  unanswered for thirty seconds, or what `--wake-try-ms` names, all alike, the wait doubling from a second, or what
+  `--wake-retry-ms` names, to a minute. Once queued the end's `wake` reads `{id}`, the instruction's id. A wake
+  whose queuing answer was lost is asked again, so the receiver may queue it twice; it is never left untold.
 - **At its start the host settles every record it keeps** before it serves: a call with no end, which stood running
   when the previous host died, is ended `lost`, its summary saying so, and its wake owed; and every owed wake is
   asked again, as above. A stop leaves an owed wake on disk for the host started next.

@@ -41,8 +41,22 @@ const SUMMARY_CHARS: usize = 160;
 // The longest wait between two tries of an owed wake.
 const LONGEST_WAIT: Duration = Duration::from_secs(60);
 
-// How long one try of a wake waits on the receiver before it counts as failed.
-const TRY_SPAN: Duration = Duration::from_secs(30);
+/// How an owed wake is tried: the first wait before it is asked again, which doubles to a minute, and how long one
+/// try waits on the receiver before it counts as failed.
+#[derive(Debug, Clone, Copy)]
+pub struct WakeTries {
+  pub first_wait: Duration,
+  pub span: Duration,
+}
+
+impl Default for WakeTries {
+  fn default() -> Self {
+    Self {
+      first_wait: Duration::from_secs(1),
+      span: Duration::from_secs(30),
+    }
+  }
+}
 
 /// A call as the caller asked it.
 #[derive(Debug, Clone, Deserialize)]
@@ -133,21 +147,21 @@ fn owed() -> bool {
   true
 }
 
-/// The calls the host keeps for its sessions: the data root they stand under, the ids running now, and the first
-/// wait before an owed wake is asked again.
+/// The calls the host keeps for its sessions: the data root they stand under, the ids running now, and how an owed
+/// wake is tried.
 pub struct AsyncCalls {
   data_root: PathBuf,
   running: Mutex<HashSet<String>>,
-  first_wait: Duration,
+  tries: WakeTries,
 }
 
 impl AsyncCalls {
-  /// The calls kept under `data_root`, none running yet, an owed wake asked again first after `first_wait`.
-  pub fn new(data_root: PathBuf, first_wait: Duration) -> Self {
+  /// The calls kept under `data_root`, none running yet, an owed wake tried as `tries` says.
+  pub fn new(data_root: PathBuf, tries: WakeTries) -> Self {
     Self {
       data_root,
       running: Mutex::new(HashSet::new()),
-      first_wait,
+      tries,
     }
   }
 
@@ -324,18 +338,19 @@ impl AsyncCalls {
   // host started next.
   async fn deliver(self: Arc<Self>, host: Arc<Host>, request: Kept, mut end: End, mut held: Option<Held>) {
     let place = self.place(&request.id).join(END);
-    let mut wait = self.first_wait;
+    let mut wait = self.tries.first_wait;
 
     loop {
       let tries = end.wake.tries() + 1;
-      let asked = tokio::time::timeout(TRY_SPAN, self.awake(&request, &end.state, &end.summary)).await;
+      let asked =
+        tokio::time::timeout(self.tries.span, self.awake(&request, &end.state, &end.summary)).await;
       let failed = match asked {
         Ok(Ok(id)) => {
           end.wake = Wake::Queued { id };
           None
         }
         Ok(Err(why)) => Some(why),
-        Err(_) => Some(format!("the receiver did not answer within {} s", TRY_SPAN.as_secs())),
+        Err(_) => Some(format!("the receiver did not answer within {} ms", self.tries.span.as_millis())),
       };
 
       if let Some(why) = &failed {
