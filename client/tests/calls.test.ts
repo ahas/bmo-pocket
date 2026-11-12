@@ -115,12 +115,12 @@ async function ask(token: string, path: string, body?: unknown): Promise<{ statu
   return { status: response.status, answer: await response.json() };
 }
 
-// The call `id` once it ended, asked again until it has.
+// The call `id` once it ended and the receiver queued its wake, asked again until both hold.
 async function ended(token: string, id: string): Promise<any> {
   for (let turn = 0; turn < 200; turn += 1) {
     const { answer } = await ask(token, `/use/${id}`);
 
-    if (answer.state !== undefined && answer.state !== "running") {
+    if (answer.state !== undefined && answer.state !== "running" && answer.wake?.id !== undefined) {
       return answer;
     }
 
@@ -157,7 +157,7 @@ describe("asynchronous calls", () => {
     expect(existsSync(join(scratch, "data", "use", answer.id, "end.json"))).toBe(true);
 
     // The wake reached the receiver as a fact naming the call, for the room and agent asked.
-    expect(call.wake.error).toBeUndefined();
+    expect(call.wake).toEqual({ id: 7 });
     expect(woken.length).toBe(1);
     expect(woken[0].agentName).toBe("tester");
     expect(woken[0].room).toBe(42);

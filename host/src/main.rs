@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use bmo_tool::SessionRequest;
 use clap::{Args, Parser, Subcommand};
+use mcp_host::async_calls::AsyncCalls;
 use mcp_host::console::{Bundle, bundle_beside_binary};
 use mcp_host::drain::Drain;
 use mcp_host::handler::Host;
@@ -82,6 +83,10 @@ enum Verb {
     /// How long the changes under the tools' folder must have settled before it is read again.
     #[arg(long, default_value_t = 300)]
     settle_ms: u64,
+    /// The first wait before a wake the receiver did not queue is asked again; each wait after it doubles, to a
+    /// minute.
+    #[arg(long, default_value_t = 1_000)]
+    wake_retry_ms: u64,
     #[command(flatten)]
     console: ConsoleFace,
   },
@@ -180,6 +185,7 @@ fn main() -> ExitCode {
       reach,
       tools,
       settle_ms,
+      wake_retry_ms,
       console,
     } => {
       let data_root = data_root.unwrap_or_else(default_data_root);
@@ -207,6 +213,7 @@ fn main() -> ExitCode {
             sweep: Duration::from_millis(sweep_every_ms),
             schedule: Duration::from_millis(schedule_every_ms),
             settle: Duration::from_millis(settle_ms),
+            wake_retry: Duration::from_millis(wake_retry_ms),
           },
           host,
         )),
@@ -303,13 +310,14 @@ async fn end_what_is_kept(records: &Records, host: &Host) {
   ending.join_all().await;
 }
 
-// How often the host sweeps its records and versions, reads its schedules, and how long changes under the tools
-// must have settled before it reads them again.
+// How often the host sweeps its records and versions, reads its schedules, how long changes under the tools must
+// have settled before it reads them again, and the first wait before an owed wake is asked again.
 #[derive(Clone, Copy)]
 struct Beats {
   sweep: Duration,
   schedule: Duration,
   settle: Duration,
+  wake_retry: Duration,
 }
 
 // The host served: the tools face on the loopback port, the control socket at its path behind the issuer token and
@@ -376,6 +384,12 @@ async fn serve(
     }
   });
 
+  // The asynchronous calls kept settled before the first request: a call the previous host lost ended so, and
+  // every wake still owed asked again.
+  let calls = Arc::new(AsyncCalls::new(data_root.to_path_buf(), beats.wake_retry));
+
+  calls.settle(&host);
+
   // Every schedule of the catalogue kept, those due called by the host itself.
   let schedules = Arc::new(Schedules::default());
 
@@ -397,8 +411,8 @@ async fn serve(
 
     async move { host.drain.stopping().await }
   };
-  let sessions = axum::serve(tcp, server::tools(records.clone(), host.clone(), data_root.to_path_buf()))
-    .with_graceful_shutdown(stop());
+  let sessions =
+    axum::serve(tcp, server::tools(records.clone(), host.clone(), calls)).with_graceful_shutdown(stop());
   let screens = async {
     match console {
       Some((listener, screen)) => {

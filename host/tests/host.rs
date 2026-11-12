@@ -6,12 +6,16 @@ use std::io::{BufRead, BufReader};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bmo_pocket_client::transport::{Reply, request};
 use http::{Method, Request, StatusCode};
 use http_body_util::{BodyExt, Full};
-use hyper::body::Bytes;
+use hyper::body::{Bytes, Incoming};
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -2134,4 +2138,264 @@ async fn a_stop_takes_no_new_call_lets_each_one_in_hand_end_and_exits_after_the_
   assert_eq!(end["state"], "done");
   assert!(keeper_asked.exists(), "the helper was not asked to end");
   assert!(!host.control.exists());
+}
+
+// A tool that waits until it is released, then says so, and holds nothing else.
+const WAITER_MANIFEST: &str = r#"
+[tool]
+name = "waiter"
+protocol = 1
+language = "python"
+run = ["python3", "holder.py"]
+
+[[entry]]
+namespace = "garden"
+name = "wait"
+description = "Waits until it is released."
+input = "any.json"
+capabilities = ["garden.read"]
+hints = { read_only = true }
+"#;
+
+// The receiver standing in on a loopback port: while closed it cuts every connection as it opens, and once open it
+// queues each instruction asked of it, numbered from 1, keeping what it was asked.
+struct Receiver {
+  port: u16,
+  open: Arc<AtomicBool>,
+  connections: Arc<AtomicUsize>,
+  queued: Arc<Mutex<Vec<Value>>>,
+  serving: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Receiver {
+  fn drop(&mut self) {
+    self.serving.abort();
+  }
+}
+
+impl Receiver {
+  async fn closed() -> Self {
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let open = Arc::new(AtomicBool::new(false));
+    let connections = Arc::new(AtomicUsize::new(0));
+    let queued = Arc::new(Mutex::new(Vec::new()));
+    let (opened, counted, kept) = (open.clone(), connections.clone(), queued.clone());
+    let serving = tokio::spawn(async move {
+      while let Ok((stream, _)) = listener.accept().await {
+        counted.fetch_add(1, Ordering::SeqCst);
+
+        if !opened.load(Ordering::SeqCst) {
+          continue;
+        }
+
+        let kept = kept.clone();
+        let answer = service_fn(move |asked: Request<Incoming>| {
+          let kept = kept.clone();
+
+          async move {
+            let body = asked.into_body().collect().await?.to_bytes();
+            let id = {
+              let mut kept = kept.lock().unwrap();
+
+              kept.push(serde_json::from_slice(&body).unwrap_or(Value::Null));
+              kept.len()
+            };
+            let said = Full::new(Bytes::from(json!({ "id": id }).to_string()));
+
+            Ok::<_, hyper::Error>(http::Response::builder().status(StatusCode::CREATED).body(said).unwrap())
+          }
+        });
+
+        tokio::spawn(http1::Builder::new().serve_connection(TokioIo::new(stream), answer));
+      }
+    });
+
+    Self {
+      port,
+      open,
+      connections,
+      queued,
+      serving,
+    }
+  }
+
+  fn open(&self) {
+    self.open.store(true, Ordering::SeqCst);
+  }
+
+  fn queued(&self) -> Vec<Value> {
+    self.queued.lock().unwrap().clone()
+  }
+
+  // Where the host reads the receiver from: the env file under its data root.
+  fn publish(&self, scratch: &Scratch) {
+    let env = scratch.data.path().join("env");
+
+    fs::create_dir_all(&env).unwrap();
+    fs::write(
+      env.join("receiver.env"),
+      format!("RECEIVER_ADDRESS=http://127.0.0.1:{}\nRECEIVER_TOKEN=receiver-token\n", self.port),
+    )
+    .unwrap();
+  }
+}
+
+// The waiter placed before the host reads its tools, a session issued that holds it, and the waits an owed wake
+// takes kept short.
+async fn waiting_host(scratch: &Scratch) -> (Running, String) {
+  place(
+    &scratch.tools(),
+    "waiter",
+    &[
+      ("tool.toml", WAITER_MANIFEST),
+      ("any.json", r#"{ "type": "object" }"#),
+      ("holder.py", HOLDER_SCRIPT),
+    ],
+  );
+
+  let host = scratch.start_with(&["--wake-retry-ms", "20"]);
+  let token = issue(&host, &record(&["garden.read"], json!({ "namespaces": ["garden"] }))).await;
+
+  (host, token)
+}
+
+// An asynchronous call of the waiter, answered with the call's id; released at once where `release` says so.
+async fn wait_call(scratch: &Scratch, host: &Running, token: &str, call: &str, release: bool) -> String {
+  let root = scratch.data.path();
+  let released = root.join(format!("{call}.released"));
+
+  if release {
+    fs::write(&released, "").unwrap();
+  }
+
+  let arguments = json!({
+    "started": root.join(format!("{call}.started")).to_string_lossy(),
+    "released": released.to_string_lossy(),
+    "say": format!("{call} ended"),
+  });
+  let (status, kept) = on_tools_face(
+    host.port,
+    token.to_owned(),
+    "/use",
+    json!({ "tool": "garden/wait", "arguments": arguments }),
+  )
+  .await;
+
+  assert_eq!(status, StatusCode::OK, "{kept}");
+  kept["id"].as_str().unwrap().to_owned()
+}
+
+// The end kept for the call `id`, where one stands.
+fn end_of(scratch: &Scratch, id: &str) -> Option<Value> {
+  serde_json::from_slice(&fs::read(scratch.data.path().join("use").join(id).join("end.json")).ok()?).ok()
+}
+
+// The wake the receiver queued for the call `id`, where it queued one.
+fn fact_for(receiver: &Receiver, id: &str) -> Option<Value> {
+  receiver.queued().into_iter().find(|asked| asked["said"]["fact"]["use"] == id)
+}
+
+// "A wake that could not be queued is retried until queued" (docs/api.md, 「Asynchronous calls」): the receiver cuts
+// every connection, the end says the wake is owed and why after more than one try, and once the receiver opens the
+// same host queues it, once.
+#[tokio::test]
+async fn a_wake_the_receiver_cuts_is_owed_and_asked_again_until_it_is_queued() {
+  let scratch = Scratch::new();
+  let receiver = Receiver::closed().await;
+
+  receiver.publish(&scratch);
+
+  let (host, token) = waiting_host(&scratch).await;
+  let id = wait_call(&scratch, &host, &token, "quick", true).await;
+
+  until("the wake owed after two tries", || {
+    let end = end_of(&scratch, &id);
+
+    async move {
+      end.is_some_and(|end| end["wake"]["pending"] == true && end["wake"]["tries"].as_u64() >= Some(2))
+    }
+  })
+  .await;
+
+  let owed = end_of(&scratch, &id).unwrap();
+
+  assert_eq!(owed["state"], "done");
+  assert!(owed["wake"]["error"].as_str().unwrap().contains("out of reach"), "{owed}");
+  assert!(receiver.queued().is_empty());
+
+  receiver.open();
+
+  until("the wake queued", || {
+    let end = end_of(&scratch, &id);
+
+    async move { end.is_some_and(|end| end["wake"].get("id").is_some()) }
+  })
+  .await;
+
+  let queued = receiver.queued();
+  let fact = &queued[0]["said"]["fact"];
+
+  assert_eq!(queued.len(), 1);
+  assert_eq!(end_of(&scratch, &id).unwrap()["wake"], json!({ "id": 1 }));
+  assert_eq!((fact["use"].as_str(), fact["state"].as_str()), (Some(id.as_str()), Some("done")));
+  assert!(receiver.connections.load(Ordering::SeqCst) > 2);
+  assert!(scratch.log().contains("failed its try 2"), "{}", scratch.log());
+}
+
+// "At its start the host settles every record it keeps" (docs/api.md, 「Asynchronous calls」): a host killed with one
+// call's wake owed and another call running leaves both told by the host started after it, the second ended `lost`.
+#[tokio::test]
+async fn the_host_started_after_one_killed_mid_work_queues_its_owed_wake_and_tells_its_lost_call() {
+  let scratch = Scratch::new();
+  let receiver = Receiver::closed().await;
+
+  receiver.publish(&scratch);
+
+  let (mut first, token) = waiting_host(&scratch).await;
+  let owed = wait_call(&scratch, &first, &token, "owed", true).await;
+  let running = wait_call(&scratch, &first, &token, "running", false).await;
+  let started = scratch.data.path().join("running.started");
+
+  until("the first wake owed and the second call under way", || {
+    let end = end_of(&scratch, &owed);
+    let started = fs::read_to_string(&started).unwrap_or_default();
+
+    async move { end.is_some_and(|end| end["wake"]["pending"] == true) && !started.is_empty() }
+  })
+  .await;
+
+  first.child.kill().unwrap();
+  first.child.wait().unwrap();
+
+  // The waiter outlives its host; it is taken down here, as nothing else would.
+  let pid: i32 = fs::read_to_string(&started).unwrap().trim().parse().unwrap();
+
+  // SAFETY: the pid the waiter this test started wrote of itself, whose host is gone and never waited on it.
+  unsafe { libc::kill(pid, libc::SIGKILL) };
+  assert!(end_of(&scratch, &running).is_none());
+  assert!(receiver.queued().is_empty());
+
+  receiver.open();
+
+  let _second = scratch.start_with(&["--wake-retry-ms", "20"]);
+
+  until("both wakes queued", || {
+    let ends = [end_of(&scratch, &owed), end_of(&scratch, &running)];
+
+    async move { ends.iter().all(|end| end.as_ref().is_some_and(|end| end["wake"].get("id").is_some())) }
+  })
+  .await;
+
+  let lost = end_of(&scratch, &running).unwrap();
+  let told_lost = fact_for(&receiver, &running).unwrap();
+  let told_owed = fact_for(&receiver, &owed).unwrap();
+
+  assert_eq!(receiver.queued().len(), 2);
+  assert_eq!(lost["state"], "lost");
+  assert!(lost["summary"].as_str().unwrap().contains("was lost"), "{lost}");
+  assert_eq!(told_lost["said"]["fact"]["state"], "lost");
+  assert_eq!(told_lost["said"]["fact"]["summary"], lost["summary"]);
+  assert_eq!(told_owed["said"]["fact"]["state"], "done");
+  assert_eq!(told_owed["said"]["fact"]["summary"], "garden/wait answered: owed ended");
 }

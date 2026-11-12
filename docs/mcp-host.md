@@ -148,7 +148,9 @@ flowchart TD
   - a placed tool's process, a server tool's call and a stdio or streamable HTTP external server's call, its server
     and its connection standing until the call has answered;
   - a call a call in hand makes through its call-back socket, which stands as long as that call does;
-  - an asynchronous call, as far as its answer kept, its wake asked and its end kept;
+  - an asynchronous call, as far as its answer kept, its end kept with its wake owed and the wake asked once; a
+    wake still owed then is not waited on, since the host started next asks it again (`docs/api.md`,
+    「Asynchronous calls」);
   - a scheduled call.
 - **Idle connections and the event streams end at once,** so they hold nothing back.
 - **After the last call the host ends what it keeps, then exits.** Each record's servers and shared helpers end as
@@ -520,5 +522,9 @@ flowchart TD
   `ends_at_stop` entry is ended at the stop and answers that the host stopped, holding neither the stop nor
   `callsInHand`; a shared helper is asked to end by `SIGTERM`; and the process exits 0 after the last.
   `bmo-pocket quiet` ends 1 naming how many calls stand in hand, and 0 where none does or no host answers.
+- **An asynchronous call's wake:** against a stand-in receiver that cuts its first connections and then queues, the
+  end reads its wake pending with the last reason and then queued with the instruction's id, the wake asked once
+  more for each cut; and a host killed while one call's wake is owed and another call runs is followed by a host
+  that queues the owed wake and ends the other `lost`, with a wake saying so.
 - **The harness's header:** an installed Claude Code CLI, named by `BMO_LIVE_CLAUDE`, connects to the host with the
   header read from `BMO_MCP_TOKEN` and fails with a wrong one; the suite names none and skips it.

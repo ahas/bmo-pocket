@@ -4,7 +4,6 @@
 //! docs/api.md, 「The control socket」 and 「The console face」).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -118,7 +117,7 @@ pub struct Tools {
 
 /// The namespaces, each at `/mcp/<namespace>`, the toolbook at `/mcp/toolbook`, and the asynchronous calls at
 /// `/use`, served as streamable HTTP with no session kept: every request stands alone and is known by its token.
-pub fn tools(records: Arc<Records>, host: Arc<Host>, data_root: PathBuf) -> Router {
+pub fn tools(records: Arc<Records>, host: Arc<Host>, calls: Arc<AsyncCalls>) -> Router {
   let book = host.clone();
   let toolbook = StreamableHttpService::new(
     move || Ok(Toolbook { host: book.clone() }),
@@ -131,10 +130,7 @@ pub fn tools(records: Arc<Records>, host: Arc<Host>, data_root: PathBuf) -> Rout
     .route("/mcp/{namespace}", any(namespace))
     .route("/use", post(start_call).get(list_calls))
     .route("/use/{id}", get(one_call))
-    .with_state(Tools {
-      host,
-      calls: Arc::new(async_calls::AsyncCalls::new(data_root)),
-    })
+    .with_state(Tools { host, calls })
     .fallback(unknown_namespace)
     .layer(middleware::from_fn_with_state(records, authorise))
 }

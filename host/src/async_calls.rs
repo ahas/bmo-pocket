@@ -1,12 +1,14 @@
 //! Asynchronous calls (`docs/api.md`, 「Asynchronous calls」): a session's call kept and run by the host itself,
 //! its answer kept when it comes, and the caller's agent woken through the receiver. A caller's shell asks here
-//! and writes nothing: the record, the timer and the wake stand with the service.
+//! and writes nothing: the record, the timer and the wake stand with the service. A wake is owed until the receiver
+//! queues it: kept as pending in the call's end, asked again with a growing wait, and asked again by the host
+//! started next where a stop came first.
 
 use std::collections::HashSet;
 use std::hash::{BuildHasher as _, RandomState};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bmo_tool::Session;
 use http_body_util::{BodyExt as _, Full};
@@ -17,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use tokio::net::TcpStream;
 
+use crate::drain::Held;
 use crate::error::HostError;
 use crate::handler::{Host, Refusal};
 
@@ -34,6 +37,12 @@ pub const SORT: &str = "use-ended";
 
 // The longest summary a wake carries, in characters.
 const SUMMARY_CHARS: usize = 160;
+
+// The longest wait between two tries of an owed wake.
+const LONGEST_WAIT: Duration = Duration::from_secs(60);
+
+// How long one try of a wake waits on the receiver before it counts as failed.
+const TRY_SPAN: Duration = Duration::from_secs(30);
 
 /// A call as the caller asked it.
 #[derive(Debug, Clone, Deserialize)]
@@ -82,21 +91,103 @@ pub struct End {
   pub ended_at: i64,
   pub state: String,
   pub summary: String,
-  pub wake: Value,
+  pub wake: Wake,
 }
 
-/// The calls the host keeps for its sessions: the data root they stand under, and the ids running now.
+/// A call's wake: queued by the receiver under an instruction's id, or still owed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Wake {
+  /// The receiver queued it as this instruction.
+  Queued { id: i64 },
+  /// Not queued yet: how many tries failed, and why the last one did.
+  Owed {
+    #[serde(default = "owed")]
+    pending: bool,
+    #[serde(default)]
+    tries: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+  },
+}
+
+impl Wake {
+  /// A wake owed and not asked yet.
+  pub fn fresh() -> Self {
+    Self::Owed {
+      pending: true,
+      tries: 0,
+      error: None,
+    }
+  }
+
+  fn tries(&self) -> u32 {
+    match self {
+      Self::Queued { .. } => 0,
+      Self::Owed { tries, .. } => *tries,
+    }
+  }
+}
+
+fn owed() -> bool {
+  true
+}
+
+/// The calls the host keeps for its sessions: the data root they stand under, the ids running now, and the first
+/// wait before an owed wake is asked again.
 pub struct AsyncCalls {
   data_root: PathBuf,
   running: Mutex<HashSet<String>>,
+  first_wait: Duration,
 }
 
 impl AsyncCalls {
-  /// The calls kept under `data_root`, none running yet.
-  pub fn new(data_root: PathBuf) -> Self {
+  /// The calls kept under `data_root`, none running yet, an owed wake asked again first after `first_wait`.
+  pub fn new(data_root: PathBuf, first_wait: Duration) -> Self {
     Self {
       data_root,
       running: Mutex::new(HashSet::new()),
+      first_wait,
+    }
+  }
+
+  /// Every record kept settled before the host serves: a call with no end, which stood running when the previous
+  /// host died, ended `lost` with its wake owed; and every owed wake asked again until the receiver queues it.
+  pub fn settle(self: &Arc<Self>, host: &Arc<Host>) {
+    let ids: Vec<String> = std::fs::read_dir(self.folder())
+      .into_iter()
+      .flatten()
+      .filter_map(Result::ok)
+      .filter_map(|entry| entry.file_name().to_str().map(str::to_owned))
+      .filter(|id| readable(id))
+      .collect();
+
+    for id in ids {
+      let place = self.place(&id);
+      let Some(request) = read::<Kept>(&place.join(REQUEST)) else {
+        continue;
+      };
+      let end = match read::<End>(&place.join(END)) {
+        Some(end) => end,
+        None => {
+          let end = End {
+            ended_at: now_ms(),
+            state: "lost".to_owned(),
+            summary: line(&format!("{} was lost: its host died before it ended", request.tool)),
+            wake: Wake::fresh(),
+          };
+
+          if let Err(why) = keep(&place.join(END), &end) {
+            eprintln!("mcp-host: the end of lost `{id}` could not be kept: {why}");
+          }
+
+          end
+        }
+      };
+
+      if matches!(end.wake, Wake::Owed { .. }) {
+        tokio::spawn(Arc::clone(self).deliver(Arc::clone(host), request, end, None));
+      }
     }
   }
 
@@ -145,7 +236,6 @@ impl AsyncCalls {
     let finishing = host.drain.finishing();
 
     tokio::spawn(async move {
-      let _finishing = finishing;
       let started = Instant::now();
       let run = host.attempt(&found, &session, arguments).await;
       let (answer, state, summary) = match run {
@@ -170,15 +260,11 @@ impl AsyncCalls {
         eprintln!("mcp-host: the answer of `{under}` could not be kept: {why} (after {spent} ms)");
       }
 
-      let wake = calls.awake(&request, state, &summary).await;
       let end = End {
         ended_at: now_ms(),
         state: state.to_owned(),
         summary,
-        wake: match &wake {
-          Ok(instruction) => json!({ "id": instruction }),
-          Err(why) => json!({ "error": why }),
-        },
+        wake: Wake::fresh(),
       };
 
       if let Err(why) = keep(&kept.join(END), &end) {
@@ -186,6 +272,7 @@ impl AsyncCalls {
       }
 
       calls.running.lock().expect("the running calls are held").remove(&under);
+      calls.deliver(host, request, end, Some(finishing)).await;
     });
 
     Ok(json!({ "id": id, "state": "running", "record": place.display().to_string() }))
@@ -226,10 +313,57 @@ impl AsyncCalls {
     if let Some(end) = end {
       answer["endedAt"] = json!(end.ended_at);
       answer["summary"] = json!(end.summary);
-      answer["wake"] = end.wake;
+      answer["wake"] = serde_json::to_value(&end.wake).ok()?;
     }
 
     Some(answer)
+  }
+
+  // The wake of `end` asked until the receiver queues it, the end kept again after every try. The first try is
+  // made while `held` holds the host's stop; the tries after it end at the stop, the wake left owed on disk for the
+  // host started next.
+  async fn deliver(self: Arc<Self>, host: Arc<Host>, request: Kept, mut end: End, mut held: Option<Held>) {
+    let place = self.place(&request.id).join(END);
+    let mut wait = self.first_wait;
+
+    loop {
+      let tries = end.wake.tries() + 1;
+      let asked = tokio::time::timeout(TRY_SPAN, self.awake(&request, &end.state, &end.summary)).await;
+      let failed = match asked {
+        Ok(Ok(id)) => {
+          end.wake = Wake::Queued { id };
+          None
+        }
+        Ok(Err(why)) => Some(why),
+        Err(_) => Some(format!("the receiver did not answer within {} s", TRY_SPAN.as_secs())),
+      };
+
+      if let Some(why) = &failed {
+        eprintln!("mcp-host: the wake of `{}` failed its try {tries}: {why}", request.id);
+        end.wake = Wake::Owed {
+          pending: true,
+          tries,
+          error: Some(why.clone()),
+        };
+      }
+
+      if let Err(why) = keep(&place, &end) {
+        eprintln!("mcp-host: the end of `{}` could not be kept: {why}", request.id);
+      }
+
+      drop(held.take());
+
+      if failed.is_none() {
+        return;
+      }
+
+      tokio::select! {
+        () = tokio::time::sleep(wait) => {}
+        () = host.drain.stopping() => return,
+      }
+
+      wait = (wait * 2).min(LONGEST_WAIT);
+    }
   }
 
   // The agent woken: the receiver is asked to queue a fact naming the call in the caller's room.
