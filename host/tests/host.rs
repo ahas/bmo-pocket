@@ -2056,7 +2056,13 @@ async fn a_stop_takes_no_new_call_lets_each_one_in_hand_end_and_exits_after_the_
   .await;
 
   assert_eq!(issued_ask(&host, Method::GET, "/health").await["callsInHand"], 4);
-  assert_eq!(quiet(&scratch, &host), (Some(1), "4 tool calls in hand\n".to_owned()));
+
+  let (code, said) = quiet(&scratch, &host);
+
+  assert_eq!(code, Some(1), "{said}");
+  assert!(said.starts_with("4 tool calls in hand: "), "{said}");
+  assert_eq!(said.matches("garden/hold (gardener, ").count(), 3, "{said}");
+  assert!(said.contains("outer/hold (gardener, ") && !said.contains("hold_past_stop"), "{said}");
 
   // SAFETY: a signal to the host this test started, which has not been waited for, so its pid is its own.
   assert_eq!(unsafe { libc::kill(host.child.id() as i32, libc::SIGTERM) }, 0);
@@ -2138,6 +2144,238 @@ async fn a_stop_takes_no_new_call_lets_each_one_in_hand_end_and_exits_after_the_
   assert_eq!(end["state"], "done");
   assert!(keeper_asked.exists(), "the helper was not asked to end");
   assert!(!host.control.exists());
+}
+
+// A tool whose `linger` never answers of itself, declaring itself unbounded, and whose `relay` calls `linger` through
+// its call-back socket; each call says it started.
+const LINGERER_MANIFEST: &str = r#"
+[tool]
+name = "lingerer"
+protocol = 1
+language = "python"
+run = ["python3", "lingerer.py"]
+
+[[entry]]
+namespace = "garden"
+name = "linger"
+description = "Never answers of itself."
+input = "any.json"
+capabilities = ["garden.read"]
+unbounded = true
+hints = { read_only = true }
+
+[[entry]]
+namespace = "garden"
+name = "relay"
+description = "Calls linger through its call-back socket."
+input = "any.json"
+capabilities = ["garden.read"]
+hints = { read_only = true }
+"#;
+
+const LINGERER_SCRIPT: &str = r#"
+import json, os, socket, sys, time
+
+handed = json.load(sys.stdin)
+given = handed["arguments"]
+open(given["started"], "w").write(str(os.getpid()))
+
+if handed["entry"] == "garden/relay":
+    with socket.socket(socket.AF_UNIX) as line:
+        line.connect(handed["callback"])
+        asked = {"kind": "call", "entry": "garden/linger", "arguments": given["inner"]}
+        line.sendall((json.dumps(asked) + "\n").encode())
+        print(line.makefile().readline())
+    sys.exit()
+
+time.sleep(3600)
+"#;
+
+// One JSON request on the tools face whose connection stands as long as the task asking it: the task aborted, the
+// connection closes with no answer read.
+fn held_on_tools_face(
+  port: u16,
+  token: String,
+  path: &'static str,
+  body: Value,
+) -> tokio::task::JoinHandle<()> {
+  tokio::spawn(async move {
+    let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+    let (mut link, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream)).await.unwrap();
+    let asked = Request::post(path)
+      .header("host", "127.0.0.1")
+      .header("content-type", "application/json")
+      .header("accept", "application/json, text/event-stream")
+      .header("mcp-protocol-version", "2025-06-18")
+      .header("authorization", format!("Bearer {token}"))
+      .body(Full::new(Bytes::from(body.to_string())))
+      .unwrap();
+
+    tokio::select! {
+      _ = connection => {}
+      _ = link.send_request(asked) => {}
+    }
+  })
+}
+
+// The calls `GET /health` names in hand, by entry, each said to be the gardener's.
+async fn named_in_hand(host: &Running) -> Vec<String> {
+  let health = issued_ask(host, Method::GET, "/health").await;
+  let named = health["inHand"].as_array().unwrap();
+
+  assert_eq!(health["callsInHand"], named.len());
+
+  named
+    .iter()
+    .map(|call| {
+      assert_eq!(call["holder"], "gardener", "{call}");
+      assert!(call["startedAt"].as_u64().is_some_and(|at| at > 0), "{call}");
+      call["entry"].as_str().unwrap().to_owned()
+    })
+    .collect()
+}
+
+// "A call whose caller is gone holds nothing" (docs/mcp-host.md, 「The host's stop」): a call on the tools face whose
+// connection closes, the call it made through its call-back socket with it, and an asynchronous call and a control
+// request whose record is revoked, each of an unbounded entry but the first, have their processes ended and drop out
+// of what `quiet` waits on, which names each while it stands.
+#[tokio::test]
+async fn a_call_whose_caller_is_gone_is_ended_and_no_longer_held_in_hand() {
+  let scratch = Scratch::new();
+  let root = scratch.data.path().to_path_buf();
+  let started = |call: &str| root.join(format!("{call}.started"));
+  let pid_of = |call: &str| fs::read_to_string(started(call)).unwrap_or_default();
+
+  place(
+    &scratch.tools(),
+    "lingerer",
+    &[
+      ("tool.toml", LINGERER_MANIFEST),
+      ("any.json", r#"{ "type": "object" }"#),
+      ("lingerer.py", LINGERER_SCRIPT),
+    ],
+  );
+
+  let host = scratch.start();
+  let token = issue(&host, &record(&["garden.read"], json!({ "namespaces": ["garden"] }))).await;
+
+  // The tools face: the relay's connection closed, the relay and the call it made through its socket end.
+  let on_face = held_on_tools_face(
+    host.port,
+    token.clone(),
+    "/mcp/garden",
+    json!({
+      "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+      "params": {
+        "name": "relay",
+        "arguments": {
+          "started": started("relay").to_string_lossy(),
+          "inner": { "started": started("relayed").to_string_lossy() },
+        },
+      },
+    }),
+  );
+
+  until("the relay and the call it made to start", || {
+    let both = [pid_of("relay"), pid_of("relayed")];
+
+    async move { both.iter().all(|pid| !pid.is_empty()) }
+  })
+  .await;
+
+  assert_eq!(named_in_hand(&host).await, ["garden/relay", "garden/linger"]);
+
+  let (code, said) = quiet(&scratch, &host);
+
+  assert_eq!(code, Some(1), "{said}");
+  assert!(said.starts_with("2 tool calls in hand: garden/relay (gardener, "), "{said}");
+  assert!(said.contains(", garden/linger (gardener, ") && said.ends_with(")\n"), "{said}");
+
+  on_face.abort();
+
+  for call in ["relay", "relayed"] {
+    let pid = pid_of(call);
+
+    until(&format!("the {call} call's process to end"), move || {
+      let pid = pid.clone();
+
+      async move { !alive(&pid) }
+    })
+    .await;
+  }
+
+  until("the face's calls to leave the hand", || async { named_in_hand(&host).await.is_empty() }).await;
+
+  // The record revoked: an asynchronous call and a control request under it end, the request answered as cancelled.
+  let (status, kept) = on_tools_face(
+    host.port,
+    token.clone(),
+    "/use",
+    json!({ "tool": "garden/linger", "arguments": { "started": started("kept").to_string_lossy() } }),
+  )
+  .await;
+
+  assert_eq!(status, StatusCode::OK, "{kept}");
+
+  let controlled = {
+    let asked =
+      json!({ "namespace": "garden", "name": "linger", "input": { "started": started("controlled") } });
+    let (socket, token) = (host.control.clone(), token.clone());
+
+    tokio::spawn(async move {
+      request(&socket, Method::POST, "/tool-calls", Some(&token), Some(&asked)).await.unwrap()
+    })
+  };
+
+  until("the kept and the controlled calls to start", || {
+    let both = [pid_of("kept"), pid_of("controlled")];
+
+    async move { both.iter().all(|pid| !pid.is_empty()) }
+  })
+  .await;
+
+  assert_eq!(named_in_hand(&host).await.len(), 2);
+
+  let revoked =
+    control(&host, Method::DELETE, &format!("/tool-sessions/{token}"), Some(&host.issuer), None).await;
+
+  assert_eq!(revoked.status, StatusCode::NO_CONTENT);
+
+  let cut = tokio::time::timeout(Duration::from_secs(10), controlled)
+    .await
+    .expect("the controlled call's answer did not come within ten seconds")
+    .unwrap();
+  let said = String::from_utf8_lossy(&cut.body).into_owned();
+
+  assert_eq!(cut.status, StatusCode::BAD_GATEWAY, "{said}");
+  assert!(said.contains("cancelled: its caller is gone"), "{said}");
+
+  for call in ["kept", "controlled"] {
+    let pid = pid_of(call);
+
+    until(&format!("the {call} call's process to end"), move || {
+      let pid = pid.clone();
+
+      async move { !alive(&pid) }
+    })
+    .await;
+  }
+
+  let id = kept["id"].as_str().unwrap().to_owned();
+
+  until("the kept call's end", || {
+    let ended = end_of(&scratch, &id);
+
+    async move { ended.is_some() }
+  })
+  .await;
+
+  let end = end_of(&scratch, &id).unwrap();
+
+  assert_eq!(end["state"], "cancelled", "{end}");
+  assert!(end["summary"].as_str().unwrap().contains("its caller is gone"), "{end}");
+  assert!(named_in_hand(&host).await.is_empty());
+  assert_eq!(quiet(&scratch, &host), (Some(0), "no tool call in hand\n".to_owned()));
 }
 
 // A tool that waits until it is released, then says so, and holds nothing else.

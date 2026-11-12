@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// What `GET /health` answers: whether the host is ready, why not where it is not, its version, and how many calls
-/// a stop of the host would wait on.
+/// a stop of the host would wait on and which.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Health {
@@ -18,6 +18,20 @@ pub struct Health {
   pub reason: Option<String>,
   pub version: String,
   pub calls_in_hand: u64,
+  /// Each call in hand, oldest first.
+  pub in_hand: Vec<CallInHand>,
+}
+
+/// One call a stop of the host would wait on: what it asks, whose record it runs under, and when it started.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CallInHand {
+  /// The entry's full name, or the tool's own name for a resource listing or read.
+  pub entry: String,
+  /// The `holderName` of the record the call runs under.
+  pub holder: String,
+  /// When it started, in epoch milliseconds.
+  pub started_at: u64,
 }
 
 /// Where a page of a collection keyed by name begins and how much of it is answered: the last name a page

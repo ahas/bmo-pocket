@@ -16,9 +16,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{any, delete, get, post};
 use axum::{Json, Router};
 use bmo_pocket_client::{
-  Claim, ClaimRequest, Event, EventPage, EventQuery, Health, NameQuery, Namespace, NamespacePage, Schedule,
-  SchedulePage, Server, ServerPage, SessionPage, SessionQuery, StandingSession, TimeQuery, Tool, ToolCall,
-  ToolCallRequest, ToolPage, ToolResult, ToolSession,
+  CallInHand, Claim, ClaimRequest, Event, EventPage, EventQuery, Health, NameQuery, Namespace,
+  NamespacePage, Schedule, SchedulePage, Server, ServerPage, SessionPage, SessionQuery, StandingSession,
+  TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage, ToolResult, ToolSession,
 };
 use bmo_tool::{Session, SessionRequest};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
@@ -334,11 +334,24 @@ impl Control {
 }
 
 async fn health(State(state): State<Control>) -> Json<Health> {
+  let in_hand: Vec<CallInHand> = state
+    .host
+    .drain
+    .in_hand()
+    .into_iter()
+    .map(|call| CallInHand {
+      entry: call.entry,
+      holder: call.holder,
+      started_at: call.started_at,
+    })
+    .collect();
+
   Json(Health {
     ready: true,
     reason: None,
     version: env!("CARGO_PKG_VERSION").to_owned(),
-    calls_in_hand: state.host.drain.calls_in_hand() as u64,
+    calls_in_hand: in_hand.len() as u64,
+    in_hand,
   })
 }
 
@@ -425,7 +438,7 @@ async fn tool_call(
     Ok(result) => result,
     Err(Refusal::Misfit(why)) => return Err(HostError::ArgumentsMisfit(why)),
     Err(Refusal::Denied(why)) => return Err(HostError::GrantRefused(why)),
-    Err(Refusal::Failed(why)) => return Err(HostError::ToolFailed(why)),
+    Err(Refusal::Failed(why) | Refusal::Cancelled(why)) => return Err(HostError::ToolFailed(why)),
   };
   let result: ToolResult = serde_json::from_value(result)
     .map_err(|why| HostError::ToolFailed(format!("{full} answered what is not a tool result: {why}")))?;

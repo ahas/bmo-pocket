@@ -5,6 +5,7 @@
 //! call-back socket.
 
 use std::collections::BTreeSet;
+use std::future::Future;
 use std::sync::Arc;
 
 use bmo_pocket_client::{Listing, ReachedBy, Tool, ToolHints};
@@ -21,11 +22,12 @@ use rmcp::{ErrorData, RoleServer, ServerHandler};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use crate::caller;
 use crate::drain::Drain;
 use crate::placed::{Placed, PlacedTool};
 use crate::records::Reach;
 use crate::residency;
-use crate::running::{ask, claim_answer, claimed, failed};
+use crate::running::{CALLER_GONE, ask, claim_answer, claimed, failed};
 
 /// What every namespace's handler stands on.
 pub struct Host {
@@ -211,20 +213,21 @@ impl Entry {
 }
 
 /// Why the host did not hand a call's answer on: the arguments do not fit, the session's grants do not hold the
-/// entry's grant, or the tool failed before answering a tool result. A session's model reads each as a failed
-/// tool result; the control socket answers each by its status.
+/// entry's grant, the tool failed before answering a tool result, or the call was cancelled as its record went. A
+/// session's model reads each as a failed tool result; the control socket answers each by its status.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
   Misfit(String),
   Denied(String),
   Failed(String),
+  Cancelled(String),
 }
 
 impl Refusal {
   /// The sentence it is said with.
   pub fn said(&self) -> &str {
     match self {
-      Self::Misfit(said) | Self::Denied(said) | Self::Failed(said) => said,
+      Self::Misfit(said) | Self::Denied(said) | Self::Failed(said) | Self::Cancelled(said) => said,
     }
   }
 }
@@ -290,6 +293,19 @@ pub(crate) fn reached(context: &RequestContext<RoleServer>, namespace: &str) {
     .and_then(|parts| parts.extensions.get::<Reach>())
   {
     reach.mark(namespace);
+  }
+}
+
+// What `answering` answers, or a cancellation once the request is cancelled: its connection closed by a harness
+// that ended or gave the call up. The answering dropped then ends the process group of every call it holds
+// (docs/mcp-host.md, 「The host's stop」).
+pub(crate) async fn unless_cancelled<T>(
+  context: &RequestContext<RoleServer>,
+  answering: impl Future<Output = Result<T, ErrorData>>,
+) -> Result<T, ErrorData> {
+  tokio::select! {
+    answered = answering => answered,
+    () = context.ct.cancelled() => Err(ErrorData::internal_error(format!("the call {CALLER_GONE}"), None)),
   }
 }
 
@@ -493,6 +509,9 @@ impl Host {
 
     match ask(self, &entry.tool, session, asked).await {
       Ok(value) => checked_result(value).map_err(Refusal::Failed),
+      Err(_) if caller::is_gone(session) => {
+        Err(Refusal::Cancelled(format!("{} was cancelled: its caller is gone", entry.full_name())))
+      }
       Err(why) => Err(Refusal::Failed(format!("{} failed: {why}", entry.full_name()))),
     }
   }
@@ -766,7 +785,7 @@ impl ServerHandler for Handler {
       return Err(ErrorData::invalid_params(unknown(&request.name), None));
     };
 
-    self.host.dispatch(&entry, &session, arguments).await
+    unless_cancelled(&context, self.host.dispatch(&entry, &session, arguments)).await
   }
 
   // The documents the namespace serves the session, where it serves any and the session holds what they ask.
@@ -776,7 +795,9 @@ impl ServerHandler for Handler {
     context: RequestContext<RoleServer>,
   ) -> Result<ListResourcesResult, ErrorData> {
     let session = session(&context)?;
-    let listed = self.host.list_resources(&session, &self.namespace).await;
+    let listed =
+      unless_cancelled(&context, async { Ok(self.host.list_resources(&session, &self.namespace).await) })
+        .await?;
 
     read(private(json!({ "resources": listed })))
   }
@@ -788,7 +809,9 @@ impl ServerHandler for Handler {
   ) -> Result<ReadResourceResponse, ErrorData> {
     let session = session(&context)?;
 
-    match self.host.read_resource(&session, &self.namespace, &request.uri).await {
+    let reading = async { Ok(self.host.read_resource(&session, &self.namespace, &request.uri).await) };
+
+    match unless_cancelled(&context, reading).await? {
       Ok(contents) => Ok(ReadResourceResponse::Complete(read::<ReadResourceResult>(private(contents))?)),
       Err(why) => Err(ErrorData::resource_not_found(why, None)),
     }

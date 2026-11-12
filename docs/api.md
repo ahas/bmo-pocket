@@ -39,7 +39,7 @@ tables, its files or its process. The host calls no other unit; a console reache
 | 410 | `gone` | `GET /events`, where an event after the cursor is no longer held: one older than the window the host holds, or a cursor of an earlier run of the host (「Events」) |
 | 422 | `arguments-misfit` | `POST /tool-calls`, where the input does not fit the entry's schema in the form the session holds; the sentence names each misfit and carries the schema |
 | 500 | `failed` | the host failed, as where a record could not be kept or taken back on disk; the sentence is the failure |
-| 502 | `tool-failed` | `POST /tool-calls`, where the tool exited uncleanly, answered what is not a tool result, or its external server could not be reached or failed the call |
+| 502 | `tool-failed` | `POST /tool-calls`, where the tool exited uncleanly, answered what is not a tool result, or its external server could not be reached or failed the call; or where the record it ran under was revoked or lapsed mid-call, the sentence saying it was cancelled because its caller is gone (`docs/mcp-host.md`, 「The host's stop」) |
 
 ## The OpenAPI document and the clients
 
@@ -114,6 +114,8 @@ tables, its files or its process. The host calls no other unit; a console reache
 - **Every result says it is complete,** and a listing or a resource read says it may be kept by the asking session
   alone and never past its answer, for a client on a protocol revision that asks; an earlier revision is answered
   without them.
+- **A request whose connection closes before its answer cancels its call:** the call's process group is ended and
+  the call no longer counts in `callsInHand` (`docs/mcp-host.md`, 「The host's stop」).
 
 ## Asynchronous calls
 
@@ -127,7 +129,10 @@ tables, its files or its process. The host calls no other unit; a console reache
 - **The call runs under the caller's own session record,** with its namespaces, capabilities, grants and variables,
   so it reaches exactly what a synchronous call of that session reaches. The host keeps `request.json` before it
   starts and `answer.json` once the tool answered or refused.
-- **It runs until the tool answers or refuses,** however long that takes; no span of the host's ends it.
+- **It runs until the tool answers or refuses,** however long that takes; no span of the host's ends it. Its
+  caller's going ends it: a call whose record is revoked or lapses while it runs has its process group ended and
+  is kept `cancelled`, its summary saying its caller is gone, with its wake owed as any end's is
+  (`docs/mcp-host.md`, 「The host's stop」).
 - **The wake:** once the answer is kept, the host queues a fact with the receiver's `POST /instructions`, at
   `RECEIVER_ADDRESS` with `RECEIVER_TOKEN` as the bearer, each from the environment or the data root's
   `env/receiver.env`. The fact names the call by `use` and `tool` with its `state`, `summary` and the caller's
@@ -142,8 +147,8 @@ tables, its files or its process. The host calls no other unit; a console reache
   when the previous host died, is ended `lost`, its summary saying so, and its wake owed; and every owed wake is
   asked again, as above. A stop leaves an owed wake on disk for the host started next.
 - **`GET /use`** answers `{items}`: every call the token's session asked, oldest first, each as `GET /use/{id}`
-  answers it. **`GET /use/{id}`** answers one call: the request's fields, `state` (`running`, `done`, `refused` or
-  `failed`, or `lost` for one that stood running when the host died), and, once it ended, `endedAt`, `summary` and
+  answers it. **`GET /use/{id}`** answers one call: the request's fields, `state` (`running`, `done`, `refused`,
+  `failed` or `cancelled`, or `lost` for one that stood running when the host died), and, once it ended, `endedAt`, `summary` and
   `wake`. A call another session asked is answered 404 `not-found`, as one that never stood is.
 - **The records stand under the host's data root,** `use/<id>/`, readable by the host's user alone: `request.json`,
   `answer.json` and `end.json`, the end last with `endedAt`, `state`, `summary` and `wake`.
@@ -251,7 +256,7 @@ HTTP on a loopback port of the face's own.
 
 | Route | Token | Answer |
 |---|---|---|
-| `GET /health` | either | 200 `{ready, reason, version, callsInHand}`: `ready` true and `reason` null once the catalogue is read, `version` the repository's, and `callsInHand` how many calls a stop of the host would wait on (`docs/mcp-host.md`, 「The host's stop」) |
+| `GET /health` | either | 200 `{ready, reason, version, callsInHand, inHand}`: `ready` true and `reason` null once the catalogue is read, `version` the repository's, `callsInHand` how many calls a stop of the host would wait on, and `inHand` each of them, oldest first, as `{entry, holder, startedAt}`: the entry's full name, or the tool's name for a resource listing or read, the `holderName` of the record it runs under, and when it started, in epoch milliseconds (`docs/mcp-host.md`, 「The host's stop」) |
 
 ### Discipline
 
@@ -386,8 +391,8 @@ host tells of its catalogue as the registry changes under it.
 | `GET /tool-sessions` | the issuer's | query `after`, a time in epoch milliseconds; `limit`; `holder`, a holder's name | 200 a page of the tool sessions standing, in order of `createdAt`, those of the holder alone where one is named; 400 `bad-request`; 403 `forbidden` |
 | `POST /tool-sessions` | the issuer's | a session record, with `ttlMs` | 201 the tool session; 400 `bad-request` naming why the record does not read; 403 `forbidden`; 500 `failed` |
 | `GET /tool-sessions/{token}` | the issuer's | | 200 the standing session the token names; 403 `forbidden`; 404 `not-found` where the token names no session standing |
-| `DELETE /tool-sessions/{token}` | the issuer's | | 204, what the session's tools kept ended; 403 `forbidden`; 404 `not-found` where the token names no session; 500 `failed` |
-| `DELETE /tool-session-records/{id}` | the issuer's | | 204, the session the record id names revoked as by its token and what its tools kept ended; 403 `forbidden`; 404 `not-found` where the id names no session standing; 500 `failed` |
+| `DELETE /tool-sessions/{token}` | the issuer's | | 204, what the session's tools kept and every call in hand under it ended; 403 `forbidden`; 404 `not-found` where the token names no session; 500 `failed` |
+| `DELETE /tool-session-records/{id}` | the issuer's | | 204, the session the record id names revoked as by its token, and what its tools kept and every call in hand under it ended; 403 `forbidden`; 404 `not-found` where the id names no session standing; 500 `failed` |
 
 #### The session record
 
@@ -605,7 +610,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 | `capabilities` | array of strings | What a record must hold to be shown it whole; required unless `system` |
 | `grant` | string | The resource a session's grants must hold for a call of it to run (`docs/mcp-host.md`, 「Grants」) |
 | `timeout` | integer | Read and given no effect |
-| `unbounded` | boolean | Read and given no effect: every call waits for its own answer |
+| `unbounded` | boolean | Read and given no effect: every call waits for its own answer, and ends with its caller (`docs/mcp-host.md`, 「The host's stop」) |
 | `system` | boolean | For the system alone: shown to no session, reached through the call-back socket and `POST /tool-calls` |
 | `ends_at_stop` | boolean | A call of it may wait on what stops the host, so it does not hold the host's stop: it is ended as the stop begins and answers as failed (`docs/mcp-host.md`, 「The host's stop」) |
 
@@ -715,7 +720,9 @@ name is refused, naming it.
   refused or the tool answered that it failed, and 2 where their words do not read.
 - **`bmo-pocket quiet` says whether a stop of the host would wait on anything,** for a deployment's wait before its
   flip (`docs/mcp-host.md`, 「The host's stop」). It reads `GET /health` with the issuer token and writes one line on
-  standard output: it ends 0 where `callsInHand` is 0, and 1 naming how many stand in hand otherwise. A host it
+  standard output: it ends 0 where `callsInHand` is 0, and 1 otherwise, naming how many stand in hand and each of
+  them, oldest first, by its entry, its record's holder and how long it has run, as `3 tool calls in hand:
+  bmo/wait (a-worker, 3d 4h), …`. A host it
   cannot read holds nothing it could be told of, so it ends 0 there as well, saying why.
 - **The `tool` nouns read the running host on the control socket** (「The control socket」), at the path
   `BMO_MCP_HOST_SOCKET` names or the default, with the issuer token kept in the file `--issuer-token-file` names,

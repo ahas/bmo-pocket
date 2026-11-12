@@ -259,13 +259,17 @@ impl AsyncCalls {
         }
         Err(refusal) => {
           let why = refusal.said().to_owned();
-          let code = match &refusal {
-            Refusal::Misfit(_) => "arguments-misfit",
-            Refusal::Denied(_) => "grant-refused",
-            Refusal::Failed(_) => "tool-failed",
+          let (code, state) = match &refusal {
+            Refusal::Misfit(_) => ("arguments-misfit", "refused"),
+            Refusal::Denied(_) => ("grant-refused", "refused"),
+            Refusal::Failed(_) => ("tool-failed", "refused"),
+            Refusal::Cancelled(_) => ("cancelled", "cancelled"),
           };
-          let summary = line(&format!("{} was refused: {code}: {}", request.tool, first_line(&why)));
-          (json!({ "code": code, "error": why }), "refused", summary)
+          let summary = match refusal {
+            Refusal::Cancelled(_) => line(first_line(&why)),
+            _ => line(&format!("{} was refused: {code}: {}", request.tool, first_line(&why))),
+          };
+          (json!({ "code": code, "error": why }), state, summary)
         }
       };
       let spent = started.elapsed().as_millis();

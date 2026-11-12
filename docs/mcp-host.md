@@ -89,7 +89,8 @@ flowchart TD
   - a record with an `expiresAt` lapses then: the host refuses its token from that moment and drops it at its next
     sweep, so an issuer that died leaves nothing standing;
   - a record with none stands until the issuer revokes it;
-  - what a record's tools keep for it ends with it (「What a record's tools keep」).
+  - what a record's tools keep for it ends with it (「What a record's tools keep」), and so does every call in hand
+    under it (「The host's stop」).
 - **What a call reads per call** — the record's `variablesFile` among it — is read afresh on every call. Nothing of
   one record is ever visible to a call made with another token.
 
@@ -143,7 +144,8 @@ flowchart TD
 
 - **Asked to stop, by `SIGTERM` or `SIGINT`, the host takes no new call and ends none it holds.** Every listening
   socket closes at once, so a new request on any face is refused at its connection, and no schedule is called from
-  then on. Every call already taken runs to its end, however long that takes, with no clock on the wait:
+  then on. Every call already taken runs to its end, or until its caller is gone (below), however long that takes,
+  with no clock on the wait:
   - a request in flight on the tools face or the control socket, answered before its connection closes;
   - a placed tool's process, a server tool's call and a stdio or streamable HTTP external server's call, its server
     and its connection standing until the call has answered;
@@ -163,11 +165,32 @@ flowchart TD
   would wait on it in turn. An entry's `ends_at_stop` (`docs/api.md`, 「The manifest」) says its calls do not hold
   the stop: at the first moment of the stop the call's process group is ended and the call answers as failed,
   saying the host stopped. What the call started outside its group goes on. Nothing else is ended by a stop.
+- **A call whose caller is gone holds nothing.** Where what asked a call goes before the call answers, the host ends
+  the call's process group at once and lets go of the call, so it no longer holds the stop or counts in
+  `callsInHand`. An entry's `unbounded` changes none of this. The host learns its caller is gone on each road:
+  - on the tools face, from the request's connection: a harness whose process ends closes it, as does a client
+    that gives the call up, and the protocol's request is cancelled with it;
+  - on the control socket, from the request's connection, the same way;
+  - through a call-back socket, from the call that holds the socket: a call made through it ends as that call
+    ends;
+  - an asynchronous call stands beyond any connection, so it learns it from its record alone, below; it is kept
+    `cancelled` and its wake is owed as any end's is (`docs/api.md`, 「Asynchronous calls」);
+  - on every road, from the record it runs under: revoked by its token or its id, or lapsed, every call under it
+    ends at once. An issuer revokes a session's record as the session's harness ends, so a call left by a harness
+    that died ends with the record.
+- **A call ended for its caller answers that it was cancelled because its caller is gone,** as a failed call: a
+  control request whose record went mid-call is answered `tool-failed` saying so, and on a connection that closed
+  nobody is answered. A placed tool's server or an external server asked the call is let go of it and goes on,
+  ending with its record as it always does; what the call started outside its group goes on as well.
 - **`callsInHand` on `GET /health` says what a stop would wait on:** the tool processes and external servers the
   host is asking now, each call, claim and resource read one, a call through a call-back socket counted beside the
-  call that made it, and a call of an `ends_at_stop` entry left out.
+  call that made it, and a call of an `ends_at_stop` entry left out. `inHand` names each of them, oldest first: the
+  entry it asks, or the tool for a resource listing or read, the holder of the record it runs under, and when it
+  started.
 - **A deployment waits for no call in hand before its flip.** `bmo-pocket quiet` (`docs/api.md`, 「The CLI」) answers
-  0 only where `callsInHand` is 0, so a long call holds the flip and never every session's tools: the restart that
+  0 only where `callsInHand` is 0, and otherwise names on its one line each call it waits on, its entry, its
+  record's holder and how long it has run, so a deployment's journal says what holds the flip. A long call holds
+  the flip and never every session's tools: the restart that
   follows stands a few seconds. A session's turn, a job and a harness between two calls hold nothing, since no
   protocol session stands to lose. A call that starts between that answer and the stop is drained like any other,
   and a deployment asked to go on regardless cuts nothing either: it leaves new calls refused until the longest
@@ -235,10 +258,11 @@ flowchart TD
   - An exit that is not clean, or an answer that does not read as a tool result, is a failed call, named with its
     exit and the last lines it wrote on standard error.
   - A call waits for its process to answer and end, however long that takes: the host keeps no clock on it, and a
-    `timeout` or `unbounded` a manifest still carries is read and given no effect.
-  - A call whose caller goes away before it answers — a control request or a session's request closed, the process
-    that asked it stopped — has its process group ended as well, so a caller's cap or stop reaches every process
-    the call started.
+    `timeout` or `unbounded` a manifest still carries is read and given no effect, so an unbounded call ends with
+    its caller as any other does.
+  - A call whose caller is gone before it answers — a control request or a session's request closed, the call
+    holding its call-back socket ended, its record revoked or lapsed — has its process group ended
+    (「The host's stop」), so a caller's cap or stop reaches every process the call started.
 - **A server:** a process speaking MCP over standard input and output, started at a record's first call of the tool
   and handed, in its `BMO_TOOL_START` variable, the same object less the call — the protocol version, the record,
   its call-back socket and its helpers' sockets. Each call is a `tools/call` of the entry's name; the server ends
@@ -521,7 +545,13 @@ flowchart TD
   each then finishes, the first two answered to their callers and the third's end kept; a call of an
   `ends_at_stop` entry is ended at the stop and answers that the host stopped, holding neither the stop nor
   `callsInHand`; a shared helper is asked to end by `SIGTERM`; and the process exits 0 after the last.
-  `bmo-pocket quiet` ends 1 naming how many calls stand in hand, and 0 where none does or no host answers.
+  `bmo-pocket quiet` ends 1 naming how many calls stand in hand and each by its entry, its record's holder and its
+  age, and 0 where none does or no host answers.
+- **A call whose caller is gone:** a call on the tools face whose connection closes mid-call, a call made through a
+  call-back socket whose holding call is ended, and an asynchronous call and a control request whose record is
+  revoked mid-call, an `unbounded` entry's among them, each have their process ended and drop out of `callsInHand`
+  and `inHand`; the asynchronous call is kept `cancelled`, the control request answered `tool-failed` saying it was
+  cancelled, and `quiet` then ends 0.
 - **An asynchronous call's wake:** against a stand-in receiver that cuts its first connections and then queues, the
   end reads its wake pending with the last reason and then queued with the instruction's id, the wake asked once
   more for each cut; a receiver that never answers a try, and one that takes the wake and cuts the connection

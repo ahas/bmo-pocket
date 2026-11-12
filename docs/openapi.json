@@ -23,6 +23,31 @@
         ],
         "type": "object"
       },
+      "CallInHand": {
+        "description": "One call a stop of the host would wait on: what it asks, whose record it runs under, and when it started.",
+        "properties": {
+          "entry": {
+            "description": "The entry's full name, or the tool's own name for a resource listing or read.",
+            "type": "string"
+          },
+          "holder": {
+            "description": "The `holderName` of the record the call runs under.",
+            "type": "string"
+          },
+          "startedAt": {
+            "description": "When it started, in epoch milliseconds.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry",
+          "holder",
+          "startedAt"
+        ],
+        "type": "object"
+      },
       "Claim": {
         "description": "The answer to a claim: the entry that claims the address and the arguments it reads it with, where the\nsession holds the entry and its grant; why not, where it does not.",
         "properties": {
@@ -222,12 +247,19 @@
         "type": "object"
       },
       "Health": {
-        "description": "What `GET /health` answers: whether the host is ready, why not where it is not, its version, and how many calls\na stop of the host would wait on.",
+        "description": "What `GET /health` answers: whether the host is ready, why not where it is not, its version, and how many calls\na stop of the host would wait on and which.",
         "properties": {
           "callsInHand": {
             "format": "uint64",
             "minimum": 0,
             "type": "integer"
+          },
+          "inHand": {
+            "description": "Each call in hand, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/CallInHand"
+            },
+            "type": "array"
           },
           "ready": {
             "type": "boolean"
@@ -246,7 +278,8 @@
           "ready",
           "reason",
           "version",
-          "callsInHand"
+          "callsInHand",
+          "inHand"
         ],
         "type": "object"
       },

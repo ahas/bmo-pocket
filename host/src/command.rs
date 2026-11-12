@@ -12,6 +12,8 @@ use clap::Subcommand;
 use http::StatusCode;
 use serde_json::{Map, Value};
 
+use crate::records::now_ms;
+
 /// Every noun this command declares, as `bmo-pocket nouns` prints them: `tool` itself, which answers its usage, and
 /// its four nouns, which the longest match reaches first.
 pub const NOUNS: [&str; 5] = ["tool", "tool list", "tool describe", "tool call", "tool sites"];
@@ -116,12 +118,45 @@ pub async fn quiet(data_root: &Path, issuer_token_file: Option<&Path>) -> (bool,
     Err(why) => Err(why),
   };
 
-  match read.map(|health| health.calls_in_hand) {
-    Ok(0) => (true, "no tool call in hand".to_owned()),
-    Ok(1) => (false, "1 tool call in hand".to_owned()),
-    Ok(calls) => (false, format!("{calls} tool calls in hand")),
+  match read {
+    Ok(health) if health.in_hand.is_empty() => (true, "no tool call in hand".to_owned()),
+    Ok(health) => {
+      let now = now_ms();
+      let count = match health.in_hand.len() {
+        1 => "1 tool call in hand".to_owned(),
+        calls => format!("{calls} tool calls in hand"),
+      };
+      let named: Vec<String> = health
+        .in_hand
+        .iter()
+        .map(|call| {
+          format!("{} ({}, {})", call.entry, call.holder, age(now.saturating_sub(call.started_at)))
+        })
+        .collect();
+
+      (false, format!("{count}: {}", named.join(", ")))
+    }
     Err(why) => (true, format!("the tool host could not be read, so no call is waited on: {why}")),
   }
+}
+
+/// A span of milliseconds as a person reads an age: its two largest units of days, hours, minutes and seconds.
+fn age(ms: u64) -> String {
+  let seconds = ms / 1000;
+  let units = [
+    (seconds / 86_400, "d"),
+    (seconds / 3600 % 24, "h"),
+    (seconds / 60 % 60, "m"),
+    (seconds % 60, "s"),
+  ];
+  let first = units.iter().position(|(count, _)| *count > 0).unwrap_or(units.len() - 1);
+
+  units[first..]
+    .iter()
+    .take(2)
+    .map(|(count, unit)| format!("{count}{unit}"))
+    .collect::<Vec<_>>()
+    .join(" ")
 }
 
 // The issuer token the host keeps, read where it stands.

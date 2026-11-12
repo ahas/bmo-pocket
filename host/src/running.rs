@@ -18,13 +18,16 @@ use rmcp::transport::TokioChildProcess;
 use rmcp::{RoleClient, ServiceExt};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixListener;
+use tokio::net::{UnixListener, UnixStream};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 
+use crate::caller::record_gone;
+use crate::drain::InHand;
 use crate::handler::{Host, unknown};
 use crate::placed::PlacedTool;
+use crate::records::now_ms;
 
 // How many lines of what a failed call wrote on standard error its answer carries.
 const SAID_LINES: usize = 5;
@@ -131,29 +134,44 @@ pub fn call_back(host: &Arc<Host>, session: &Session) -> std::io::Result<CallBac
   let listener = UnixListener::bind(&path)?;
   let host = host.clone();
   let session = Arc::new(session.clone());
+  // Each connection's asking is held in the socket's own task, so the socket taken away as its call ends takes
+  // every call made through it along.
   let task = tokio::spawn(async move {
-    while let Ok((stream, _)) = listener.accept().await {
-      let host = host.clone();
-      let session = session.clone();
+    let mut asking = JoinSet::new();
 
-      tokio::spawn(async move {
-        let (reading, mut writing) = stream.into_split();
-        let mut line = String::new();
+    loop {
+      tokio::select! {
+        accepted = listener.accept() => {
+          let Ok((stream, _)) = accepted else {
+            break;
+          };
 
-        if BufReader::new(reading).read_line(&mut line).await.is_err() {
-          return;
+          asking.spawn(answer_connection(host.clone(), session.clone(), stream));
         }
-
-        let said = match serde_json::from_str::<CallBack>(&line) {
-          Ok(asked) => answer_call_back(&host, &session, asked).await,
-          Err(why) => failed(format!("the call-back socket was asked what it does not read: {why}")),
-        };
-        let _ = writing.write_all(format!("{said}\n").as_bytes()).await;
-      });
+        Some(_) = asking.join_next(), if !asking.is_empty() => {}
+      }
     }
+
+    while asking.join_next().await.is_some() {}
   });
 
   Ok(CallBackSocket { path, task })
+}
+
+// One connection to a call-back socket: one thing asked on one line, answered on one.
+async fn answer_connection(host: Arc<Host>, session: Arc<Session>, stream: UnixStream) {
+  let (reading, mut writing) = stream.into_split();
+  let mut line = String::new();
+
+  if BufReader::new(reading).read_line(&mut line).await.is_err() {
+    return;
+  }
+
+  let said = match serde_json::from_str::<CallBack>(&line) {
+    Ok(asked) => answer_call_back(&host, &session, asked).await,
+    Err(why) => failed(format!("the call-back socket was asked what it does not read: {why}")),
+  };
+  let _ = writing.write_all(format!("{said}\n").as_bytes()).await;
 }
 
 // What a call-back socket answers: a call by full name, or which entry claims an address.
@@ -175,24 +193,42 @@ fn answer_call_back<'a>(
   })
 }
 
+/// What a call whose caller is gone fails with (docs/mcp-host.md, 「The host's stop」).
+pub const CALLER_GONE: &str = "it was cancelled: its caller is gone";
+
 /// One placed entry asked one thing under a record, answered as the tool answered or with why it did not: a
-/// call through a process of its own or the record's server, each with what it needs started first.
+/// call through a process of its own or the record's server, each with what it needs started first. It ends with
+/// its record, and a call of an entry that does not hold the host's stop ends at the stop.
 pub async fn ask(
   host: &Arc<Host>,
   tool: &Arc<PlacedTool>,
   session: &Session,
   asked: Asked,
 ) -> Result<Value, String> {
-  if ends_at_stop(tool, &asked) {
-    return tokio::select! {
-      answer = asking(host, tool, session, asked) => answer,
-      () = host.drain.stopping() => Err("the host stopped while it ran".to_owned()),
-    };
+  let held = (!ends_at_stop(tool, &asked)).then(|| host.drain.call(in_hand(tool, session, &asked)));
+  // Dropping the asking ends its process group, so neither ending leaves a process of the call behind.
+  let answered = tokio::select! {
+    answer = asking(host, tool, session, asked) => answer,
+    () = record_gone(session) => Err(CALLER_GONE.to_owned()),
+    () = host.drain.stopping(), if held.is_none() => Err("the host stopped while it ran".to_owned()),
+  };
+
+  drop(held);
+  answered
+}
+
+// A call in hand as the host names it: the entry it asks, or the tool for a resource listing or read.
+fn in_hand(tool: &PlacedTool, session: &Session, asked: &Asked) -> InHand {
+  let entry = match asked {
+    Asked::Call { entry, .. } | Asked::Claim { entry, .. } => entry.clone(),
+    _ => tool.manifest.tool.name.clone(),
+  };
+
+  InHand {
+    entry,
+    holder: session.holder_name.clone(),
+    started_at: now_ms(),
   }
-
-  let _held = host.drain.call();
-
-  asking(host, tool, session, asked).await
 }
 
 // Whether what is asked is a call of an entry declaring that it does not hold the host's stop.

@@ -33,10 +33,12 @@ async fn a_record_keeps_one_value_of_a_type_across_calls_and_ends_it_when_it_goe
   keeping.clone().get_or_keep(|| made(&closed)).calls.fetch_add(1, Ordering::SeqCst);
   assert_eq!(keeping.get_or_keep(|| made(&closed)).calls.load(Ordering::SeqCst), 2);
   assert_eq!(keeping.len(), 1);
+  assert!(!keeping.is_closed());
 
   keeping.close().await;
   assert_eq!(closed.load(Ordering::SeqCst), 1);
   assert!(keeping.is_empty());
+  assert!(keeping.clone().is_closed(), "every clone of the record's keeping says it has gone");
 
   // A call made under the record again starts afresh.
   assert_eq!(keeping.get_or_keep(|| made(&closed)).calls.load(Ordering::SeqCst), 0);

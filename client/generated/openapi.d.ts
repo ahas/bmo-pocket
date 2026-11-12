@@ -259,6 +259,18 @@ export interface components {
             /** @description Its full name, `<namespace>/<name>`. */
             tool: string;
         };
+        /** @description One call a stop of the host would wait on: what it asks, whose record it runs under, and when it started. */
+        CallInHand: {
+            /** @description The entry's full name, or the tool's own name for a resource listing or read. */
+            entry: string;
+            /** @description The `holderName` of the record the call runs under. */
+            holder: string;
+            /**
+             * Format: uint64
+             * @description When it started, in epoch milliseconds.
+             */
+            startedAt: number;
+        };
         /**
          * @description The answer to a claim: the entry that claims the address and the arguments it reads it with, where the
          *     session holds the entry and its grant; why not, where it does not.
@@ -316,11 +328,13 @@ export interface components {
         };
         /**
          * @description What `GET /health` answers: whether the host is ready, why not where it is not, its version, and how many calls
-         *     a stop of the host would wait on.
+         *     a stop of the host would wait on and which.
          */
         Health: {
             /** Format: uint64 */
             callsInHand: number;
+            /** @description Each call in hand, oldest first. */
+            inHand: components["schemas"]["CallInHand"][];
             ready: boolean;
             reason: string | null;
             version: string;

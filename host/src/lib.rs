@@ -2,6 +2,7 @@
 //! token (docs/mcp-host.md).
 
 pub mod async_calls;
+pub mod caller;
 pub mod command;
 pub mod console;
 pub mod drain;

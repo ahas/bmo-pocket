@@ -19,41 +19,59 @@ pub trait Kept: Send + Sync + 'static {
 
 type Entry = (TypeId, Arc<dyn Any + Send + Sync>, Arc<dyn Kept>);
 
+// What one record keeps, and whether it has been ended once.
+#[derive(Default)]
+struct Held {
+  closed: bool,
+  entries: Vec<Entry>,
+}
+
 /// The values kept for one record. Cloning it shares them, so every call under the record meets the same.
 #[derive(Clone, Default)]
-pub struct Keeping(Arc<Mutex<Vec<Entry>>>);
+pub struct Keeping(Arc<Mutex<Held>>);
 
 impl Keeping {
-  fn entries(&self) -> std::sync::MutexGuard<'_, Vec<Entry>> {
+  fn held(&self) -> std::sync::MutexGuard<'_, Held> {
     self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
   }
 
   /// The value of type `T` this record keeps, made by `make` where it keeps none yet.
   pub fn get_or_keep<T: Kept>(&self, make: impl FnOnce() -> T) -> Arc<T> {
-    let mut entries = self.entries();
+    let mut held = self.held();
 
-    if let Some((_, value, _)) = entries.iter().find(|(kind, _, _)| *kind == TypeId::of::<T>()) {
+    if let Some((_, value, _)) = held.entries.iter().find(|(kind, _, _)| *kind == TypeId::of::<T>()) {
       return Arc::clone(value).downcast::<T>().expect("a kept value is stored under its own type");
     }
 
     let value = Arc::new(make());
 
-    entries.push((TypeId::of::<T>(), value.clone(), value.clone()));
+    held.entries.push((TypeId::of::<T>(), value.clone(), value.clone()));
     value
   }
 
   /// How many values are kept now.
   pub fn len(&self) -> usize {
-    self.entries().len()
+    self.held().entries.len()
   }
 
   pub fn is_empty(&self) -> bool {
     self.len() == 0
   }
 
+  /// Whether the record has gone: its values ended once. A value kept after that is never ended by the record, so
+  /// whoever keeps one to learn of the record's end asks this beside it.
+  pub fn is_closed(&self) -> bool {
+    self.held().closed
+  }
+
   /// Every value ended and let go, as the record goes.
   pub async fn close(&self) {
-    let taken: Vec<Entry> = std::mem::take(&mut *self.entries());
+    let taken: Vec<Entry> = {
+      let mut held = self.held();
+
+      held.closed = true;
+      std::mem::take(&mut held.entries)
+    };
 
     for (_, _, kept) in taken {
       kept.close().await;

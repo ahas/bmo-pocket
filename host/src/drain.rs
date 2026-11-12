@@ -1,6 +1,9 @@
 //! The host's stop (docs/mcp-host.md, 「The host's stop」): whether it has been asked for, and what the host still
 //! holds that it waits on.
 
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex, PoisonError};
+
 use tokio::sync::watch;
 
 /// One thing the stop waits on, let go as it is dropped.
@@ -27,11 +30,39 @@ impl Count {
   }
 }
 
+/// One call in hand as the host names it: what it asks, whose record it runs under, and when it started.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InHand {
+  /// The entry's full name, or the tool's own name for a resource listing or read.
+  pub entry: String,
+  /// The holder of the record the call runs under.
+  pub holder: String,
+  /// When it started, in epoch milliseconds.
+  pub started_at: u64,
+}
+
+// The calls in hand by the order they were taken in, each under a number of its own.
+type Book = Arc<Mutex<(u64, BTreeMap<u64, InHand>)>>;
+
+/// One call in hand, counted and named until it is dropped.
+pub struct Call {
+  _held: Held,
+  number: u64,
+  book: Book,
+}
+
+impl Drop for Call {
+  fn drop(&mut self) {
+    self.book.lock().unwrap_or_else(PoisonError::into_inner).1.remove(&self.number);
+  }
+}
+
 /// Whether the host was asked to stop, the calls it is asking now, and the work beyond those it finishes first.
 #[derive(Default)]
 pub struct Drain {
   stopping: watch::Sender<bool>,
   calls: Count,
+  book: Book,
   finishing: Count,
 }
 
@@ -51,20 +82,35 @@ impl Drain {
     let _ = self.stopping.subscribe().wait_for(|stopping| *stopping).await;
   }
 
-  /// One call of a tool in hand, which `calls_in_hand` counts.
-  pub fn call(&self) -> Held {
-    self.calls.hold()
+  /// One call of a tool in hand, which `in_hand` names.
+  pub fn call(&self, named: InHand) -> Call {
+    let number = {
+      let mut book = self.book.lock().unwrap_or_else(PoisonError::into_inner);
+
+      book.0 += 1;
+
+      let number = book.0;
+
+      book.1.insert(number, named);
+      number
+    };
+
+    Call {
+      _held: self.calls.hold(),
+      number,
+      book: self.book.clone(),
+    }
   }
 
   /// Work the host keeps on with around a call — an asynchronous call's record, a scheduled call's ending — which
-  /// the stop waits on and `calls_in_hand` does not count.
+  /// the stop waits on and `in_hand` does not name.
   pub fn finishing(&self) -> Held {
     self.finishing.hold()
   }
 
-  /// How many calls of tools are in hand now.
-  pub fn calls_in_hand(&self) -> usize {
-    *self.calls.0.borrow()
+  /// Each call of a tool in hand now, in the order they were taken in.
+  pub fn in_hand(&self) -> Vec<InHand> {
+    self.book.lock().unwrap_or_else(PoisonError::into_inner).1.values().cloned().collect()
   }
 
   /// Ends once nothing is held. Work kept on with holds the calls it makes, so it is waited on first.

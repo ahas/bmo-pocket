@@ -17,7 +17,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::handler::{Entry, Host, answered, initialized, private, reached, read, session, unknown};
+use crate::handler::{
+  Entry, Host, answered, initialized, private, reached, read, session, unknown, unless_cancelled,
+};
 
 /// The path segment the toolbook is served at, and the server name the CLI calls its tools under.
 pub const TOOLBOOK: &str = "toolbook";
@@ -219,7 +221,7 @@ impl Toolbook {
       )));
     }
 
-    self.host.dispatch(&entry, &session, Value::Object(asked.arguments)).await
+    unless_cancelled(context, self.host.dispatch(&entry, &session, Value::Object(asked.arguments))).await
   }
 }
 
