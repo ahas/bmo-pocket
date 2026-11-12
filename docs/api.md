@@ -223,6 +223,10 @@ flowchart TD
   console face and says why in its log, so a console finds no screen there.
 - **A deployment builds the bundle before the flip** into the release it deploys (`testbed.toml`), so a release's
   host serves the screen of its own commit.
+- **A deployment probes the face against the contract once the host is up** (`testbed.toml`, `[deploy.console]`;
+  the testbed's `docs/deploy.md`, 「The console probe」), reaching it at the loopback port the host's environment
+  file under the data root names, with the console token and with the issuer token the face refuses, so a release
+  whose face breaks the contract does not stay live.
 - **A deployment waits for no call in hand before its flip** (`testbed.toml`, `quiet`): `bmo-pocket quiet`, run from
   the release, answers 0 where a stop of the host would wait on nothing, and the testbed waits on it before it
   flips (`docs/mcp-host.md`, 「The host's stop」; the testbed's `docs/deploy.md`).

@@ -85,6 +85,24 @@ health = 'curl -sf -H "Authorization: Bearer $(cat "${BMO_DATA_DIR:-$HOME/.local
 # stop」; the testbed's docs/deploy.md).
 quiet = "bin/bmo-pocket quiet"
 
+# The console face the deployment probes once the host is up (docs/api.md, 「The console face」): its loopback
+# address at the port the host's environment file under the data root names, the console token a console calls it
+# with, and the issuer token, the host's own, which the face refuses.
+[deploy.console]
+reach = '''
+set -eu
+data="${BMO_DATA_DIR:-$HOME/.local/share/bmo/data}"
+set -a
+. "$data/env/pocket.env"
+set +a
+data="${BMO_DATA_DIR:-$data}"
+jq -nc \
+  --arg address "http://127.0.0.1:$BMO_MCP_HOST_CONSOLE_PORT" \
+  --arg consoleToken "$(cat "$data/tool-host/console-token")" \
+  --arg token "$(cat "$data/tool-host/issuer-token")" \
+  '{address: $address, consoleToken: $consoleToken, token: $token}'
+'''
+
 # The CLI, linked into the folder holding `bmo`, the first folder `bmo` looks for unit commands in, so `bmo
 # pocket <verb>` and the `tool` nouns are served wherever `bmo` is (docs/api.md, "The CLI"). The link names this
 # repository's deploy tree, whose own link stands across releases; a link made to the release being deployed
