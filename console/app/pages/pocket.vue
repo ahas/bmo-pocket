@@ -19,7 +19,18 @@
               <UButton icon="i-material-symbols-arrow-back" color="neutral" variant="ghost" :aria-label="t(back.names)" @click="go(back.to)" />
             </UTooltip>
           </div>
-          <TabSwitch :items="viewItems" :model-value="place.view" :label="t('pocket.label.view')" :compact="narrow" @update:model-value="go({ view: $event, tool: null })" />
+          <!-- More views than three are one dropdown naming the view standing (docs/mcp-host.md, 「How the screen reads」). -->
+          <div>
+            <USelect
+              size="sm"
+              variant="ghost"
+              :model-value="place.view"
+              :items="viewItems"
+              :icon="standingIcon"
+              :aria-label="t('pocket.label.view')"
+              @update:model-value="go({ view: $event as View, tool: null })"
+            />
+          </div>
           <!-- The search gives up its width first, so the reread at the row's end stays in it at a phone's width. -->
           <div class="min-w-0 flex-1 shrink!">
             <UInput
@@ -49,7 +60,6 @@
 </template>
 
 <script setup lang="ts">
-import { useNarrow } from "bmo-ui/app/domain/screen";
 import { computed, inject, ref, useTemplateRef } from "vue";
 
 import PocketCatalogue from "../components/PocketCatalogue.vue";
@@ -60,12 +70,16 @@ import { placeOf, queryOf } from "../domain/pocket-place";
 import { useRoom, wayBack } from "../domain/pocket-room";
 
 import type { Place, View } from "../domain/pocket-place";
-import type { SwitchItem } from "bmo-ui/app/domain/tabs";
+
+interface ViewItem {
+  value: View;
+  label: string;
+  icon: string;
+}
 
 const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
-const narrow = useNarrow();
 
 // Whether the console this screen stands in offers its own title bar, under bmo-web's key for it.
 const barOffered = inject("bmo-console-title-bar", null) !== null;
@@ -86,12 +100,14 @@ const place = computed<Place>(() => placeOf(route.query));
 const room = useRoom(useTemplateRef<HTMLElement>("box"));
 const back = computed(() => wayBack(place.value, room.value));
 
-const viewItems = computed<SwitchItem<View>[]>(() => [
+const viewItems = computed<ViewItem[]>(() => [
   { value: "catalogue", label: t("pocket.view.catalogue"), icon: "i-material-symbols-category-outline" },
   { value: "schedules", label: t("pocket.view.schedules"), icon: "i-material-symbols-schedule-outline" },
   { value: "sessions", label: t("pocket.view.sessions"), icon: "i-material-symbols-key-outline" },
   { value: "servers", label: t("pocket.view.servers"), icon: "i-material-symbols-dns-outline" }
 ]);
+// The dropdown names the standing view by its icon as well as its word.
+const standingIcon = computed(() => viewItems.value.find((item) => item.value === place.value.view)?.icon);
 
 function go(change: Partial<Place>): void {
   void router.push({ query: queryOf({ ...place.value, ...change }) });
