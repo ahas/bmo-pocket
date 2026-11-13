@@ -217,6 +217,9 @@ flowchart TD
   names: `module.js`, whose default export holds the screen's route under `/pocket`; `style.css`, the utilities its
   sources use beyond the layer's own; `words.json`, each locale's words under `pocket`; and the layer's own
   `layer.json`.
+  - The layer's build is handed the bundle's name, `pocket` as the declaration names it, and those words, and
+    refuses a bundle whose screen asks for a key under `pocket` some locale's words do not answer, or a key under
+    the layer's domains the layer does not read.
 - **The host builds the face once, as it starts,** from the declaration and the folder `--console-bundle` names,
   else `console-bundle/` in the release its binary stands in, beside its `bin/`, a folder apart from the screen's
   sources in `console/`. Where the folder does not read or the crate refuses the manifest, the host opens no
