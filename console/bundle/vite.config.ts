@@ -156,29 +156,21 @@ function writeTheme(): void {
 
 writeTheme();
 
-// The bundle's name as the declaration names it, which is its words' namespace.
-const NAME = (JSON.parse(readFileSync(join(root, "declaration.json"), "utf8")) as { name: string }).name;
-
-// The bundle's words: each locale's tree from its file, under the locale's code.
-function readWords(): Record<string, Record<string, unknown>> {
+// The bundle's words: one JSON object keyed by locale, each locale's tree from its file.
+function words(): Plugin {
   const folder = join(root, "i18n", "locales");
 
-  return Object.fromEntries(
-    readdirSync(folder)
-      .filter((file) => file.endsWith(".json"))
-      .sort()
-      .map((file) => [basename(file, ".json"), JSON.parse(readFileSync(join(folder, file), "utf8")) as Record<string, unknown>])
-  );
-}
-
-const WORDS = readWords();
-
-// The words written beside the module as one JSON object keyed by locale.
-function words(): Plugin {
   return {
     name: "bmo-pocket-words",
     generateBundle() {
-      this.emitFile({ type: "asset", fileName: "words.json", source: `${JSON.stringify(WORDS)}\n` });
+      const tree = Object.fromEntries(
+        readdirSync(folder)
+          .filter((file) => file.endsWith(".json"))
+          .sort()
+          .map((file) => [basename(file, ".json"), JSON.parse(readFileSync(join(folder, file), "utf8")) as unknown])
+      );
+
+      this.emitFile({ type: "asset", fileName: "words.json", source: `${JSON.stringify(tree)}\n` });
     }
   };
 }
@@ -187,7 +179,7 @@ export default defineConfig({
   root,
   logLevel: "warn",
   plugins: [
-    consoleBundle({ name: NAME, words: WORDS }),
+    consoleBundle(),
     sharedOnly(),
     vue({ isProduction: true }),
     AutoImport({
