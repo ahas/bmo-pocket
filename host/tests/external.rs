@@ -419,7 +419,13 @@ async fn each_registration_read_is_answered_on_the_servers_route_listed_or_not()
   let socket = scratch.sockets.path().join("control.sock");
   let listener = UnixListener::bind(&socket).unwrap();
   let records = Arc::new(Records::load(&scratch.dir.path().join("sessions")).unwrap());
-  let control = server::control(records, host.clone(), Arc::new(Schedules::default()), "issuer".to_owned());
+  let control = server::control(
+    records,
+    host.clone(),
+    Arc::new(Schedules::default()),
+    Arc::new(AsyncCalls::new(std::env::temp_dir().join("mcp-host-calls"), WakeTries::default())),
+    "issuer".to_owned(),
+  );
 
   tokio::spawn(async move { axum::serve(listener, control).await });
 

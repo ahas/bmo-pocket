@@ -143,7 +143,7 @@ async fn the_reads_answer_the_console_token_alone_and_the_administrator() {
   let fixture = Fixture::new();
   let (_, port) = fixture.serve_with_console(face());
 
-  for path in ["/namespaces", "/schedules", "/tool-sessions", "/servers"] {
+  for path in ["/namespaces", "/schedules", "/tool-sessions", "/servers", "/uses"] {
     let bare = ask(port, Method::GET, path, None, Some("administrator")).await;
 
     assert_eq!(
@@ -234,4 +234,51 @@ async fn every_read_answers_what_the_control_socket_answers_the_issuer() {
   let missing = read(port, "/namespaces/garden").await;
 
   assert_eq!((missing.status, missing.code().as_str()), (StatusCode::NOT_FOUND, "not-found"));
+}
+
+#[tokio::test]
+async fn the_kept_calls_read_as_the_issuer_reads_them_narrowed_by_state_and_agent() {
+  let fixture = Fixture::new();
+  let (socket, port) = fixture.serve_with_console(face());
+
+  fixture.kept_call(
+    "first",
+    ("bmo/wait", "agent-a", 1),
+    json!({ "note": "the fetch ended", "check": "true", "every": 900 }),
+    None,
+  );
+  fixture.kept_call(
+    "second",
+    ("bmo/wait", "agent-b", 2),
+    json!({ "note": "a reminder", "seconds": 60 }),
+    Some(("done", "waited", 5)),
+  );
+  fixture.kept_call("third", ("notes/keep", "agent-a", 3), json!({}), Some(("failed", "it broke", 6)));
+
+  let every = read(port, "/uses").await.json();
+  let ids = |page: &Value| {
+    page["items"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|call| call["id"].clone())
+      .collect::<Vec<_>>()
+  };
+
+  assert_eq!(every, issuers(&socket, "/uses").await, "the face reads what the issuer reads");
+  assert_eq!(ids(&every), [json!("first"), json!("second"), json!("third")]);
+  assert_eq!(
+    every["items"][0]["state"], "lost",
+    "a call no host holds running and with no end reads lost"
+  );
+  assert_eq!(every["items"][0]["arguments"]["note"], "the fetch ended");
+  assert_eq!(every["items"][1]["summary"], "waited");
+
+  assert_eq!(ids(&read(port, "/uses?state=done").await.json()), [json!("second")]);
+  assert_eq!(ids(&read(port, "/uses?agent=agent-a").await.json()), [json!("first"), json!("third")]);
+  assert_eq!(ids(&read(port, "/uses?agent=agent-a&state=failed").await.json()), [json!("third")]);
+
+  let unknown = read(port, "/uses?holder=agent-a").await;
+
+  assert_eq!(unknown.status, StatusCode::BAD_REQUEST, "a field the read does not take is refused");
 }

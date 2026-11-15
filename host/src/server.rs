@@ -19,7 +19,7 @@ use bmo_console_face::ConsoleFace;
 use bmo_pocket_client::{
   CallInHand, Claim, ClaimRequest, Event, EventPage, EventQuery, Health, NameQuery, Namespace,
   NamespacePage, Schedule, SchedulePage, Server, ServerPage, SessionPage, SessionQuery, StandingSession,
-  TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage, ToolResult, ToolSession,
+  TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage, ToolResult, ToolSession, UseQuery,
 };
 use bmo_tool::{Session, SessionRequest};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
@@ -180,6 +180,30 @@ struct Control {
   records: Arc<Records>,
   host: Arc<Host>,
   schedules: Arc<Schedules>,
+  calls: Arc<AsyncCalls>,
+}
+
+// Every asynchronous call the host keeps, for the issuer alone: across every session, oldest first, each as one
+// call is answered, narrowed to a state and to the agent a call's wake is for where the query names them.
+async fn use_page(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+  asked: Result<Query<UseQuery>, QueryRejection>,
+) -> Result<Json<Value>, HostError> {
+  caller.issuer()?;
+
+  let Query(asked) = asked.map_err(malformed)?;
+  let named = |call: &Value, field: &str, wanted: &Option<String>| {
+    wanted.as_deref().is_none_or(|wanted| call[field].as_str() == Some(wanted))
+  };
+  let calls: Vec<Value> = control
+    .calls
+    .list()
+    .into_iter()
+    .filter(|call| named(call, "state", &asked.state) && named(call, "agent", &asked.agent))
+    .collect();
+
+  Ok(Json(async_calls::page(calls)))
 }
 
 /// Who a control request was made by, as its token says: the issuer, or a tool session.
@@ -813,6 +837,7 @@ pub fn control(
   records: Arc<Records>,
   host: Arc<Host>,
   schedules: Arc<Schedules>,
+  calls: Arc<AsyncCalls>,
   issuer: String,
 ) -> Router {
   let gate: (Arc<Records>, Arc<str>) = (records.clone(), issuer.into());
@@ -820,6 +845,7 @@ pub fn control(
     records,
     host,
     schedules,
+    calls,
   };
 
   Router::new()
@@ -837,6 +863,7 @@ pub fn control(
     .route("/tool-session-records/{id}", delete(revoke_record))
     .route("/servers", get(server_page))
     .route("/schedules", get(schedule_page))
+    .route("/uses", get(use_page))
     .fallback(unknown_route)
     .method_not_allowed_fallback(method_not_allowed)
     .layer(middleware::from_fn_with_state(gate, authorise_control))
@@ -870,12 +897,14 @@ pub fn console(
   records: Arc<Records>,
   host: Arc<Host>,
   schedules: Arc<Schedules>,
+  calls: Arc<AsyncCalls>,
   screen: Screen,
 ) -> Router {
   let state = Control {
     records,
     host,
     schedules,
+    calls,
   };
   let reads = Router::new()
     .route("/namespaces", get(namespaces))
@@ -884,7 +913,8 @@ pub fn console(
     .route("/namespaces/{namespace}/tools/{toolName}", get(one_tool))
     .route("/schedules", get(schedule_page))
     .route("/tool-sessions", get(tool_session_page))
-    .route("/servers", get(server_page));
+    .route("/servers", get(server_page))
+    .route("/uses", get(use_page));
 
   screen
     .face

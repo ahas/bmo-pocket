@@ -365,6 +365,57 @@ pub struct Schedule {
   pub running: bool,
 }
 
+/// What `GET /uses` narrows the kept asynchronous calls by: one state, and the agent a call's wake is for.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UseQuery {
+  /// The calls in this state alone: `running`, `done`, `refused`, `failed`, `cancelled` or `lost`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub state: Option<String>,
+  /// The calls whose wake is for this agent alone.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub agent: Option<String>,
+}
+
+/// One asynchronous call the host keeps, as `GET /use/{id}` answers it: the request as it was asked, its state, and
+/// once it ended, when, its summary and its wake.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct KeptCall {
+  pub id: String,
+  /// The record id of the session the call was asked under, never its token.
+  pub session: String,
+  /// The tool's full name, `<namespace>/<name>`.
+  pub tool: String,
+  pub reached_by: String,
+  /// The tool's own arguments as they were asked.
+  pub arguments: Map<String, Value>,
+  pub memory: Option<String>,
+  /// The room the wake is for.
+  pub room: Option<i64>,
+  /// The agent the wake is for.
+  pub agent: Option<String>,
+  pub via: Option<String>,
+  /// When it started, in epoch milliseconds.
+  pub started_at: i64,
+  /// `running`, `done`, `refused`, `failed`, `cancelled` or `lost`.
+  pub state: String,
+  /// When it ended, in epoch milliseconds, once it has.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ended_at: Option<i64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub summary: Option<String>,
+  /// Its wake: the instruction it was queued as, or still owed.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub wake: Option<Value>,
+}
+
+/// Every asynchronous call the host keeps that the query names, oldest first.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct UsePage {
+  pub items: Vec<KeptCall>,
+}
+
 /// A page of schedules, in order of when each is next due.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SchedulePage {

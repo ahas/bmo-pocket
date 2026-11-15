@@ -427,21 +427,23 @@ async fn serve(
 
     async move { host.drain.stopping().await }
   };
-  let sessions =
-    axum::serve(tcp, server::tools(records.clone(), host.clone(), calls)).with_graceful_shutdown(stop());
+  let sessions = axum::serve(tcp, server::tools(records.clone(), host.clone(), calls.clone()))
+    .with_graceful_shutdown(stop());
   let screens = async {
     match console {
       Some((listener, screen)) => {
-        let face = server::console(records.clone(), host.clone(), schedules.clone(), screen);
+        let face = server::console(records.clone(), host.clone(), schedules.clone(), calls.clone(), screen);
 
         axum::serve(listener, face).with_graceful_shutdown(stop()).await
       }
       None => Ok(()),
     }
   };
-  let issuers =
-    axum::serve(unix, server::control(records.clone(), host.clone(), schedules.clone(), issuer))
-      .with_graceful_shutdown(stop());
+  let issuers = axum::serve(
+    unix,
+    server::control(records.clone(), host.clone(), schedules.clone(), calls.clone(), issuer),
+  )
+  .with_graceful_shutdown(stop());
   let (served, controlled, shown) = tokio::join!(sessions, issuers, screens);
 
   // What the faces do not hold is waited on too, however long it takes: an asynchronous call, a scheduled one.

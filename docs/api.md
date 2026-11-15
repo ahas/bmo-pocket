@@ -150,6 +150,11 @@ tables, its files or its process. The host calls no other unit; a console reache
   answers it. **`GET /use/{id}`** answers one call: the request's fields, `state` (`running`, `done`, `refused`,
   `failed` or `cancelled`, or `lost` for one that stood running when the host died), and, once it ended, `endedAt`, `summary` and
   `wake`. A call another session asked is answered 404 `not-found`, as one that never stood is.
+- **`GET /uses` is the issuer's read of every call the host keeps,** across every session, oldest first, each as
+  `GET /use/{id}` answers it, on the control socket and on the console face (「Asynchronous calls kept」 under the
+  control socket): `state` keeps the calls in that state alone and `agent` the calls whose wake is for that agent,
+  so a console shows what an agent has waiting — a watch, a reminder, a call still running — without holding any
+  session's token.
 - **The records stand under the host's data root,** `use/<id>/`, readable by the host's user alone: `request.json`,
   `answer.json` and `end.json`, the end last with `endedAt`, `state`, `summary` and `wake`.
 
@@ -191,6 +196,7 @@ flowchart TD
 | `GET /schedules` | as the control socket answers it to the issuer token (「Schedules」) |
 | `GET /tool-sessions` | as the control socket answers it to the issuer token (「Tool sessions」) |
 | `GET /servers` | as the control socket answers it to the issuer token (「External servers」) |
+| `GET /uses` | as the control socket answers it to the issuer token (「Asynchronous calls kept」) |
 
 - **A read asked with no token or another one** is refused 401 `unauthorized`, any path or method no route names
   404 `no-route`, each in the common error shape.
@@ -460,6 +466,12 @@ What `GET /tool-sessions` answers of each session that stands, issued and neithe
   reach and its times.
 - **A session is keyed by when it was issued:** `after` answers the sessions issued after it, and a page never ends
   inside a run of equal `createdAt`, as a page of schedules never ends inside a run of equal `nextAt`.
+
+### Asynchronous calls kept
+
+| Route | Token | Request | Answer |
+|---|---|---|---|
+| `GET /uses` | the issuer's | query `state`, one state (`running`, `done`, `refused`, `failed`, `cancelled` or `lost`); `agent`, the agent a call's wake is for | 200 `{items}`, every call the host keeps, oldest first, each as `GET /use/{id}` answers it, narrowed by what the query names; 400 `bad-request`; 403 `forbidden` |
 
 ### External servers
 

@@ -14,7 +14,7 @@ use crate::error::{ErrorCode, WireError};
 use crate::harness::{ENTRY, MCP_COMMAND, PLUGIN, harness_tools};
 use crate::wire::{
   Claim, ClaimRequest, Event, EventPage, Health, Namespace, NamespacePage, SchedulePage, ServerPage,
-  SessionPage, StandingSession, Tool, ToolCall, ToolCallRequest, ToolPage, ToolSession,
+  SessionPage, StandingSession, Tool, ToolCall, ToolCallRequest, ToolPage, ToolSession, UsePage,
 };
 
 /// Where the schemas the routes refer to stand in the document.
@@ -341,6 +341,26 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
     },
     Route {
       method: "get",
+      path: "/uses",
+      operation: "listKeptCalls",
+      tag: "uses",
+      summary: "Every asynchronous call the host keeps, across every session, oldest first, each as one call is \
+        answered: a watch, a reminder or a call still running, narrowed to a state and to the agent its wake is for.",
+      token: Token::Issuer,
+      parameters: vec![
+        query_parameter("state", "One state: the calls in it alone.", json!({ "type": "string" })),
+        query_parameter(
+          "agent",
+          "An agent's name: the calls whose wake is for it alone.",
+          json!({ "type": "string" }),
+        ),
+      ],
+      request: None,
+      answer: (200, Answer::Json(schema::<UsePage>(generator))),
+      codes: &[Unauthorized, BadRequest, Forbidden],
+    },
+    Route {
+      method: "get",
       path: "/servers",
       operation: "listServers",
       tag: "servers",
@@ -473,6 +493,7 @@ pub fn openapi() -> Value {
       { "name": "claims", "description": "Which entry a tool session may have an address read by." },
       { "name": "tool-sessions", "description": "The tool sessions a harness is handed tools through." },
       { "name": "schedules", "description": "The calls the host makes at the times each tool declares." },
+      { "name": "uses", "description": "The asynchronous calls the host keeps for every session." },
       { "name": "servers", "description": "The external MCP servers registered, and whether each is listed." },
     ],
     "paths": paths,

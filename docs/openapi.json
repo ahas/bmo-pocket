@@ -283,6 +283,97 @@
         ],
         "type": "object"
       },
+      "KeptCall": {
+        "description": "One asynchronous call the host keeps, as `GET /use/{id}` answers it: the request as it was asked, its state, and\nonce it ended, when, its summary and its wake.",
+        "properties": {
+          "agent": {
+            "description": "The agent the wake is for.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "description": "The tool's own arguments as they were asked.",
+            "type": "object"
+          },
+          "endedAt": {
+            "description": "When it ended, in epoch milliseconds, once it has.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "memory": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reachedBy": {
+            "type": "string"
+          },
+          "room": {
+            "description": "The room the wake is for.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "session": {
+            "description": "The record id of the session the call was asked under, never its token.",
+            "type": "string"
+          },
+          "startedAt": {
+            "description": "When it started, in epoch milliseconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "description": "`running`, `done`, `refused`, `failed`, `cancelled` or `lost`.",
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool": {
+            "description": "The tool's full name, `<namespace>/<name>`.",
+            "type": "string"
+          },
+          "via": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wake": {
+            "description": "Its wake: the instruction it was queued as, or still owed."
+          }
+        },
+        "required": [
+          "id",
+          "session",
+          "tool",
+          "reachedBy",
+          "arguments",
+          "memory",
+          "room",
+          "agent",
+          "via",
+          "startedAt",
+          "state"
+        ],
+        "type": "object"
+      },
       "Listing": {
         "description": "The line a tool adds to its namespace's listing, and its place among the namespace's lines.",
         "properties": {
@@ -1079,6 +1170,21 @@
           "http"
         ],
         "type": "string"
+      },
+      "UsePage": {
+        "description": "Every asynchronous call the host keeps that the query names, oldest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KeptCall"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
       },
       "WireError": {
         "additionalProperties": false,
@@ -2882,6 +2988,122 @@
         ],
         "x-token": "issuer"
       }
+    },
+    "/uses": {
+      "get": {
+        "operationId": "listKeptCalls",
+        "parameters": [
+          {
+            "description": "One state: the calls in it alone.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "An agent's name: the calls whose wake is for it alone.",
+            "in": "query",
+            "name": "agent",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsePage"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          }
+        },
+        "summary": "Every asynchronous call the host keeps, across every session, oldest first, each as one call is answered: a watch, a reminder or a call still running, narrowed to a state and to the agent its wake is for.",
+        "tags": [
+          "uses"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "forbidden"
+        ],
+        "x-token": "issuer"
+      }
     }
   },
   "security": [
@@ -2927,6 +3149,10 @@
     {
       "description": "The calls the host makes at the times each tool declares.",
       "name": "schedules"
+    },
+    {
+      "description": "The asynchronous calls the host keeps for every session.",
+      "name": "uses"
     },
     {
       "description": "The external MCP servers registered, and whether each is listed.",

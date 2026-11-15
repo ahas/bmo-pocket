@@ -729,3 +729,21 @@ async fn a_session_is_read_by_its_holder_and_revoked_by_its_id() {
   );
   assert!(issuer.tool_session(&kept.token).await.is_ok(), "another session stands");
 }
+
+#[tokio::test]
+async fn the_kept_calls_are_the_issuers_to_read_and_no_sessions() {
+  let fixture = Fixture::new();
+  let socket = fixture.serve(Arc::new(Schedules::default()));
+  let issued = Pocket::at(&socket, ISSUER).issue(&asked(&["notes.read"], &[])).await.unwrap();
+
+  fixture.kept_call("kept", ("bmo/wait", "agent-a", 1), json!({ "note": "n" }), None);
+
+  let read = request(&socket, Method::GET, "/uses", Some(ISSUER), None).await.unwrap();
+
+  assert_eq!(read.status, StatusCode::OK);
+  assert_eq!(read.json().unwrap()["items"][0]["id"], "kept");
+
+  let refused = request(&socket, Method::GET, "/uses", Some(&issued.token), None).await.unwrap();
+
+  assert_eq!(refused.status, StatusCode::FORBIDDEN);
+}

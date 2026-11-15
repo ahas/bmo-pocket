@@ -99,6 +99,8 @@ pub struct Fixture {
   // Sockets are bound under a short path of their own, which stands as long as the fixture.
   sockets: TempDir,
   pub host: Arc<Host>,
+  /// The asynchronous calls every face the fixture serves keeps, under its own folder.
+  pub calls: Arc<AsyncCalls>,
 }
 
 impl Fixture {
@@ -123,7 +125,14 @@ impl Fixture {
       drain: mcp_host::drain::Drain::default(),
     });
 
-    Self { dir, sockets, host }
+    let calls = Arc::new(AsyncCalls::new(dir.path().join("calls"), WakeTries::default()));
+
+    Self {
+      dir,
+      sockets,
+      host,
+      calls,
+    }
   }
 
   pub fn new() -> Self {
@@ -166,7 +175,8 @@ impl Fixture {
   fn serve_control(&self, records: Arc<Records>, schedules: Arc<Schedules>) -> PathBuf {
     let socket = self.sockets.path().join("control.sock");
     let listener = UnixListener::bind(&socket).unwrap();
-    let router = server::control(records, self.host.clone(), schedules, ISSUER.to_owned());
+    let router =
+      server::control(records, self.host.clone(), schedules, self.calls.clone(), ISSUER.to_owned());
 
     tokio::spawn(async move { axum::serve(listener, router).await });
     socket
@@ -188,7 +198,7 @@ impl Fixture {
       token: CONSOLE.to_owned(),
       face,
     };
-    let router = server::console(records, self.host.clone(), schedules, screen);
+    let router = server::console(records, self.host.clone(), schedules, self.calls.clone(), screen);
 
     tokio::spawn(async move { axum::serve(listener, router).await });
     (socket, port)
@@ -207,11 +217,7 @@ impl Fixture {
     bound.set_nonblocking(true).unwrap();
 
     let listener = tokio::net::TcpListener::from_std(bound).unwrap();
-    let router = server::tools(
-      records,
-      self.host.clone(),
-      Arc::new(AsyncCalls::new(self.dir.path().join("calls"), WakeTries::default())),
-    );
+    let router = server::tools(records, self.host.clone(), self.calls.clone());
 
     tokio::spawn(async move { axum::serve(listener, router).await });
     (socket, port)
@@ -223,3 +229,37 @@ pub const ISSUER: &str = "issuer-token-of-the-fixture";
 
 /// The console token the fixture's console face is served behind.
 pub const CONSOLE: &str = "console-token-of-the-fixture";
+
+impl Fixture {
+  /// A call kept as the tools face keeps one, its request under the fixture's calls asked at `started_at`, ended
+  /// where `end` is given: the state, the summary and when it ended.
+  pub fn kept_call(
+    &self,
+    id: &str,
+    (tool, agent, started_at): (&str, &str, i64),
+    arguments: Value,
+    end: Option<(&str, &str, i64)>,
+  ) {
+    let place = self.dir.path().join("calls").join(mcp_host::async_calls::FOLDER).join(id);
+
+    std::fs::create_dir_all(&place).unwrap();
+    std::fs::write(
+      place.join("request.json"),
+      serde_json::json!({
+        "id": id, "session": "record-of-the-fixture", "tool": tool, "reachedBy": "act", "arguments": arguments,
+        "memory": null, "room": -7, "agent": agent, "via": null, "startedAt": started_at,
+      })
+      .to_string(),
+    )
+    .unwrap();
+
+    if let Some((state, summary, ended_at)) = end {
+      std::fs::write(
+        place.join("end.json"),
+        serde_json::json!({ "endedAt": ended_at, "state": state, "summary": summary, "wake": { "id": 3 } })
+          .to_string(),
+      )
+      .unwrap();
+    }
+  }
+}

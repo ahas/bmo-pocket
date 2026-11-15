@@ -244,6 +244,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/uses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every asynchronous call the host keeps, across every session, oldest first, each as one call is answered: a watch, a reminder or a call still running, narrowed to a state and to the agent its wake is for. */
+        get: operations["listKeptCalls"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -338,6 +355,46 @@ export interface components {
             ready: boolean;
             reason: string | null;
             version: string;
+        };
+        /**
+         * @description One asynchronous call the host keeps, as `GET /use/{id}` answers it: the request as it was asked, its state, and
+         *     once it ended, when, its summary and its wake.
+         */
+        KeptCall: {
+            /** @description The agent the wake is for. */
+            agent: string | null;
+            /** @description The tool's own arguments as they were asked. */
+            arguments: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: int64
+             * @description When it ended, in epoch milliseconds, once it has.
+             */
+            endedAt?: number | null;
+            id: string;
+            memory: string | null;
+            reachedBy: string;
+            /**
+             * Format: int64
+             * @description The room the wake is for.
+             */
+            room: number | null;
+            /** @description The record id of the session the call was asked under, never its token. */
+            session: string;
+            /**
+             * Format: int64
+             * @description When it started, in epoch milliseconds.
+             */
+            startedAt: number;
+            /** @description `running`, `done`, `refused`, `failed`, `cancelled` or `lost`. */
+            state: string;
+            summary?: string | null;
+            /** @description The tool's full name, `<namespace>/<name>`. */
+            tool: string;
+            via: string | null;
+            /** @description Its wake: the instruction it was queued as, or still owed. */
+            wake?: unknown;
         };
         /** @description The line a tool adds to its namespace's listing, and its place among the namespace's lines. */
         Listing: {
@@ -616,6 +673,10 @@ export interface components {
          * @enum {string}
          */
         Transport: "stdio" | "http";
+        /** @description Every asynchronous call the host keeps that the query names, oldest first. */
+        UsePage: {
+            items: components["schemas"]["KeptCall"][];
+        };
         /** @description The body of every failure and refusal. */
         WireError: {
             code: components["schemas"]["ErrorCode"];
@@ -1578,6 +1639,67 @@ export interface operations {
                     "application/json": components["schemas"]["WireError"] & {
                         /** @enum {unknown} */
                         code?: "failed";
+                    };
+                };
+            };
+        };
+    };
+    listKeptCalls: {
+        parameters: {
+            query?: {
+                /** @description One state: the calls in it alone. */
+                state?: string;
+                /** @description An agent's name: the calls whose wake is for it alone. */
+                agent?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The route's answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsePage"];
+                };
+            };
+            /** @description Refused or failed: bad-request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "bad-request";
+                    };
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
                     };
                 };
             };
