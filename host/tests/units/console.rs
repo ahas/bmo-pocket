@@ -125,6 +125,7 @@ async fn the_served_manifest_reads_through_the_contract_and_names_files_the_face
   assert_eq!(manifest["name"], "pocket");
   assert_eq!(manifest["screenPath"], "/pocket");
   assert_eq!(manifest["role"], "administrator");
+  assert_eq!(manifest["sidebarSection"], "administration");
   assert_eq!(manifest["layer"], layer.as_str());
 
   let module = read(port, manifest["bundle"].as_str().unwrap()).await;

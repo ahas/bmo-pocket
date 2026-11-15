@@ -209,6 +209,8 @@ flowchart TD
   host carries it in its binary.
 - **Its `name`, `serviceName` and words' namespace are `pocket`,** and its `screenPath` is `/pocket`, where the
   bundle's one route stands.
+- **Its `sidebarSection` is `administration`,** so a console lists the screen among the services an
+  administrator runs the system with.
 - **A test reads the manifest the face answers** through bmo-ui's own reading of the contract, from the release
   `console/vendor/` holds, so a declaration the contract refuses fails there first.
 

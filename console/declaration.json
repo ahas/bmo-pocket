@@ -5,5 +5,6 @@
   "screenPath": "/pocket",
   "serviceName": "pocket",
   "apiPrefix": "/",
-  "role": "administrator"
+  "role": "administrator",
+  "sidebarSection": "administration"
 }
