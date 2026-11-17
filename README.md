@@ -18,7 +18,6 @@ helpers tools written in TypeScript or Python import.
 | `console/` | the host's screen as a console bundle, `bmo-pocket-console`, on the pinned bmo-ui release it vendors, built into the files the console face serves, and the host's declaration of its manifest (`docs/api.md`, 「The console face」) |
 | `deploy/` | the host's user unit, `bmo-mcp-host.service`, which a deployment links from the deploy tree |
 | `docs/` | the canonical documents: the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`), the boundary every other unit matches (`api.md`) and its OpenAPI document (`openapi.json`) |
-| `.graph/` | the code dependency graph: one node per feature with its files and what it reads or calls, and boundary nodes for the APIs exposed and called, written only by `bmo graph` |
 | `host/` | the tool host, `mcp-host`, and the command `bmo-pocket` (the registry's verbs and `mcp`), with their tests in `host/tests/` |
 | `plugin/` | the harness plugin, `bmo-pocket-plugin`: the MCP server `bmo-pocket mcp` serves and its `bmo-pocket` skill |
 | `prompts/` | the prompt text the host serves, `tool-use.md`: the paragraph on finding and using tools a session's system prompt carries |

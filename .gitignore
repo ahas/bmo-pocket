@@ -1,7 +1,6 @@
 /target/
 node_modules/
 __pycache__/
-.graph/*
-!.graph/settings.toml
 /console/.nuxt/
 /console/.output/
+.graph/

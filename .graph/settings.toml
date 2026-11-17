@@ -1,8 +1,0 @@
-repository = "bmo-pocket"
-base = false
-
-[coverage]
-# Every Cargo package's src/ and the repository's own client project, the TypeScript tool kit beside them, and the
-# client's example that writes the OpenAPI document, but the types generated from that document.
-layout = "bmo-next"
-unindexed = ["client/generated/openapi.d.ts"]
