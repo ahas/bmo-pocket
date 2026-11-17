@@ -6,6 +6,7 @@ mod error;
 mod external;
 mod fixture;
 mod handler;
+mod held_sessions;
 mod placed;
 mod records;
 mod residency;

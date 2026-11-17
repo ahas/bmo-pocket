@@ -23,6 +23,7 @@ use mcp_host::async_calls::{AsyncCalls, WakeTries};
 use mcp_host::console::{self, bundle_beside_binary};
 use mcp_host::drain::Drain;
 use mcp_host::handler::Host;
+use mcp_host::held_sessions;
 use mcp_host::placed::Placed;
 use mcp_host::records::{Records, kept_token, now_ms};
 use mcp_host::registry::Registry;
@@ -352,6 +353,13 @@ async fn serve(
       return refused(format!("the session records in {} could not be read: {why}", home.display()));
     }
   };
+  // Every held session kept issued before the first request, so its holder finds its token as the host answers.
+  let held = home.join(held_sessions::HELD);
+
+  for gone in held_sessions::keep(&held, &records) {
+    gone.kept.close().await;
+  }
+
   // The placed tools are read before the first request and watched for as long as the host serves.
   if let Err(why) = host.placed.watch(beats.settle) {
     return refused(format!("the placed tools could not be watched: {why}"));
@@ -388,11 +396,15 @@ async fn serve(
   let sweeping = host.clone();
 
   // Lapsed records dropped on every beat, and what each kept ended, so a session whose issuer never took its
-  // record back holds what its tools keep no longer than one beat past its `expiresAt`; and every retired
-  // version nothing holds any longer taken away.
+  // record back holds what its tools keep no longer than one beat past its `expiresAt`; every held session kept
+  // issued, so one revoked or declared afresh is issued within a beat; and every retired version nothing holds any
+  // longer taken away.
   tokio::spawn(async move {
     loop {
       for (_, gone) in pruning.prune() {
+        gone.kept.close().await;
+      }
+      for gone in held_sessions::keep(&held, &pruning) {
         gone.kept.close().await;
       }
       sweeping.placed.sweep();

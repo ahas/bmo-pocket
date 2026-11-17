@@ -317,6 +317,8 @@ pub struct ToolSession {
   pub capabilities: BTreeSet<String>,
   pub grants: Vec<Granted>,
   pub shown: BTreeSet<String>,
+  /// The full names of the only entries the session reaches; null where its record does not narrow them.
+  pub entries: Option<BTreeSet<String>>,
   pub variables: BTreeMap<String, String>,
   pub variables_file: Option<PathBuf>,
   pub labels: Map<String, Value>,
@@ -336,6 +338,7 @@ impl ToolSession {
       capabilities: session.capabilities.clone(),
       grants: session.grants.clone(),
       shown: session.shown.clone(),
+      entries: session.entries.clone(),
       variables: session.variables.clone(),
       variables_file: session.variables_file.clone(),
       labels: session.labels.clone(),
@@ -435,6 +438,8 @@ pub struct StandingSession {
   pub capabilities: BTreeSet<String>,
   pub grants: Vec<Granted>,
   pub shown: BTreeSet<String>,
+  /// The full names of the only entries it reaches; null where its record does not narrow them.
+  pub entries: Option<BTreeSet<String>>,
   /// The names of the variables handed to its calls, in order of name; their values are never answered.
   pub variables: Vec<String>,
   pub labels: Map<String, Value>,
@@ -464,6 +469,7 @@ impl StandingSession {
       capabilities: session.capabilities.clone(),
       grants: session.grants.clone(),
       shown: session.shown.clone(),
+      entries: session.entries.clone(),
       variables: session.variables.keys().cloned().collect(),
       labels: session.labels.clone(),
       expires_at: session.expires_at,

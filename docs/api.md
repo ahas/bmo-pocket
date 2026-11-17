@@ -246,6 +246,22 @@ flowchart TD
   stands; the tool sessions standing; and the external servers, each with where it is reached and whether its
   tools are listed.
 
+### A console's tool session
+
+The console face reads and calls nothing. A console's server that calls entries itself, those for the system alone
+among them, does so on the control socket as the holder of a held session (「A held session」; `docs/mcp-host.md`,
+「Held sessions」):
+
+- **The deployment declares it** in `tool-host/held/<name>.json` under the data root: the console's `holderName`,
+  the namespaces of the entries it calls, `entries` naming those entries and no other, and in `variables` what
+  those entries read of a record, the data root as `BMO_DATA_DIR` where they read it.
+- **The console's settings name the token file** the host writes beside the declaration, `<name>.token`, and the
+  control socket where it does not stand at the default path. The console reads the token from the file when it
+  calls, so a token the host issued afresh is found without a restart of the console.
+- **It calls `POST /tool-calls` under that token** (「Tool calls」). The token reaches the entries its record names
+  and nothing else: no other entry, no route of the issuer's and not the console face, which takes the console
+  token alone.
+
 ## The control socket
 
 - **HTTP/1.1 over a Unix socket,** at the path `--control` names, or `bmo/mcp-host.sock` under the user's runtime
@@ -416,6 +432,7 @@ ignored. The issuer states in it everything the host checks a call against, so t
 | `capabilities` | array of strings, required | The capabilities the session holds, as the issuer resolved them |
 | `grants` | array, required | The grants it holds, each `{resource}`: the resources it may act on |
 | `shown` | array of strings | The full names of the entries its namespaces list by name; none listed by name where absent |
+| `entries` | array of strings or null | The full names of the only entries the session reaches, those for the system alone among them; every entry its namespaces and capabilities give it where absent or null |
 | `variables` | object of strings | Variables handed to every call's environment |
 | `variablesFile` | path | A file holding a JSON object of strings, read afresh at every call and laid over `variables` |
 | `labels` | object | The issuer's own metadata, handed to every call inside the record and never read by the host |
@@ -432,6 +449,9 @@ The tool session answered, and the record a call is handed, carry the same field
 - **A grant is an object holding one `resource`,** an opaque string the issuer and the tools agree on. The draft that
   fixed this API left a grant's fields open; a resource is the one a call is checked against, so it is the one a
   grant carries.
+- **`entries` narrows every road to an entry:** a call, a claim, a listing, the toolbook and a schedule hold the
+  session to the entries it names, and any other is unknown to it. The host alone checks it, so the record a tool
+  is handed leaves it out (「What a tool is handed」).
 - **A record holds no path, address or value of the issuer's own** beyond these. What a tool reads of the issuer's
   is in `variables`, `variablesFile` or `labels`, as the issuer puts it there.
 
@@ -448,6 +468,7 @@ What `GET /tool-sessions` answers of each session that stands, issued and neithe
 | `capabilities` | array of strings | The capabilities it holds |
 | `grants` | array | The grants it holds, each `{resource}` |
 | `shown` | array of strings | The full names of the entries its namespaces list by name |
+| `entries` | array of strings or null | The full names of the only entries it reaches; null where its record does not narrow them |
 | `variables` | array of strings | The names of the variables handed to its calls, in order of name |
 | `labels` | object | The issuer's own metadata |
 | `expiresAt` | epoch milliseconds or null | When it lapses; null where it stands until revoked |
@@ -468,6 +489,22 @@ What `GET /tool-sessions` answers of each session that stands, issued and neithe
   reach and its times.
 - **A session is keyed by when it was issued:** `after` answers the sessions issued after it, and a page never ends
   inside a run of equal `createdAt`, as a page of schedules never ends inside a run of equal `nextAt`.
+
+#### A held session
+
+A session the host issues and keeps standing itself, for a process that calls entries for as long as it runs
+(`docs/mcp-host.md`, 「Held sessions」).
+
+| File, in `tool-host/held/` under the data root | Written by | Holds |
+|---|---|---|
+| `<name>.json` | the deployment | The declaration: one session record as `POST /tool-sessions` takes it, without `ttlMs` |
+| `<name>.token` | the host | The token of the session issued from it, one line, readable by the host's user alone |
+
+- **The host keeps every declaration issued** as it starts and on every beat of its sweep, issuing afresh where the
+  token file names no standing session issued from that record, and revokes the session of a token file whose
+  declaration no longer stands, removing the file.
+- **A held session is a tool session like any other** to every route: it stands in `GET /tool-sessions` under its
+  holder, and its token is a session's token.
 
 ### Asynchronous calls kept
 
@@ -527,7 +564,7 @@ What `GET /tool-sessions` answers of each session that stands, issued and neithe
 | `BMO_MCP_HOST_PORT` | the host; a harness's configuration | The loopback port the tools face listens on |
 | `BMO_MCP_HOST_CONSOLE_PORT` | the host; a console's settings | The loopback port the console face listens on, where it is opened (「The console face」) |
 | `BMO_POCKET_CONSOLE_OUT` | the console bundle's build | The folder the bundle's files are written into |
-| `BMO_DATA_DIR` | the host; `bmo-pocket` | The data root whose `tool-host/` folder holds the records, the registry and the issuer token |
+| `BMO_DATA_DIR` | the host; `bmo-pocket` | The data root whose `tool-host/` folder holds the records, the held sessions' declarations, the registry and the issuer token |
 | `BMO_MCP_HOST_SOCKET` | the clients; the plugin; `bmo-pocket`'s `tool` nouns | Where the control socket stands, where it does not stand at the default path |
 | `BMO_POCKET_TOKEN` | `bmo-pocket mcp` | The tool session's token it calls with |
 | `BMO_MCP_TOKEN` | a harness's MCP configuration | The bearer token its configuration's header expands for the tools face |
@@ -553,7 +590,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 |---|---|
 | `protocol` | 1 |
 | `kind` | What is asked, with the fields of its kind beside it (below) |
-| `session` | The session record the call is made under, its token left out |
+| `session` | The session record the call is made under, its token and its `entries` left out |
 | `callback` | The call's own call-back socket into the host; none for a helper |
 | `shared` | Each shared helper's socket, by the helper's name; none where the tool names none |
 

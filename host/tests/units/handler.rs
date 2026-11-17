@@ -126,3 +126,36 @@ fn an_entry_for_the_system_alone_is_reached_within_the_records_namespaces() {
   assert!(host.find_full(&outside, "notes/broken", true).is_none());
   assert!(host.find_full(&inside, "notes/broken", false).is_none());
 }
+
+// A record naming `entries` holds and reaches those entries alone, one for the system alone among them, and the
+// record its tool is handed leaves the list out, so a tool reads the record its contract states.
+#[tokio::test]
+async fn a_records_entries_narrow_what_it_reaches_and_are_not_handed_to_its_tools() {
+  let fixture = Fixture::new();
+  let host = &fixture.host;
+  let narrowed = Session {
+    entries: Some(["notes/read_note".to_owned(), "notes/broken".to_owned()].into()),
+    ..fixture.session(&["notes.read", "notes.write"], &["notes.keep"])
+  };
+  let held: Vec<String> = host.held(&narrowed).iter().map(|entry| entry.full_name()).collect();
+
+  assert_eq!(held, ["notes/read_note"]);
+  assert!(host.find(&narrowed, "notes", "write_note").is_none());
+  assert!(host.find_full(&narrowed, "notes/broken", true).is_some());
+
+  let system_only = Session {
+    entries: Some(["notes/read_note".to_owned()].into()),
+    ..narrowed.clone()
+  };
+
+  assert!(host.find_full(&system_only, "notes/broken", true).is_none());
+
+  let read = host.find(&narrowed, "notes", "read_note").unwrap();
+
+  host.attempt(&read, &narrowed, json!({ "text": "a" })).await.unwrap();
+
+  let handed = &fixture.handed()[0];
+
+  assert_eq!(handed["holderName"], "tester");
+  assert!(handed.get("entries").is_none(), "{handed}");
+}

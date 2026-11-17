@@ -233,9 +233,9 @@ impl Refusal {
 }
 
 // The form a session holds a placed entry in, and the bundle's capability where it is a bundle's: none for an
-// entry for the system alone or outside the session's namespaces.
+// entry for the system alone, outside the session's namespaces or outside the entries its record narrows it to.
 fn placed_held(declared: &Declared, session: &Session) -> Option<(Held, Option<String>)> {
-  if declared.system || !session.uses(&declared.namespace) {
+  if declared.system || !session.uses(&declared.namespace) || !session.reaches(&declared.full_name()) {
     return None;
   }
 
@@ -461,12 +461,13 @@ impl Host {
   }
 
   /// The entry a full name names among those the session holds, or, where `system` says so, among the
-  /// entries for the system alone of the session's namespaces too, which the system and other tools reach.
+  /// entries for the system alone of the session's namespaces its record reaches too, which the system and other
+  /// tools reach.
   pub fn find_full(&self, session: &Session, full: &str, system: bool) -> Option<Entry> {
     let (namespace, name) = full.split_once('/')?;
 
     self.find(session, namespace, name).or_else(|| {
-      (system && session.uses(namespace))
+      (system && session.uses(namespace) && session.reaches(full))
         .then(|| self.every().into_iter().find(|entry| entry.system() && entry.full_name() == full))
         .flatten()
     })

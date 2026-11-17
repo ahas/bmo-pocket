@@ -8,8 +8,8 @@
   token (「The harness plugin」).
 - **The host tells sessions apart by the token alone.** Each token is bound to a tool session's record, in which the
   issuer states everything a call is checked against and everything a tool reads of it: the namespaces, the
-  capabilities and the grants it holds, which entries it is shown by name, and the variables and labels its tools
-  are handed (「The session record」).
+  capabilities and the grants it holds, which entries it is shown by name and, where it narrows them, which alone it
+  reaches, and the variables and labels its tools are handed (「The session record」).
 - **The host asks no other unit.** What a session may do is what its record carries, so no call waits on an
   account or permission service.
 - **Every tool is placed or registered as an external server:** a folder holding a built tool and its manifest,
@@ -27,6 +27,7 @@ flowchart TD
   Harness -->|stdio| Plugin[bmo-pocket mcp]
   Plugin -->|control socket + tool-session token| Host
   Issuer[whoever issues a tool session] -->|issue, revoke, with the issuer token| Host
+  Held[a held session's declaration] -->|kept issued, its token written beside it| Host
   Host -->|read at run time, again when it changes| Placed[placed tools]
   Host -->|a call, its record on standard input| Exe[a placed tool's executable]
   Exe -->|call-back socket of the call| Host
@@ -59,6 +60,10 @@ flowchart TD
   bundle's capability. A bundle's form shows the arguments the entry names for it alone, refuses any other, and acts
   under no grant. A call to an entry the session does not hold is refused as an unknown tool, and a call is held to
   the form the session holds.
+- **A record's `entries` narrows all of it:** where the record names them, the session holds and reaches those
+  entries alone, by full name, an entry for the system alone among them, and every other entry of its namespaces
+  is unknown to it. A record without `entries` reaches every entry its namespaces, capabilities and the system's
+  own reach give it.
 - **A namespace lists the resident entries it holds; the toolbook lists the booked ones.** An entry is resident
   where the record's `shown` list names it by full name (`docs/toolbook.md`, 「Which tools are resident」), and the
   toolbook, served at `/mcp/toolbook` beside the namespaces, lists, describes and calls the rest by the same
@@ -77,6 +82,8 @@ flowchart TD
   - `grants`, the resources the session may act on (「Grants」);
   - `shown`: the full names of the entries its namespaces list by name; a record without it is shown none by name,
     and every entry it holds stands in its toolbook;
+  - `entries`: the full names of the only entries it reaches, where the issuer narrows it so; the host alone checks
+    it, so the record a tool is handed leaves it out;
   - `variables`, handed to every call's environment, and `variablesFile`, a file read afresh at every call and
     laid over them, so an issuer whose values move while the session stands rewrites the file rather than the
     record;
@@ -89,6 +96,7 @@ flowchart TD
   - a record with an `expiresAt` lapses then: the host refuses its token from that moment and drops it at its next
     sweep, so an issuer that died leaves nothing standing;
   - a record with none stands until the issuer revokes it;
+  - a held record stands while its declaration does (「Held sessions」);
   - what a record's tools keep for it ends with it (「What a record's tools keep」), and so does every call in hand
     under it (「The host's stop」).
 - **What a call reads per call** — the record's `variablesFile` among it — is read afresh on every call. Nothing of
@@ -112,6 +120,32 @@ flowchart TD
   `tool-host/console-token` under the data root, or in the file `--console-token-file` names, readable by the
   host's user alone and made at the first start that opens the face. It reads what the issuer token reads and
   writes nothing, so a console holding it can show the host but never issue a session or call a tool.
+- **A held session's token** is a tool session's token like any other, kept by the host itself in a file beside
+  its declaration (「Held sessions」).
+
+## Held sessions
+
+A process that calls entries for as long as it runs, and has no issuer of its own to hand it a session, holds one the
+host keeps: a console's server calling an entry for the system alone, say. The deployment declares it, the host
+issues it and keeps it standing, and the process reads its token from the file the host writes.
+
+- **A declaration is one file in `tool-host/held/` under the data root,** `<name>.json`, holding the record as
+  `POST /tool-sessions` takes it, without `ttlMs` (`docs/api.md`, 「A held session」). The name is the deployment's
+  and the host reads nothing into it.
+- **The host keeps every declaration issued,** as it starts and on every beat of its sweep: where `<name>.token`
+  beside it names a standing session issued from that record, nothing changes; where it names none, or one issued
+  from another record, the host issues the declared record, standing until revoked, writes its token into
+  `<name>.token`, readable by the host's user alone, and revokes the session the file named before.
+- **The token therefore stays while the declaration does,** across restarts of the host and of the process
+  holding it; a declaration changed, or a held session revoked by hand, is issued afresh within one beat, and a
+  holder that reads the file at its call finds the new token there.
+- **A declaration taken away takes its session with it:** a `<name>.token` whose declaration no longer stands has
+  its session revoked and the file removed at the next beat. A declaration that does not read, or that names
+  `ttlMs`, is left as it stands, named on standard error, and issues nothing.
+- **What the token reaches is what its record says, and nothing else:** the routes a tool session's token takes, on
+  the control socket and the tools face, held to the record's namespaces and, where the declaration narrows it so,
+  to the entries its `entries` names. It can issue nothing and the console face refuses it, so a declaration
+  naming `entries` gives its holder those entries and no more.
 
 ## Transport
 
@@ -503,6 +537,12 @@ flowchart TD
   listed and read for a record holding their capability alone, and a read it refuses says why.
 - **Capability and namespaces:** a session lacking a tool's capability, or whose record does not name its namespace,
   is not shown it and is refused when it calls it.
+- **A record's entries:** a record naming `entries` holds and reaches those alone, an entry for the system alone
+  among them, and the record its tool is handed leaves the list out.
+- **Held sessions:** a declaration is issued with its token written beside it, readable by the host's user alone,
+  and kept under the same token across beats and a restart of the host; changed, or its session revoked by hand, it
+  is issued afresh and the session before revoked; taken away, its session and token file go with it; and one
+  naming `ttlMs` or that is no record issues nothing.
 - **Toolbook:** a namespace lists the entries the record's `shown` names alone; the toolbook lists and describes
   the booked ones, a manual's text after the description where the manifest names one, calls a read-only one with
   `call` and refuses with `act` named one that acts, refuses arguments that do not fit the tool's schema with the

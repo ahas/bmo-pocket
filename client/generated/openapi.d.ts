@@ -501,6 +501,7 @@ export interface components {
          */
         SessionRequest: {
             capabilities: string[];
+            entries?: string[] | null;
             grants: components["schemas"]["Granted"][];
             holderName: string;
             labels?: {
@@ -531,6 +532,8 @@ export interface components {
              * @description When it was issued, in epoch milliseconds.
              */
             createdAt: number;
+            /** @description The full names of the only entries it reaches; null where its record does not narrow them. */
+            entries: string[] | null;
             /**
              * Format: uint64
              * @description When the session lapses, in epoch milliseconds; null where it stands until revoked.
@@ -639,6 +642,8 @@ export interface components {
              * @description When it was issued, in epoch milliseconds.
              */
             createdAt: number;
+            /** @description The full names of the only entries the session reaches; null where its record does not narrow them. */
+            entries: string[] | null;
             /**
              * Format: uint64
              * @description When the session lapses, in epoch milliseconds; null where it stands until revoked.

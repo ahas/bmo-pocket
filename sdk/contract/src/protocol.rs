@@ -57,11 +57,15 @@ pub struct Handed {
 }
 
 impl Handed {
+  /// What a tool is handed for `asked` under `session`, the record less its `entries`, which the host alone checks.
   pub fn new(asked: Asked, session: Session) -> Self {
     Self {
       protocol: PROTOCOL,
       asked,
-      session,
+      session: Session {
+        entries: None,
+        ..session
+      },
       callback: None,
       shared: BTreeMap::new(),
     }

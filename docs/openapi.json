@@ -646,6 +646,16 @@
             "type": "array",
             "uniqueItems": true
           },
+          "entries": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "uniqueItems": true
+          },
           "grants": {
             "items": {
               "$ref": "#/components/schemas/Granted"
@@ -726,6 +736,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "entries": {
+            "description": "The full names of the only entries it reaches; null where its record does not narrow them.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "uniqueItems": true
+          },
           "expiresAt": {
             "description": "When the session lapses, in epoch milliseconds; null where it stands until revoked.",
             "format": "uint64",
@@ -781,6 +802,7 @@
           "capabilities",
           "grants",
           "shown",
+          "entries",
           "variables",
           "labels",
           "expiresAt",
@@ -1067,6 +1089,17 @@
             "minimum": 0,
             "type": "integer"
           },
+          "entries": {
+            "description": "The full names of the only entries the session reaches; null where its record does not narrow them.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ],
+            "uniqueItems": true
+          },
           "expiresAt": {
             "description": "When the session lapses, in epoch milliseconds; null where it stands until revoked.",
             "format": "uint64",
@@ -1126,6 +1159,7 @@
           "capabilities",
           "grants",
           "shown",
+          "entries",
           "variables",
           "variablesFile",
           "labels",

@@ -33,6 +33,11 @@ pub struct Session {
   /// the session holds stands in its toolbook.
   #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
   pub shown: BTreeSet<String>,
+  /// The full names of the only entries the session reaches, those for the system alone among them; every entry
+  /// its namespaces and capabilities give it where none. The host alone checks it, so a tool is handed the record
+  /// without it.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub entries: Option<BTreeSet<String>>,
   /// Variables handed to every call's environment.
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
   pub variables: BTreeMap<String, String>,
@@ -70,6 +75,11 @@ impl Session {
     self.grants.iter().any(|grant| grant.resource == resource)
   }
 
+  /// Whether the session's `entries` lets it reach the entry of this full name: any, where it names none.
+  pub fn reaches(&self, full: &str) -> bool {
+    self.entries.as_ref().is_none_or(|entries| entries.contains(full))
+  }
+
   /// Whether the session has lapsed at `now`, in epoch milliseconds.
   pub fn lapsed(&self, now: u64) -> bool {
     self.expires_at.is_some_and(|expires| expires <= now)
@@ -100,6 +110,8 @@ pub struct SessionRequest {
   pub grants: Vec<Granted>,
   #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
   pub shown: BTreeSet<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub entries: Option<BTreeSet<String>>,
   #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
   pub variables: BTreeMap<String, String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -120,6 +132,7 @@ impl SessionRequest {
       capabilities: self.capabilities,
       grants: self.grants,
       shown: self.shown,
+      entries: self.entries,
       variables: self.variables,
       variables_file: self.variables_file,
       labels: self.labels,
