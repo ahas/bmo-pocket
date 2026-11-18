@@ -425,9 +425,10 @@ issues it and keeps it standing, and the process reads its token from the file t
   the way back where the catalogue shows one of its columns in another's place, then the view switch and the
   search, and at its right end the button that reads the view again, spinning until the view's lists are read,
   which stays in the row at a phone's width, the search giving up its width first.
-  - The view switch is one dropdown, the layer's small select, that names the view standing by its icon and its
-    word and lists the four: the catalogue, the schedules, the sessions and the external servers. It is as wide
-    as the standing view's name at every width, so the row stays one line at a phone's width as well.
+  - The view switch is one dropdown, bmo-ui's one select at its small size (bmo-ui's `docs/components.md`,
+    「Choosing a value」), that names the view standing by its icon and its word and lists the four: the
+    catalogue, the schedules, the sessions and the external servers. It is as wide as the standing view's name at
+    every width, so the row stays one line at a phone's width as well.
   - Every button in it is the layer's small button at its own size, centred in the row, its hover and press
     filling its own rounded shape alone; the way back and the reread are small square icon buttons, each named by
     its tooltip.

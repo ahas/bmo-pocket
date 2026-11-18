@@ -3,4 +3,6 @@ node_modules/
 __pycache__/
 /console/.nuxt/
 /console/.output/
+/console/tests/host/.nuxt/
+/console/tests/host/.output/
 .graph/

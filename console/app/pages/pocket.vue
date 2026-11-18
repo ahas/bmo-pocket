@@ -21,11 +21,12 @@
           </div>
           <!-- More views than three are one dropdown naming the view standing (docs/mcp-host.md, 「How the screen reads」). -->
           <div>
-            <USelect
+            <ChoiceSelect
               size="sm"
               variant="ghost"
               :model-value="place.view"
               :items="viewItems"
+              value-key="value"
               :icon="standingIcon"
               :aria-label="t('pocket.label.view')"
               @update:model-value="go({ view: $event as View, tool: null })"
