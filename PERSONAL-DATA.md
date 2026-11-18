@@ -12,6 +12,6 @@ code, a comment, a document, a test fixture or a commit message.
   what its own settings file states, and never the values of the sessions and the people it serves.
 - **A test's fixtures carry no real person, host or address.** A value a test reads is written for the test.
 
-The repository's checks hold it: `tests/personal_data.rs` reads every tracked file for a mail address, a home
-path, a telephone number, a token and a private network address. A finding names the file, the line and the
-kind, never the value. The check carries the patterns alone; no list of the values it forbids is kept here.
+The testbed's `personal-data` check, which the declaration enables, holds it: it reads every tracked file for a
+mail address, a home path, a telephone number, a token and a private network address before anything is built. A finding names the file, the line and the
+kind, never the value. The forms are the testbed's policy; no list of the values it forbids is kept here.

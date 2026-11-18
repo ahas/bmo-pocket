@@ -22,12 +22,12 @@ helpers tools written in TypeScript or Python import.
 | `plugin/` | the harness plugin, `bmo-pocket-plugin`: the MCP server `bmo-pocket mcp` serves and its `bmo-pocket` skill |
 | `prompts/` | the prompt text the host serves, `tool-use.md`: the paragraph on finding and using tools a session's system prompt carries |
 | `sdk/` | the tool SDK: `sdk/contract/`, the `bmo-tool` crate holding the call protocol and the manifest schema, which Rust tools link; `sdk/ts-kit/` and `sdk/py-kit/`, the helpers a TypeScript or Python tool imports |
-| `tests/` | the checks that span the repository, including the personal-data check over every tracked file (`PERSONAL-DATA.md`), and `tests/host-contract/`, the host held to what an installed CLI reads of it |
+| `tests/` | the checks that span the repository, and `tests/host-contract/`, the host held to what an installed CLI reads of it |
 
 ## Personal data
 
 No personal data stands in this repository. `PERSONAL-DATA.md` states what may never stand here and the check
-that holds it: `tests/personal_data.rs` reads every tracked file and names the file, the line and the kind of
+that holds it: the testbed's `personal-data` check reads every tracked file and names the file, the line and the kind of
 any mail address, home path, telephone number, token or private network address it finds, never the value.
 
 ## Build and test

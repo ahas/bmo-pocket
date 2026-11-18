@@ -248,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-console-face"
-version = "0.1.0-rev.9"
+version = "0.1.0-rev.10"
 dependencies = [
  "axum",
  "headers",
@@ -263,7 +263,6 @@ dependencies = [
 name = "bmo-pocket"
 version = "0.1.0-rev.9"
 dependencies = [
- "regex",
  "serde_json",
  "toml",
 ]

@@ -52,11 +52,9 @@ publish.workspace = true
 autotests = false
 
 [dev-dependencies]
-# The workspace's packages as `cargo metadata` answers them, the other manifests a project carries, and the
-# patterns the personal-data check reads every tracked file with.
+# The workspace's packages as `cargo metadata` answers them, and the other manifests a project carries.
 serde_json.workspace = true
 toml.workspace = true
-regex = "1.13.1"
 
 [[test]]
 name = "main"

@@ -23,7 +23,7 @@ setup = [
 ]
 
 [check]
-quick = ["layout", "dependencies", "cargo-profile", "shared-versions"]
+quick = ["layout", "dependencies", "cargo-profile", "shared-versions", "personal-data"]
 base_libraries = ["bmo-chat", "bmo-chat-client", "bmo-console-face", "bmo-ui"]
 
 # The repository whose root holds the shared versions the manifests and the lock hold to.

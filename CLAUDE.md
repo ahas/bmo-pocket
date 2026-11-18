@@ -23,7 +23,7 @@ name; it reads their manifests.
   language packs. `tests/repository.rs` fails on Hangul in any `.rs`, `.ts` or `.py` file.
 - **No personal data** in code, documents, tests or commits: no names of the callers or the people behind them,
   no host names, home paths, mail addresses, telephone numbers, tokens or private network addresses; tests use
-  neutral names. `PERSONAL-DATA.md` states the rule whole and `tests/personal_data.rs` holds it.
+  neutral names. `PERSONAL-DATA.md` states the rule whole and the testbed's `personal-data` check holds it.
 - **Tests live in `tests/`.** A crate's tests are in its own `tests/`; checks that span the repository are in
   the root `tests/`. No test module sits in `src/`.
 - **No directory named after its parent** (no `x/x`), **no folder named for a language**, and **only Cargo
