@@ -220,7 +220,9 @@ flowchart TD
   layer on bmo-ui, calling the reads above through the layer's relay under the service name `pocket`. It reads the
   types of what it reads from `@bmo/pocket-client`.
 - **bmo-ui is the release bmo-chat's `shared-versions.toml` pins,** vendored in `console/vendor/` as that release's
-  packed file stands; the testbed's shared-versions check holds it there.
+  packed file stands; the testbed's shared-versions check holds it there. The component library stands at the
+  exact version that release names, and the install applies the layer's own patches for it, its primitives and
+  its icons, kept in `console/patches/`: a patch applies to the exact version it names alone.
 - **Its build, `bun run bundle`,** runs the layer's bundle build and writes into the folder `BMO_POCKET_CONSOLE_OUT`
   names: `module.js`, whose default export holds the screen's route under `/pocket`; `style.css`, the utilities its
   sources use beyond the layer's own; `words.json`, each locale's words under `pocket`; and the layer's own

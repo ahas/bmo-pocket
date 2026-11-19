@@ -12,7 +12,7 @@
     "check": "bun run typecheck && bun test"
   },
   "dependencies": {
-    "@nuxt/ui": "^4.11.2",
+    "@nuxt/ui": "4.12.2",
     "vue": "^3.5.24",
     "vue-router": "^5.2.0"
   },
@@ -32,5 +32,10 @@
     "vite": "8.3.4",
     "vue-i18n": "^11.4.8",
     "vue-tsc": "^3.2.0"
+  },
+  "patchedDependencies": {
+    "@nuxt/icon@2.5.1": "patches/@nuxt%2Ficon@2.5.1.patch",
+    "reka-ui@2.11.0": "patches/reka-ui@2.11.0.patch",
+    "@nuxt/ui@4.12.2": "patches/@nuxt%2Fui@4.12.2.patch"
   }
 }
