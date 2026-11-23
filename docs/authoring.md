@@ -101,7 +101,9 @@ the host calls it by itself; `docs/api.md` states each table, and `docs/mcp-host
 
 A tool the system cannot work without names no app, and no setting ever withholds it. A put of a tool naming one
 declares its two settings on the account service's delegation chain (`docs/api.md`, 「An app on the delegation
-chain」), so the account service must be reachable where it is put.
+chain」), so the account service must be reachable where it is put. An app that is a unit's console screen alone,
+with no tool, is declared by the unit's deployment with `bmo pocket app <file>`, a file holding the same `[app]`
+table alone.
 
 ## Entries and their schemas
 

@@ -77,7 +77,8 @@ flowchart TD
 - **A tool naming no app is part of the system** — the rooms, sending, the brain, the jobs, a node's commands, the
   procedures — and is reached by its capabilities alone; no setting withholds it.
 - **Whether an app reaches a person is the delegation chain's,** two settings per app the account service keeps,
-  which `bmo-pocket put` declares from the manifest (`docs/api.md`, 「An app on the delegation chain」): offered,
+  which `bmo-pocket put` declares from the manifest, and `bmo-pocket app` from a unit's declaration file for an
+  app that is a screen alone (`docs/api.md`, 「An app on the delegation chain」): offered,
   which a link below can only narrow, and on, which the nearest link decides. An app reaches a person where it is
   both.
 - **The host reads neither.** A session's issuer resolves them for the person the session acts for and writes the

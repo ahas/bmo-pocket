@@ -16,7 +16,7 @@ use mcp_host::registry::Registry;
 #[derive(Parser)]
 #[command(
   name = "bmo-pocket",
-  about = "The tool host's registry and catalogue: put a tool, take one, list the registry, list, describe and call a catalogue entry, read its site tools; and its harness plugin's MCP server."
+  about = "The tool host's registry and catalogue: put a tool, take one, list the registry, declare a screen-only app, list, describe and call a catalogue entry, read its site tools; and its harness plugin's MCP server."
 )]
 struct Cli {
   /// The data root whose `tool-host/` holds the registry and the issuer token.
@@ -67,6 +67,12 @@ enum Verb {
     /// The repository whose own tool it is, which alone takes a service's tool.
     #[arg(long)]
     service: Option<String>,
+  },
+  /// Declares a screen-only app's two settings on the delegation chain from a file holding its `[app]` table alone;
+  /// places nothing in the registry.
+  App {
+    /// The declaration file: a TOML file holding the `[app]` table alone.
+    file: PathBuf,
   },
   /// Every registered tool.
   List {
@@ -225,6 +231,13 @@ fn main() -> ExitCode {
     Verb::Take { name, service } => {
       let mut said = Vec::new();
       let done = install::take(&Registry::of(&data_root), &name, service.as_deref(), &mut said);
+
+      finish(done, &said)
+    }
+    Verb::App { file } => {
+      let mut said = Vec::new();
+      let chain = mcp_host::chain::Chain::named(&data_root);
+      let done = install::app(&file, chain.as_ref(), &mut said);
 
       finish(done, &said)
     }

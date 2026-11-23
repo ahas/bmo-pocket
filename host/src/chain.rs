@@ -1,6 +1,7 @@
-//! An app's two settings declared on the account service's delegation chain as its tool is put (docs/api.md, 「An
-//! app on the delegation chain」): whether the app is offered, which a link below only narrows, and whether it is
-//! on, which the nearest link decides. The host reads neither; a session's issuer resolves them.
+//! An app's two settings declared on the account service's delegation chain as its tool is put, or from its unit's
+//! declaration file where the app is a screen alone (docs/api.md, 「An app on the delegation chain」): whether the
+//! app is offered, which a link below only narrows, and whether it is on, which the nearest link decides. The host
+//! reads neither; a session's issuer resolves them.
 
 use std::path::Path;
 

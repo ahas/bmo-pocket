@@ -1,4 +1,4 @@
-use bmo_tool::manifest::{MANIFEST, Manifest};
+use bmo_tool::manifest::{AppPart, MANIFEST, Manifest};
 use bmo_tool::{Answer, Bundle, Hints, Served, Session, Tool};
 use serde::Deserialize;
 
@@ -285,4 +285,33 @@ fn a_tool_names_its_app_offered_and_on_unless_it_says_otherwise() {
     Manifest::parse(&format!("{helper}\n{app}"), "web").unwrap_err(),
     "a shared helper belongs to no app"
   );
+}
+
+// A screen-only app's declaration file holds the `[app]` table alone, read under the manifest's rules for it.
+#[test]
+fn a_declaration_file_holds_an_app_alone_under_the_manifests_rules() {
+  let app = "[app]\nkey = \"garden-plan\"\nname = \"Garden plan\"\ndescription = \"Plans the beds.\"\n";
+  let declared = AppPart::parse(&format!("{app}on = false\nicon = \"i-lucide-sprout\"\n")).unwrap();
+
+  assert_eq!(declared.key, "garden-plan");
+  assert!(declared.offered && !declared.on);
+  assert_eq!(declared.icon.as_deref(), Some("i-lucide-sprout"));
+  assert!(
+    AppPart::parse(&app.replace("garden-plan", "Garden_plan"))
+      .unwrap_err()
+      .contains("app's key")
+  );
+  assert!(
+    AppPart::parse(&app.replace("garden-plan", &"g".repeat(51)))
+      .unwrap_err()
+      .contains("app's key")
+  );
+  assert!(
+    AppPart::parse(&app.replace("Plans the beds.", ""))
+      .unwrap_err()
+      .contains("no description")
+  );
+  assert!(AppPart::parse(&format!("{app}colour = \"green\"\n")).unwrap_err().contains("colour"));
+  assert!(AppPart::parse(&format!("{MANIFEST_TEXT}\n{app}")).unwrap_err().contains("tool"));
+  assert!(AppPart::parse("").unwrap_err().contains("app"));
 }

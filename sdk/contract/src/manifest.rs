@@ -263,6 +263,37 @@ fn yes() -> bool {
   true
 }
 
+// A declaration file of a screen-only app: the `[app]` table alone.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AppWritten {
+  app: AppPart,
+}
+
+impl AppPart {
+  /// The app a declaration file's text holds, the `[app]` table alone, held to the manifest's rules for it; or why
+  /// it does not read.
+  pub fn parse(text: &str) -> Result<Self, String> {
+    let written: AppWritten = toml::from_str(text).map_err(|why| why.message().to_owned())?;
+
+    written.app.faults()?;
+    Ok(written.app)
+  }
+
+  /// Why the app does not read: a key outside its alphabet or too long, or an empty name or description.
+  pub fn faults(&self) -> Result<(), String> {
+    if !app_key(&self.key) {
+      return Err(format!("`{}` is no app's key", self.key));
+    }
+
+    if self.name.trim().is_empty() || self.description.trim().is_empty() {
+      return Err(format!("the app `{}` has no name or no description", self.key));
+    }
+
+    Ok(())
+  }
+}
+
 /// The longest key an app may have, so its settings' kind keys stay within the delegation chain's 64 characters.
 pub const APP_KEY_MOST: usize = 50;
 
@@ -407,13 +438,7 @@ impl Manifest {
         return Err("a shared helper belongs to no app".to_owned());
       }
 
-      if !app_key(&app.key) {
-        return Err(format!("`{}` is no app's key", app.key));
-      }
-
-      if app.name.trim().is_empty() || app.description.trim().is_empty() {
-        return Err(format!("the app `{}` has no name or no description", app.key));
-      }
+      app.faults()?;
     }
 
     let mut seen = BTreeSet::new();

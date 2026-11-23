@@ -871,3 +871,99 @@ fn a_put_of_an_apps_tool_declares_its_two_settings_on_the_delegation_chain_first
   );
   assert!(registry.get("sower").is_none());
 }
+
+// "An app on the delegation chain" (docs/api.md): `app` declares a screen-only app's two settings from a file holding
+// the `[app]` table alone, as a put declares a tool's, and places nothing; it ends 1 where the file holds anything
+// else, the account service refuses or none is named, and 2 where its words do not read.
+#[test]
+fn the_app_verb_declares_a_screen_only_apps_two_settings_and_places_nothing() {
+  let scratch = Scratch::new();
+  let service = AccountService::start(false);
+  let file = scratch.data().join("app.toml");
+  let pocket = |args: &[&str], address: Option<String>| {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_bmo-pocket"));
+
+    command.arg("--data-root").arg(scratch.data()).args(args).env_remove("WEB_TOKEN_FILE");
+
+    match address {
+      Some(address) => command.env("WEB_ADDRESS", address).env("WEB_TOKEN", "chain-token"),
+      None => command.env_remove("WEB_ADDRESS").env_remove("WEB_TOKEN"),
+    };
+
+    command.output().unwrap()
+  };
+  let address = || Some(format!("http://127.0.0.1:{}", service.port));
+
+  fs::create_dir_all(scratch.data()).unwrap();
+  fs::write(
+    &file,
+    "[app]\nkey = \"ledger\"\nname = \"Ledger\"\ndescription = \"Keeps the accounts.\"\non = false\n",
+  )
+  .unwrap();
+
+  let declared = pocket(&["app", file.to_str().unwrap()], address());
+
+  assert_eq!(declared.status.code(), Some(0), "{}", String::from_utf8_lossy(&declared.stderr));
+  assert_eq!(
+    String::from_utf8_lossy(&declared.stdout),
+    "declared the setting app.ledger.offered on the delegation chain\n\
+     declared the setting app.ledger.on on the delegation chain\n"
+  );
+
+  let kept = service.kept();
+
+  assert_eq!(kept.len(), 2);
+  assert_eq!(kept[0].0, "/chain/kinds/app.ledger.offered");
+  assert_eq!(kept[0].1, "Bearer chain-token");
+  assert_eq!(kept[0].2["declaredBy"], "pocket");
+  assert_eq!(kept[0].2["default"], true);
+  assert!(kept[0].2["description"].as_str().unwrap().contains("Ledger: Keeps the accounts."));
+  assert_eq!(kept[1].0, "/chain/kinds/app.ledger.on");
+  assert_eq!(kept[1].2["mode"], "nearest");
+  assert_eq!(kept[1].2["default"], false);
+  assert!(scratch.registry().entries().0.is_empty());
+
+  // The same declarations a put of a tool naming the same app makes.
+  let tool =
+    "[app]\nkey = \"ledger\"\nname = \"Ledger\"\ndescription = \"Keeps the accounts.\"\non = false\n";
+  let folder = scratch.source("ledger", &manifest("ledger", "tally", tool, ""), "l");
+
+  put(
+    &scratch.registry(),
+    &Put {
+      chain: Some(service.chain()),
+      ..put_of(folder.to_string_lossy())
+    },
+  )
+  .unwrap();
+  assert_eq!(service.kept()[2..], kept[..]);
+
+  // A file holding more than the app, an account service refusing or none named: refused, nothing declared.
+  fs::write(
+    &file,
+    "[app]\nkey = \"ledger\"\nname = \"Ledger\"\ndescription = \"x\"\n[tool]\nname = \"x\"\n",
+  )
+  .unwrap();
+
+  let more = pocket(&["app", file.to_str().unwrap()], address());
+
+  assert_eq!(more.status.code(), Some(1));
+  assert!(String::from_utf8_lossy(&more.stderr).contains("tool"));
+  assert_eq!(service.kept().len(), 4);
+
+  fs::write(&file, "[app]\nkey = \"ledger\"\nname = \"Ledger\"\ndescription = \"x\"\n").unwrap();
+
+  let refusing = AccountService::start(true);
+  let refused =
+    pocket(&["app", file.to_str().unwrap()], Some(format!("http://127.0.0.1:{}", refusing.port)));
+
+  assert_eq!(refused.status.code(), Some(1));
+  assert!(String::from_utf8_lossy(&refused.stderr).contains("did not take the setting app.ledger.offered"));
+
+  let unnamed = pocket(&["app", file.to_str().unwrap()], None);
+
+  assert_eq!(unnamed.status.code(), Some(1));
+  assert!(String::from_utf8_lossy(&unnamed.stderr).contains("no account service is named"));
+  assert_eq!(pocket(&["app"], address()).status.code(), Some(2));
+  assert_eq!(service.kept().len(), 4);
+}

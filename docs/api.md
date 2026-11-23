@@ -711,8 +711,13 @@ system and is never withheld.
 | `app.<key>.offered` | a flag, `narrowing`: no link below widens what a link above offers | the manifest's `offered` | yes | the platform and units; `manage` |
 | `app.<key>.on` | a flag, `nearest`: the nearest link that says decides, a lock above holding | the manifest's `on` | yes | the platform, units and people; `manage`, written by the person and their heads (`both`) |
 
+- **A screen-only app is declared by `app`:** an app whose unit ships a console screen and no tool is published
+  by that unit's deployment with `bmo pocket app <file>`, a TOML file holding the `[app]` table alone, under the
+  same rules and with the same two declarations; it places nothing in the registry. An app with a tool is declared
+  by its tool's `put`, and a tool put later under the same key declares the same two kinds again.
 - **Each declaration's `description`** is the app's name and description, for a screen to show.
-- **A put refused by the account service, or one with no account service named, places nothing** and says why.
+- **A put or an `app` refused by the account service, or with no account service named, places nothing** and says
+  why.
   The account service is the one `WEB_ADDRESS` names with the token `WEB_TOKEN`, or the file `WEB_TOKEN_FILE`
   names, each read from `bmo-pocket`'s environment and else from `env/web.env` under the data root, a file of
   `KEY=VALUE` lines whose value stands verbatim after its first `=`. It is reached over plain HTTP.
@@ -855,6 +860,7 @@ name is refused, naming it.
 | `put --mcp <registration> [--allow <name>]… [--service <repo>]` | Registers an external MCP server by its registration file (「The registration of an external server」), or replaces the registration under its name |
 | `take <name> [--service <repo>]` | Takes the tool registered under the name out of the registry; a service's own tool only with `--service` naming that service |
 | `list [--json]` | Every registered tool: its name, its version, where it was put from, the service it is registered for and its entries, or an external server's namespace and address; `--json` prints the pointers (`docs/registry.md`, 「A pointer」) as a JSON array |
+| `app <file>` | Declares a screen-only app's two settings on the delegation chain from a file holding the `[app]` table alone (「An app on the delegation chain」), printing each; it refuses a file holding anything else or an `[app]` that does not read, and places nothing in the registry |
 | `mcp [--socket <path>] [--token <token>]` | Serves the harness plugin on standard input and output (「The harness plugin」) |
 
 - **What `put` checks before anything is placed:** the manifest reads (「The manifest」); its name is no other

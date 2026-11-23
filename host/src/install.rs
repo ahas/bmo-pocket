@@ -1,7 +1,8 @@
 //! What `bmo-pocket` does to the registry (docs/registry.md): a tool put from a folder, a git address or a bare
 //! name, checked, built or copied into a version of its own and pointed at; a registration taken; the registry
-//! listed; and an external server's registration checked and placed the same way. Each verb writes what it did into
-//! `said`, a line each, and answers why it refused where it did.
+//! listed; an external server's registration checked and placed the same way; and a screen-only app's settings
+//! declared from its declaration file, which places nothing. Each verb writes what it did into `said`, a line each,
+//! and answers why it refused where it did.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -9,7 +10,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use bmo_tool::manifest::{MANIFEST, Manifest};
+use bmo_tool::manifest::{AppPart, MANIFEST, Manifest};
 
 use crate::chain::Chain;
 use crate::external::{REGISTRATION, Registration};
@@ -474,6 +475,23 @@ pub fn register_server(registry: &Registry, asked: &Put, said: &mut Vec<String>)
     None => format!("registered the external server {name} {version} from {origin}"),
   });
 
+  Ok(())
+}
+
+/// A screen-only app's two settings declared on the delegation chain from its declaration file, the `[app]` table
+/// alone (docs/api.md, 「An app on the delegation chain」); nothing is placed in the registry.
+pub fn app(file: &Path, chain: Option<&Chain>, said: &mut Vec<String>) -> Result<(), String> {
+  let shown = file.display();
+  let text = fs::read_to_string(file).map_err(|why| format!("{shown}: {why}"))?;
+  let app = AppPart::parse(&text).map_err(|why| format!("{shown}: {why}"))?;
+  let Some(chain) = chain else {
+    return Err(format!(
+      "the settings of the app {} could not be declared: no account service is named",
+      app.key
+    ));
+  };
+
+  said.extend(chain.declare(&app).map_err(|why| format!("the app {}: {why}", app.key))?);
   Ok(())
 }
 
