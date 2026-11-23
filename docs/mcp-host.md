@@ -103,7 +103,8 @@ flowchart TD
 
 - **A personal tool is a tool of one person's own, run on that person's machine:** its source, its build, its
   versions and its data stand there, and the host holds a copy of its description alone — its manifest, schemas and
-  manuals — in the owner's registry (`docs/registry.md`, 「Personal tools」). The host lists, describes and checks
+  manuals — in the owner's registry (`docs/registry.md`, 「Personal tools」), placed there by `put --owner` once the
+  owner's machine has built it (`docs/registry.md`, 「Put a personal tool」). The host lists, describes and checks
   it from that copy, and relays each call to the owner's runner.
 - **Its pointer names its owner, and so does the session's record:** a session holds the personal tools of the
   account its record's `ownerAccount` names and of no other account, so another owner's tool is neither listed,
@@ -621,8 +622,11 @@ issues it and keeps it standing, and the process reads its token from the file t
   a platform tool in the namespace `my` and a personal tool outside its rules are left out; a call is relayed to a
   stand-in runner over a socket and over a command, the tool's run words, version and call reaching it and its
   answer, its errors and its code coming back as the tool's; a record naming no runner fails the call saying so; a
-  refusal or a runner that cannot be reached fails it saying why; and a call whose caller goes away mid-call ends the
-  relay, whose passage the stand-in runner sees close.
+  refusal or a runner that cannot be reached fails it saying why; a call whose caller goes away mid-call ends the
+  relay, whose passage the stand-in runner sees close; and `put --owner` places the description copy alone under the
+  version named, refuses a manifest outside a personal tool's rules and a full name another of the owner's tools
+  holds while another owner's stands beside it, points at a version already standing as it stands, and is taken and
+  listed per owner.
 - **Held sessions:** a declaration is issued with its token written beside it, readable by the host's user alone,
   and kept under the same token across beats and a restart of the host; changed, or its session revoked by hand, it
   is issued afresh and the session before revoked; taken away, its session and token file go with it; and one

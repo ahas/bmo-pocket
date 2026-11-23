@@ -427,3 +427,155 @@ async fn a_call_whose_caller_goes_away_closes_the_runner_s_passage() {
     .expect("the passage closed once its caller went")
     .unwrap();
 }
+
+// `bmo-pocket` run on the scratch data root, answering its exit code, what it said and why it refused.
+fn pocket(scratch: &Scratch, words: &[&str]) -> (i32, String, String) {
+  let ran = std::process::Command::new(env!("CARGO_BIN_EXE_bmo-pocket"))
+    .arg("--data-root")
+    .arg(scratch.dir.path().join("data"))
+    .args(words)
+    .output()
+    .unwrap();
+
+  (
+    ran.status.code().unwrap_or(-1),
+    String::from_utf8_lossy(&ran.stdout).into_owned(),
+    String::from_utf8_lossy(&ran.stderr).into_owned(),
+  )
+}
+
+// A built personal tool as its owner's machine holds it: the manifest, its schema, and code and data beside them.
+fn built(scratch: &Scratch, folder: &str, manifest: &str) -> PathBuf {
+  let dir = scratch.dir.path().join("built").join(folder);
+
+  fs::create_dir_all(dir.join("lib")).unwrap();
+  fs::write(dir.join("tool.toml"), manifest).unwrap();
+  fs::write(dir.join("echo.json"), SCHEMA).unwrap();
+  fs::write(dir.join("weekly"), "#!/bin/sh\necho private code\n").unwrap();
+  fs::write(dir.join("lib").join("notes.txt"), "private data").unwrap();
+  dir
+}
+
+// "`put --owner` places the description copy alone under the version named, refuses a manifest outside a personal
+// tool's rules and a full name another of the owner's tools holds while another owner's stands beside it, points at
+// a version already standing as it stands, and is taken and listed per owner"
+#[test]
+fn an_owner_put_places_the_description_copy_alone_under_the_version_its_machine_named() {
+  let scratch = Scratch::new();
+  let weekly = built(&scratch, "weekly", &personal_manifest("weekly", "my", "weekly_summary", ""));
+  let (code, said, refused) =
+    pocket(&scratch, &["put", "--owner", "a1", "--version", "100-abc", weekly.to_str().unwrap()]);
+
+  assert_eq!(code, 0, "{refused}");
+  assert!(said.contains("put a1's weekly 100-abc"), "{said}");
+  assert!(said.contains("weekly serves my/weekly_summary"), "{said}");
+
+  let owned = scratch.registry().owned("a1");
+  let placed = owned.version_dir("weekly", "100-abc");
+  let mut files: Vec<String> = fs::read_dir(&placed)
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+    .collect();
+
+  files.sort();
+  assert_eq!(files, ["echo.json", "tool.toml"], "no code or data reaches the host");
+
+  let pointer = owned.get("weekly").unwrap();
+
+  assert_eq!(pointer.owner.as_deref(), Some("a1"));
+  assert_eq!(pointer.origin, "machine:a1");
+  assert_eq!(pointer.version, "100-abc");
+
+  let host = scratch.host();
+  let found = host.find_full(&session(Some("a1"), Value::Null), "my/weekly_summary", false).unwrap();
+
+  assert_eq!(found.tool.version(), "100-abc");
+
+  // Outside a personal tool's rules: a namespace not `my`, the network asked for, a bad version name.
+  let elsewhere = built(&scratch, "elsewhere", &personal_manifest("elsewhere", "notes", "jot", ""));
+  let (code, _, refused) = pocket(&scratch, &["put", "--owner", "a1", elsewhere.to_str().unwrap()]);
+
+  assert_eq!(code, 1);
+  assert!(refused.contains("stand in the namespace `my`"), "{refused}");
+
+  let reaching = built(
+    &scratch,
+    "reaching",
+    &format!(
+      "{}\n[permissions]\nnetwork = [\"example.com\"]\n",
+      personal_manifest("reaching", "my", "reach", "")
+    ),
+  );
+  let (code, _, refused) = pocket(&scratch, &["put", "--owner", "a1", reaching.to_str().unwrap()]);
+
+  assert_eq!(code, 1);
+  assert!(refused.contains("the network or a secret"), "{refused}");
+
+  let (code, _, refused) =
+    pocket(&scratch, &["put", "--owner", "a1", "--version", "../up", weekly.to_str().unwrap()]);
+
+  assert_eq!(code, 1);
+  assert!(refused.contains("no version's name"), "{refused}");
+
+  // Another of a1's tools may not take the same entry; b2's may.
+  let twin = built(&scratch, "twin", &personal_manifest("twin", "my", "weekly_summary", ""));
+  let (code, _, refused) = pocket(&scratch, &["put", "--owner", "a1", twin.to_str().unwrap()]);
+
+  assert_eq!(code, 1);
+  assert!(
+    refused.contains("my/weekly_summary is the registered tool weekly's already"),
+    "{refused}"
+  );
+
+  let (code, _, refused) = pocket(&scratch, &["put", "--owner", "b2", twin.to_str().unwrap()]);
+
+  assert_eq!(code, 0, "{refused}");
+
+  // A new version moves the pointer; going back to one still standing points at it as it stands.
+  let (code, said, _) =
+    pocket(&scratch, &["put", "--owner", "a1", "--version", "200-def", weekly.to_str().unwrap()]);
+
+  assert_eq!(code, 0);
+  assert!(said.contains("moved a1's weekly from 100-abc to 200-def"), "{said}");
+  fs::write(placed.join("mark"), "kept").unwrap();
+
+  let (code, said, _) =
+    pocket(&scratch, &["put", "--owner", "a1", "--version", "100-abc", weekly.to_str().unwrap()]);
+
+  assert_eq!(code, 0);
+  assert!(said.contains("moved a1's weekly from 200-def to 100-abc"), "{said}");
+  assert_eq!(
+    fs::read_to_string(placed.join("mark")).unwrap(),
+    "kept",
+    "the standing version is not written"
+  );
+
+  // Listed per owner, with its entries and permissions; taken from the owner's registry alone.
+  let (code, said, _) = pocket(&scratch, &["list", "--owner", "a1", "--json"]);
+  let listed: Value = serde_json::from_str(&said).unwrap();
+
+  assert_eq!(code, 0);
+  assert_eq!(listed[0]["name"], "weekly");
+  assert_eq!(listed[0]["version"], "100-abc");
+  assert_eq!(listed[0]["owner"], "a1");
+  assert_eq!(listed[0]["entries"][0]["name"], "my/weekly_summary");
+  assert_eq!(listed[0]["entries"][0]["description"], "Sums up the week.");
+  assert_eq!(listed[0]["permissions"], json!({ "network": [], "secrets": [] }));
+
+  let (code, said, _) = pocket(&scratch, &["take", "--owner", "a1", "weekly"]);
+
+  assert_eq!(code, 0);
+  assert!(said.contains("took a1's weekly 100-abc"), "{said}");
+  assert!(scratch.registry().owned("a1").get("weekly").is_none());
+  assert!(scratch.registry().owned("b2").get("twin").is_some());
+
+  let (code, _, refused) = pocket(&scratch, &["take", "--owner", "a1", "weekly"]);
+
+  assert_eq!(code, 1);
+  assert!(refused.contains("a1 holds no personal tool weekly"), "{refused}");
+
+  let (code, _, refused) = pocket(&scratch, &["take", "--owner", "../x", "weekly"]);
+
+  assert_eq!(code, 1);
+  assert!(refused.contains("no account's name"), "{refused}");
+}

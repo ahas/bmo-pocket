@@ -60,13 +60,22 @@ enum Verb {
     /// The source template a bare name is put from, `{repo}` in it standing for `bmo-<name>`.
     #[arg(long, env = "BMO_POCKET_SOURCE")]
     source: Option<String>,
+    /// The account whose personal tool's description copy the folder holds, put in that owner's registry.
+    #[arg(long, conflicts_with_all = ["mcp", "service", "placed"])]
+    owner: Option<String>,
+    /// The version an owner's personal tool is placed as, the name its owner's machine placed it under.
+    #[arg(long, requires = "owner")]
+    version: Option<String>,
   },
-  /// Takes the tool registered under the name out of the registry.
+  /// Takes the tool registered under the name out of the registry, or the owner's personal tool out of theirs.
   Take {
     name: String,
     /// The repository whose own tool it is, which alone takes a service's tool.
     #[arg(long)]
     service: Option<String>,
+    /// The account whose personal tool it is, taken from that owner's registry.
+    #[arg(long, conflicts_with = "service")]
+    owner: Option<String>,
   },
   /// Declares a screen-only app's two settings on the delegation chain from a file holding its `[app]` table alone;
   /// places nothing in the registry.
@@ -79,6 +88,9 @@ enum Verb {
     /// The pointers as they stand, as JSON.
     #[arg(long)]
     json: bool,
+    /// The account whose personal tools are listed, in place of the platform's.
+    #[arg(long)]
+    owner: Option<String>,
   },
   /// Says whether a stop of the running host would wait on any call: ends 0 where it would not, and 1 naming how many.
   Quiet,
@@ -244,7 +256,18 @@ fn main() -> ExitCode {
       service,
       placed,
       source,
+      owner,
+      version,
     } => {
+      if let Some(owner) = owner {
+        let mut said = Vec::new();
+        let folder = PathBuf::from(tool.unwrap_or_default());
+        let done =
+          install::put_owned(&Registry::of(&data_root), &owner, &folder, version.as_deref(), &mut said);
+
+        return finish(done, &said);
+      }
+
       let asked = Put {
         tool: mcp.as_ref().map_or_else(|| tool.unwrap_or_default(), |file| file.display().to_string()),
         allow,
@@ -262,9 +285,17 @@ fn main() -> ExitCode {
 
       finish(done, &said)
     }
-    Verb::Take { name, service } => {
+    Verb::Take {
+      name,
+      service,
+      owner,
+    } => {
       let mut said = Vec::new();
-      let done = install::take(&Registry::of(&data_root), &name, service.as_deref(), &mut said);
+      let registry = Registry::of(&data_root);
+      let done = match owner {
+        Some(owner) => install::take_owned(&registry, &owner, &name, &mut said),
+        None => install::take(&registry, &name, service.as_deref(), &mut said),
+      };
 
       finish(done, &said)
     }
@@ -275,9 +306,13 @@ fn main() -> ExitCode {
 
       finish(done, &said)
     }
-    Verb::List { json } => {
+    Verb::List { json, owner } => {
       let mut said = Vec::new();
-      let done = install::list(&Registry::of(&data_root), json, &mut said);
+      let registry = Registry::of(&data_root);
+      let done = match owner {
+        Some(owner) => install::list_owned(&registry, &owner, json, &mut said),
+        None => install::list(&registry, json, &mut said),
+      };
 
       finish(done, &said)
     }

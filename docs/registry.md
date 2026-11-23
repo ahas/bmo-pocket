@@ -56,8 +56,34 @@
 - **A name is the owner's alone:** two owners' registries may each hold a tool of the same name and the same entries.
 - **Its versions are kept and taken away as every version is** (「Versions」): a call in flight goes on in the
   version it started in, and a version no pointer names is taken away once nothing holds it, and at the host's start.
-- **`bmo-pocket put` places platform tools alone, and no verb places a personal tool yet:** an owner's registry is
-  written under its own lock and the rules above, as a put writes the platform's.
+- **`put --owner <account> <folder>` places a personal tool's description copy** (「Put a personal tool」); every
+  other put places a platform tool.
+
+## Put a personal tool
+
+- **The folder holds the tool as its owner's machine built it:** its manifest and the schemas and manuals the
+  manifest names are copied, and whatever else it holds is left out, so no code or data of the owner's reaches the
+  host.
+- **`--version <name>` names the version** the owner's machine placed the tool's build under, so the host's copy and
+  the machine's version carry one name and the relay asks for the version the host's copy is placed as; a fresh
+  name where none is given. A name is letters, digits, `-`, `_` and `.`, opening on no dot.
+- **What is checked before anything is placed,** each refusal naming what failed:
+  - the account is an owner's name;
+  - the manifest reads, every schema it names is a JSON Schema, and it reads as a personal tool's
+    (`docs/mcp-host.md`, 「Personal tools」), so one asking for the network or a secret is refused;
+  - none of its entries' full names is held by another of the same owner's tools.
+- **Nothing is asked to be allowed and nothing is declared:** an owner's sessions hold their own tools whole, so no
+  capability or grant is checked against an `--allow`, and a personal tool's `[app]` declares no setting on the
+  delegation chain.
+- **What is placed:** the copy staged as a version of its own, read again as the host will read it, then renamed into
+  place and pointed at under the owner's registry's lock, the pointer naming the owner and its origin
+  `machine:<account>`. Where a version of the name given stands already — one the owner goes back to that the host
+  has not taken away yet — it is read again and pointed at as it stands.
+- **`take --owner <account> <name>`** removes the owner's tool's pointer, and **`list --owner <account>`** prints
+  the owner's tools; with `--json`, each pointer beside its entries — full name, title and description — and its
+  permissions.
+- **Whoever issues the owner's sessions runs them,** having built the tool on the owner's machine first (agency's
+  `docs/person-nodes.md`, 「Personal apps」). The host never reaches the owner's machine to place one.
 
 ## Put
 

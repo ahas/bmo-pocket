@@ -25,6 +25,9 @@ author's road through them.
   releases — stands in that service's `tools/<name>/` folder. The service's deployment builds it into its
   release and registers it with `bmo-pocket put --placed --service <repository>`, so it goes live with the
   service and is never put by hand.
+- **A tool of one person's own** — a personal tool, which their BMO makes on their PC for them alone — stands in
+  that person's own folder of apps there and is placed by the person's issuer, never by hand (agency's procedure
+  `make-app`; `docs/mcp-host.md`, 「Personal tools」).
 - **Neither reads another repository's files.** A tool's build is handed no path into another repository, so a
   tool carries what it runs, and reaches a service only through that service's documented routes.
 - **The tool's folder holds:** its manifest, `tool.toml`; one JSON Schema file per entry's input and, where it

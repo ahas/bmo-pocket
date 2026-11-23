@@ -1,7 +1,8 @@
 //! What `bmo-pocket` does to the registry (docs/registry.md): a tool put from a folder, a git address or a bare
 //! name, checked, built or copied into a version of its own and pointed at; a registration taken; the registry
-//! listed; an external server's registration checked and placed the same way; and a screen-only app's settings
-//! declared from its declaration file, which places nothing. Each verb writes what it did into `said`, a line each,
+//! listed; an external server's registration checked and placed the same way; an owner's personal tool's
+//! description copy placed, taken and listed in that owner's registry; and a screen-only app's settings declared
+//! from its declaration file, which places nothing. Each verb writes what it did into `said`, a line each,
 //! and answers why it refused where it did.
 
 use std::collections::BTreeSet;
@@ -16,7 +17,7 @@ use crate::chain::Chain;
 use crate::external::{REGISTRATION, Registration};
 use crate::placed::{platform_faults, schema_faults};
 use crate::records::now_ms;
-use crate::registry::{Pointer, Registry};
+use crate::registry::{Pointer, Registry, owner_name};
 
 /// One put as it is asked.
 #[derive(Clone, Debug, Default)]
@@ -565,6 +566,226 @@ pub fn list(registry: &Registry, json: bool, said: &mut Vec<String>) -> Result<(
 
   if pointers.is_empty() {
     said.push("No tool is registered.".to_owned());
+  }
+
+  Ok(())
+}
+
+// A version's name as an owner's machine names it: letters, digits, `-`, `_` and `.`, opening on no dot.
+fn version_name(name: &str) -> bool {
+  !name.is_empty()
+    && !name.starts_with('.')
+    && name.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '_' | '.'))
+}
+
+// The owner's registry, refused where the account is no owner's name.
+fn owned(registry: &Registry, owner: &str) -> Result<Registry, String> {
+  if !owner_name(owner) {
+    return Err(format!("{owner:?} is no account's name: letters, digits, `-` and `_`"));
+  }
+
+  Ok(registry.owned(owner))
+}
+
+/// An owner's personal tool's description copy put (docs/registry.md, 「Put a personal tool」): the manifest read as
+/// a personal tool's, its entries held by no other of the owner's tools, the manifest and the files it names copied
+/// into the version `version` names, or a fresh one, read again as the host reads it, then placed and pointed at
+/// under the owner's registry's lock. A version of that name standing already is pointed at as it stands.
+pub fn put_owned(
+  registry: &Registry,
+  owner: &str,
+  folder: &Path,
+  version: Option<&str>,
+  said: &mut Vec<String>,
+) -> Result<(), String> {
+  let owned = owned(registry, owner)?;
+  let folder =
+    fs::canonicalize(folder).map_err(|why| format!("{} could not be read: {why}", folder.display()))?;
+  let name = manifest_name(&folder)?;
+  let manifest =
+    Manifest::read(&folder, &name).map_err(|why| format!("{name}: its manifest does not read: {why}"))?;
+
+  if let Some(why) = schema_faults(&manifest).or_else(|| manifest.personal_faults().err()) {
+    return Err(format!("{name}: {why}"));
+  }
+
+  let version = match version {
+    Some(version) if version_name(version) => version.to_owned(),
+    Some(version) => return Err(format!("{version:?} is no version's name")),
+    None => fresh(),
+  };
+
+  clash(&owned, &name, &manifest)?;
+
+  let placed = owned.version_dir(&name, &version);
+  let staged = owned.versions().join(&name).join(format!(".staging-{version}-{}", fresh()));
+  let staging = Scratch(Some(staged.clone()));
+
+  if !placed.join(MANIFEST).exists() {
+    for file in manifest.named_files() {
+      let to = staged.join(&file);
+
+      if let Some(parent) = to.parent() {
+        fs::create_dir_all(parent)
+          .map_err(|why| format!("{} could not be made: {why}", parent.display()))?;
+      }
+
+      fs::copy(folder.join(&file), &to).map_err(|why| format!("{file} could not be copied: {why}"))?;
+    }
+
+    Manifest::read(&staged, &name)
+      .map_err(|why| format!("{name}: its placed version does not read: {why}"))?;
+  }
+
+  let locked = owned.lock().map_err(|why| format!("the registry could not be locked: {why}"))?;
+  // Read again under the lock: another put may have placed an entry of the owner's since.
+  let standing = owned.get(&name);
+
+  clash(&owned, &name, &manifest)?;
+
+  if placed.join(MANIFEST).exists() {
+    let kept = Manifest::read(&placed, &name)
+      .map_err(|why| format!("{name}: its standing version {version} does not read: {why}"))?;
+
+    if let Some(why) = schema_faults(&kept).or_else(|| kept.personal_faults().err()) {
+      return Err(format!("{name}: its standing version {version}: {why}"));
+    }
+  } else {
+    fs::rename(&staged, &placed)
+      .map_err(|why| format!("{} could not be placed: {why}", placed.display()))?;
+    staging.keep();
+  }
+
+  let pointer = Pointer {
+    name: name.clone(),
+    version: version.clone(),
+    dir: placed.clone(),
+    origin: format!("machine:{owner}"),
+    service: None,
+    owner: Some(owner.to_owned()),
+    put_at: now_ms(),
+  };
+
+  owned
+    .point(&pointer)
+    .map_err(|why| format!("the registry could not point at {name}: {why}"))?;
+  drop(locked);
+
+  said.push(match standing {
+    Some(was) if was.version == version => format!("put {name} {version} again for {owner}"),
+    Some(was) => format!("moved {owner}'s {name} from {} to {version}", was.version),
+    None => format!("put {owner}'s {name} {version}"),
+  });
+  said.extend(manifest.entries.iter().map(|entry| format!("{name} serves {}", entry.full_name())));
+
+  Ok(())
+}
+
+/// An owner's personal tool taken: its pointer removed under the owner's registry's lock, its versions left for the
+/// host to take away once nothing holds them.
+pub fn take_owned(
+  registry: &Registry,
+  owner: &str,
+  name: &str,
+  said: &mut Vec<String>,
+) -> Result<(), String> {
+  let owned = owned(registry, owner)?;
+  let _locked = owned.lock().map_err(|why| format!("the registry could not be locked: {why}"))?;
+  let Some(standing) = owned.get(name) else {
+    return Err(format!("{owner} holds no personal tool {name}"));
+  };
+
+  owned
+    .unpoint(name)
+    .map_err(|why| format!("{name}'s pointer could not be taken away: {why}"))?;
+  said.push(format!("took {owner}'s {name} {}", standing.version));
+
+  Ok(())
+}
+
+/// One entry of a personal tool as an owner's listing shows it.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct ListedEntry {
+  pub name: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub title: Option<String>,
+  pub description: String,
+}
+
+/// A personal tool as an owner's listing shows it: its pointer, its entries and its permissions.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Listed {
+  #[serde(flatten)]
+  pub pointer: Pointer,
+  pub entries: Vec<ListedEntry>,
+  pub permissions: bmo_tool::manifest::PermissionsPart,
+}
+
+/// Every personal tool of an owner's, a line each, or as JSON where `json` asks.
+pub fn list_owned(
+  registry: &Registry,
+  owner: &str,
+  json: bool,
+  said: &mut Vec<String>,
+) -> Result<(), String> {
+  let owned = owned(registry, owner)?;
+  let (pointers, faults) = owned.entries();
+  let listed: Vec<(Pointer, Result<Manifest, String>)> = pointers
+    .into_iter()
+    .map(|pointer| {
+      let manifest = Manifest::read(&pointer.dir, &pointer.name).map_err(|why| why.to_string());
+
+      (pointer, manifest)
+    })
+    .collect();
+
+  if json {
+    let rows: Vec<Listed> = listed
+      .into_iter()
+      .map(|(pointer, manifest)| {
+        let (entries, permissions) = manifest.map_or_else(
+          |_| (Vec::new(), bmo_tool::manifest::PermissionsPart::default()),
+          |manifest| {
+            let entries = manifest
+              .entries
+              .iter()
+              .map(|entry| ListedEntry {
+                name: entry.full_name(),
+                title: entry.title.clone(),
+                description: entry.description.clone(),
+              })
+              .collect();
+
+            (entries, manifest.permissions)
+          },
+        );
+
+        Listed {
+          pointer,
+          entries,
+          permissions,
+        }
+      })
+      .collect();
+
+    said.push(serde_json::to_string_pretty(&rows).map_err(|why| why.to_string())?);
+    return Ok(());
+  }
+
+  for (pointer, manifest) in &listed {
+    let entries = manifest.as_ref().map_or_else(
+      |why| format!("its manifest does not read: {why}"),
+      |manifest| manifest.entries.iter().map(|entry| entry.full_name()).collect::<Vec<_>>().join(", "),
+    );
+
+    said.push(format!("{} {}: {entries}", pointer.name, pointer.version));
+  }
+
+  said.extend(faults.into_iter().map(|fault| format!("left out {fault}")));
+
+  if listed.is_empty() {
+    said.push(format!("{owner} holds no personal tool."));
   }
 
   Ok(())

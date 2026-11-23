@@ -266,7 +266,7 @@ fn yes() -> bool {
 /// What a personal tool's calls may reach beyond its own folders (docs/api.md, 「`[permissions]`」): the addresses
 /// on the network and the owner's secrets by name, none of either by default. A platform tool's is read and given no
 /// effect.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct PermissionsPart {
   /// The addresses a call may reach on the network; none reaches none.
