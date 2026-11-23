@@ -21,7 +21,7 @@
 | `client/` | 制御ソケットのクライアントです。`docs/openapi.json` を生成する Rust クレート `bmo-pocket-client` と、そこから生成される TypeScript パッケージ `@bmo/pocket-client` があります |
 | `console/` | ホストの画面をまとめたコンソールバンドル `bmo-pocket-console` です。取り込んだ固定の bmo-ui リリースの上に作られ、コンソール画面が配信するファイルとしてビルドされます。マニフェストに関するホストの宣言もここにあります(`docs/api.md`、「The console face」) |
 | `deploy/` | デプロイがデプロイツリーからリンクするホストのユーザーユニット `bmo-mcp-host.service` です |
-| `docs/` | 正典となるドキュメントです。ツールの作り方(`authoring.md`)、ホスト(`mcp-host.md`)、ツールブック(`toolbook.md`)、レジストリ(`registry.md`)、他のすべてのユニットが合わせる境界(`api.md`)とその OpenAPI ドキュメント(`openapi.json`)があります |
+| `docs/` | 正典となるドキュメントです。ツールの作り方(`authoring.md`)、ホスト(`mcp-host.md`)、ツールブック(`toolbook.md`)、レジストリ(`registry.md`)、会社内で共有された個人アプリのカタログ(`catalogue.md`)、他のすべてのユニットが合わせる境界(`api.md`)とその OpenAPI ドキュメント(`openapi.json`)があります |
 | `examples/` | Rust、TypeScript、Python でそれぞれ書かれた例のツールで、リポジトリのテストがそれぞれを登録して呼び出します |
 | `host/` | ツールホスト `mcp-host` とコマンド `bmo-pocket`(レジストリのサブコマンドと `mcp`)で、テストは `host/tests/` にあります |
 | `plugin/` | ハーネスプラグイン `bmo-pocket-plugin` です。`bmo-pocket mcp` が提供する MCP サーバーと `bmo-pocket` スキルがあります |

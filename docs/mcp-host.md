@@ -82,6 +82,9 @@ flowchart TD
   app that is a screen alone (`docs/api.md`, 「An app on the delegation chain」): offered,
   which a link below can only narrow, and on, which the nearest link decides. An app reaches a person where it is
   both.
+- **A received personal tool is of the shared app its pointer names** (`docs/registry.md`, 「Put a personal tool」), in
+  place of any `[app]` its manifest names: an app a person shared from their own tools stands in their company's
+  catalogue (`docs/catalogue.md`) and on the chain as any app does.
 - **The host reads neither.** A session's issuer resolves them for the person the session acts for and writes the
   apps that do not reach them into the file the record's `withheldAppsFile` names, rewriting it as the person's
   settings move; the host reads the file afresh at every listing, description and call, so what the issuer writes

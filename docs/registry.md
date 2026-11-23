@@ -12,7 +12,9 @@
   - `tool-host/registry.lock`, the lock every change to the registry is made under;
   - `tool-host/build/`, where a put clones and builds, and is cleared again;
   - `tool-host/owners/<account>/`, each owner's registry of personal tools, of the same layout (「Personal
-    tools」).
+    tools」);
+  - `tool-host/catalogue/<company>/`, each company's catalogue of the personal apps its people share, apart from the
+    registry and read by no call (`docs/catalogue.md`).
 - **Only the host and `bmo-pocket` read or write these files.** Another unit registers, takes and lists tools
   through `bmo-pocket` alone (`docs/api.md`, 「The CLI」), so the shape of a pointer is this repository's own.
 
@@ -21,7 +23,8 @@
 - **One JSON object per tool, its keys in camelCase:** `name`, the tool's name, which is its manifest's; `version`,
   the placed version it points at; `dir`, that version's folder; `origin`, where it was put from (`path:<folder>`,
   `git:<address>`, `name:<name>`, or `path:<file>` for an external server's registration); `service`, the repository whose own tool it is, where a service registered it;
-  `owner`, the account whose personal tool it is, in an owner's registry alone;
+  `owner`, the account whose personal tool it is, in an owner's registry alone; `app`, the key of the shared app a
+  received personal tool belongs to, where it is one (「Put a personal tool」);
   and `putAt`, when, in epoch milliseconds. A pointer naming the time `put_at` reads as one naming it `putAt`, and
   is written as `putAt` at its next put.
 - **A pointer is written whole or not at all:** written beside its place under a name of its own, then renamed
@@ -83,6 +86,11 @@
   place and pointed at under the owner's registry's lock, the pointer naming the owner and its origin
   `machine:<account>`. Where a version of the name given stands already — one the owner goes back to that the host
   has not taken away yet — it is read again and pointed at as it stands.
+- **`--app <key>` names the app a received tool belongs to:** a personal tool installed from its company's catalogue
+  (`docs/catalogue.md`) stands for the shared app the catalogue names, whatever `[app]` its maker's manifest names,
+  so its pointer carries the key and the host reads the tool as of that app, withheld where the session's record
+  withholds it (`docs/mcp-host.md`, 「Apps」). An app key outside its alphabet is refused; a put naming none leaves
+  the tool to its manifest's `[app]`.
 - **`take --owner <account> <name>`** removes the owner's tool's pointer, and **`list --owner <account>`** prints
   the owner's tools; with `--json`, each pointer beside its entries — full name, title and description — and its
   permissions.

@@ -364,6 +364,7 @@ pub fn put(registry: &Registry, asked: &Put, said: &mut Vec<String>) -> Result<(
     dir: placed.clone(),
     origin: origin.clone(),
     service: asked.service.clone(),
+    app: None,
     owner: None,
     put_at: now_ms(),
   };
@@ -461,6 +462,7 @@ pub fn register_server(registry: &Registry, asked: &Put, said: &mut Vec<String>)
     dir: placed.clone(),
     origin: origin.clone(),
     service: asked.service.clone(),
+    app: None,
     owner: None,
     put_at: now_ms(),
   };
@@ -595,10 +597,15 @@ pub fn put_owned(
   registry: &Registry,
   owner: &str,
   folder: &Path,
-  version: Option<&str>,
+  (version, app): (Option<&str>, Option<&str>),
   said: &mut Vec<String>,
 ) -> Result<(), String> {
   let owned = owned(registry, owner)?;
+
+  if let Some(key) = app.filter(|key| !bmo_tool::manifest::app_key(key)) {
+    return Err(format!("{key:?} is no app's key"));
+  }
+
   let folder =
     fs::canonicalize(folder).map_err(|why| format!("{} could not be read: {why}", folder.display()))?;
   let name = manifest_name(&folder)?;
@@ -666,6 +673,7 @@ pub fn put_owned(
     dir: placed.clone(),
     origin: format!("machine:{owner}"),
     service: None,
+    app: app.map(str::to_owned),
     owner: Some(owner.to_owned()),
     put_at: now_ms(),
   };

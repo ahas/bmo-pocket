@@ -1,0 +1,133 @@
+# The company catalogue
+
+## What it is
+
+- **The catalogue is where a person's personal app stands once they share it with their company,** one catalogue a
+  company, kept at home beside the registry, so a receiver installs it whether or not the maker's PC is on. What is
+  kept is the app's source, never a build: each receiver's PC builds it from that source, and a reader or a head
+  reads the code before anything runs.
+- **It lives under the data root, in the host's own folder:** `tool-host/catalogue/<company>/`, the company named by
+  its unit's id:
+  - `apps/<id>.json`, one record an app (「An app's record」);
+  - `sources/<id>/<version>.json`, the source bundle each shared version was shared with (「A source bundle」);
+  - `seen/<account>.json`, the moment a reader last looked at what was shared with them;
+  - `catalogue.lock`, the lock every change to the company's catalogue is made under.
+- **Only `bmo-pocket` reads or writes it,** through its `catalogue` verbs (`docs/api.md`, 「The CLI」), and the host's
+  call path reads none of it: a received app reaches a session as a personal tool of its receiver's
+  (`docs/registry.md`, 「Personal tools」), and nothing else. Whoever issues the sessions judges who may share, see,
+  install, turn on and recall an app; the catalogue keeps what they decided.
+- **A company's catalogue never names another company's account,** and no verb copies or moves an app from one
+  company's catalogue to another's: a verb names the company it acts in, and an app's record stands in that company's
+  folder alone. An app good for several companies is asked to be made a platform app (「A promotion」), which ships
+  as a platform tool through `put`, never as a copy of the record.
+
+## An app's record
+
+- **One JSON object an app, its keys in camelCase,** written whole beside its place and renamed over the old, under the
+  catalogue's lock:
+  - `id`, the app's name in the catalogue, `<maker>-<name>`, the maker's account and the app's name;
+  - `key`, the app's key on the delegation chain (「The app on the delegation chain」);
+  - `name`, the personal tool's name, which a receiver's copy stands under; `title` and `description`, the manifest's
+    `[app]` name and description where it names one, else its first entry's title, or its name, and description;
+  - `maker`, the account that shared it, and `owner`, the account answering for it now: the maker's until the maker
+    leaves (「When the maker leaves」);
+  - `unit`, the maker's home unit as they shared it, and `targets`, whom they shared it with, as the issuer judged
+    them against the chain (「Targets」);
+  - `versions`, every version shared, oldest first (「A version」);
+  - `withdrawn`, the moment the owner withdrew it, or null;
+  - `installs`, by account, each receiver's copy: `version`, `how` (`self` for one the receiver installed, `unit` for
+    one a head's turning on installed), and `at`;
+  - `promotion`, the request to make it a platform app, or null (「A promotion」);
+  - `sharedAt`, the first share's moment, and `updatedAt`, the last change's.
+- **An app's install count is the number of its `installs`.**
+
+## A version
+
+- **Each share places a version of the app's,** named by the version the maker's PC placed the app's build under, so
+  the catalogue's version and the PC's are one name. A version shared once is never shared again under that name.
+- **What it keeps:** `version`; `sourceHash` (「The source hash」); `permissions`, what the manifest's
+  `[permissions]` asks for, `network` and `secrets`; `sharedAt`; `review`, the automatic review's report (「The
+  review」); and `approval`: `required`, whether a head must approve it before anybody installs it, as the chain said
+  for the maker when it was shared, and `by` and `at` once a head did.
+- **The newest version is the app's:** a share of a new version notifies its receivers, and each copy moves onto it
+  as its issuer decides (agency's `docs/person-nodes.md`, 「Shared apps」).
+
+## A source bundle
+
+- **One JSON object, `{"files": {<path>: <text>}}`:** every file of the app's folder as the maker's PC placed the
+  version, by its path in the folder, its `.git` left out, each as UTF-8 text. A path is made of folder and file
+  names alone, so none climbs out of the folder it is written into.
+- **What a share checks before anything is kept,** each refusal naming what failed:
+  - the bundle reads, and every path is inside its folder;
+  - its `tool.toml` reads as a personal tool's (`docs/mcp-host.md`, 「Personal tools」), every schema it names a
+    JSON Schema, and its tool's name is the app's;
+  - the version is not one of the app's already;
+  - the app is not another company's, which no verb could name.
+- **Nothing is built or run at home.** The bundle is kept as it came, and a receiver's PC builds it.
+
+## The source hash
+
+- **The hash a share records is the receiver's check that what it builds is what was shared,** with no signature: who
+  shared it is the account the record names, which the issuer proved.
+- **It is the SHA-256, in lower-case hex, of the bundle's files in the byte order of their paths,** each written as
+  its path's bytes, a zero byte, its content's length in bytes as decimal digits, a zero byte and its content's bytes.
+  The same files give the same hash whatever order the bundle's object writes them in.
+- **`source` reads it back checked:** the kept bundle's hash is reckoned again and the read refused where it is not
+  the one recorded, so a bundle changed on disk is never handed out. The receiver's PC reckons it once more before it
+  builds (agency's `docs/person-nodes.md`, 「Shared apps」).
+
+## The app on the delegation chain
+
+- **A shared app is an app as any other** (`docs/api.md`, 「An app on the delegation chain」): two kinds,
+  `app.<key>.offered` and `app.<key>.on`, declared by `share` with `declaredBy` `pocket`, so a head's switch, a
+  person's switch and a lock reach it as they reach a platform app, and a session's issuer withholds it as it
+  withholds any app.
+- **Its key is `shared-<company>-<maker>-<name>`,** the name's `_` written `-`; where that is longer than an app key
+  holds, the name is written as the first twelve hex digits of its SHA-256 instead.
+- **Its defaults:** not offered and off. The issuer offers it to the maker's company alone, by the platform's rule
+  naming the company, which it writes in the platform administrator's name as the platform link's one writer
+  (agency's `docs/person-nodes.md`, 「Shared apps」), so no other company's people are offered it however their links
+  stand; and the console shows a company's people and heads no other company's shared app, reading the company off
+  the key; and it is on for a
+  person only where a link says so — the person's own as they install it, or a unit's as its head turns it on there.
+- **A receiver's copy names the key:** it is put as the receiver's personal tool with `put --owner --app <key>`, its
+  pointer naming the app (`docs/registry.md`, 「Put a personal tool」), so the host withholds it as the chain says for
+  the receiver. The maker's own app is the maker's personal tool and names no shared key.
+- **A share with no account service named, or one it refuses, keeps nothing** and says why.
+
+## Targets
+
+- **Whom an app is shared with is a list of targets,** each one of `{"team": true}` (the maker's home unit and every
+  unit under it), `{"heads": true}` (the heads of the units on the maker's line), `{"person": <account>}`,
+  `{"group": <id>}` (a group of the delegation chain), `{"unit": <id>}` and `{"company": true}`. A reader sees the app
+  where a target takes them in, and so do its maker and its owner.
+- **Which targets a maker may name is the chain's,** as the issuer resolves it for them; the catalogue keeps the
+  targets it was handed.
+
+## The review
+
+- **Every shared version is read by a reviewer** as its issuer has one read (agency's `docs/person-nodes.md`, 「Shared
+  apps」), and the report is written onto the version with `review`: `state`, `pending` until written, `written` with
+  the report's text, or `failed` with why none was written; and `at`.
+- **The report is shown to the receivers and the heads** beside the permissions the version asks for; it decides
+  nothing by itself.
+
+## Withdrawal
+
+- **`withdraw` marks the app withdrawn:** no new install is made of it from then, and every copy standing goes on as it
+  is. A later share of a new version by its owner stands it again.
+- **A recall is no withdrawal:** a head's or the administrator's recall is the chain's, the app's `offered` turned off
+  and locked at their link, and the issuer takes the copies under it away (agency's `docs/person-nodes.md`, 「Shared
+  apps」). The record stays as it is.
+
+## When the maker leaves
+
+- **The app stays in the catalogue, and its owner passes:** `pass` names the account that left and the one taking its
+  apps over, its head as the issuer finds them, and every app of the company the leaver owns is the new owner's from
+  then. The maker stays the maker.
+
+## A promotion
+
+- **`promote` records the request to make the app a platform app,** by whom, when and with what note, at most one an
+  app. `promotions` lists every request of every company for the administrator, who reviews the app's source and, where
+  it is to ship, puts it as a platform tool with `put`; nothing of the request moves the record.

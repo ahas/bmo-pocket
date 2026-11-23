@@ -66,6 +66,15 @@ enum Verb {
     /// The version an owner's personal tool is placed as, the name its owner's machine placed it under.
     #[arg(long, requires = "owner")]
     version: Option<String>,
+    /// The key of the shared app a received personal tool belongs to.
+    #[arg(long, requires = "owner")]
+    app: Option<String>,
+  },
+  /// A company's catalogue of the personal apps its people share (docs/catalogue.md).
+  #[command(arg_required_else_help = true)]
+  Catalogue {
+    #[command(subcommand)]
+    verb: CatalogueVerb,
   },
   /// Takes the tool registered under the name out of the registry, or the owner's personal tool out of theirs.
   Take {
@@ -111,6 +120,253 @@ enum Verb {
     /// runner.
     request: String,
   },
+}
+
+#[derive(Subcommand)]
+enum CatalogueVerb {
+  /// Shares a version of a maker's app, declaring its two settings on the delegation chain.
+  Share {
+    #[arg(long)]
+    company: String,
+    #[arg(long)]
+    maker: String,
+    /// The maker's home unit as they share it.
+    #[arg(long)]
+    unit: String,
+    /// The version the maker's PC placed the app's build under.
+    #[arg(long)]
+    version: String,
+    /// Whom it is shared with, as a JSON array of targets.
+    #[arg(long)]
+    targets: String,
+    /// The source bundle's file, `{"files": {<path>: <text>}}`.
+    #[arg(long)]
+    bundle: PathBuf,
+    /// Whether a head must approve the version before anybody installs it.
+    #[arg(long)]
+    review_required: bool,
+  },
+  /// Every app's record, and with `--reader` the moment that reader last looked.
+  List {
+    #[arg(long)]
+    company: String,
+    #[arg(long)]
+    reader: Option<String>,
+  },
+  /// One app's record.
+  Show {
+    #[arg(long)]
+    company: String,
+    id: String,
+  },
+  /// A version's source bundle, checked against the hash recorded as it was shared; the newest by default.
+  Source {
+    #[arg(long)]
+    company: String,
+    id: String,
+    #[arg(long)]
+    version: Option<String>,
+  },
+  /// The app withdrawn: no new install from now.
+  Withdraw {
+    #[arg(long)]
+    company: String,
+    id: String,
+  },
+  /// A version's review written.
+  Review {
+    #[arg(long)]
+    company: String,
+    id: String,
+    #[arg(long)]
+    version: String,
+    /// `written` or `failed`.
+    #[arg(long)]
+    state: String,
+    /// The file holding the report, or why none was written.
+    #[arg(long)]
+    report: PathBuf,
+  },
+  /// A version approved by a head.
+  Approve {
+    #[arg(long)]
+    company: String,
+    id: String,
+    #[arg(long)]
+    version: String,
+    #[arg(long)]
+    by: String,
+  },
+  /// A receiver's copy kept.
+  Install {
+    #[arg(long)]
+    company: String,
+    id: String,
+    #[arg(long)]
+    account: String,
+    #[arg(long)]
+    version: String,
+    /// `self` or `unit`.
+    #[arg(long)]
+    how: String,
+  },
+  /// A receiver's copy let go.
+  Uninstall {
+    #[arg(long)]
+    company: String,
+    id: String,
+    #[arg(long)]
+    account: String,
+  },
+  /// Every app the leaver owns passed to another account.
+  Pass {
+    #[arg(long)]
+    company: String,
+    #[arg(long)]
+    from: String,
+    #[arg(long)]
+    to: String,
+  },
+  /// The request to make an app a platform app.
+  Promote {
+    #[arg(long)]
+    company: String,
+    id: String,
+    #[arg(long)]
+    by: String,
+    #[arg(long, default_value = "")]
+    note: String,
+  },
+  /// Every company's requests to make an app a platform app.
+  Promotions,
+  /// The reader's looking at what was shared with them kept as now.
+  Seen {
+    #[arg(long)]
+    company: String,
+    #[arg(long)]
+    account: String,
+  },
+}
+
+// One catalogue verb: what it keeps printed as JSON, or why it refused.
+fn catalogue_verb(data_root: &Path, verb: CatalogueVerb) -> ExitCode {
+  use mcp_host::catalogue::{self as kept, Bundle, Catalogue, Share};
+
+  let of = |company: &str| Catalogue::of(data_root, company);
+  let record = |done: Result<kept::Record, String>| {
+    done.and_then(|record| serde_json::to_value(record).map_err(|why| why.to_string()))
+  };
+  let mut said = Vec::new();
+  let done: Result<serde_json::Value, String> = match verb {
+    CatalogueVerb::Share {
+      company,
+      maker,
+      unit,
+      version,
+      targets,
+      bundle,
+      review_required,
+    } => (|| {
+      let catalogue = of(&company)?;
+      let targets: serde_json::Value =
+        serde_json::from_str(&targets).map_err(|why| format!("the targets do not read: {why}"))?;
+      let bundle: Bundle = std::fs::read_to_string(&bundle)
+        .map_err(|why| why.to_string())
+        .and_then(|text| serde_json::from_str(&text).map_err(|why| why.to_string()))
+        .map_err(|why| format!("the bundle {} does not read: {why}", bundle.display()))?;
+      let chain = mcp_host::chain::Chain::named(data_root);
+      let asked = Share {
+        maker: &maker,
+        unit: &unit,
+        version: &version,
+        targets,
+        bundle,
+        review_required,
+      };
+
+      record(kept::share(&catalogue, chain.as_ref(), &asked, &mut said))
+    })(),
+    CatalogueVerb::List { company, reader } => of(&company).map(|catalogue| {
+      let apps = catalogue.list();
+      let seen = reader.as_deref().and_then(|reader| catalogue.seen_at(reader));
+
+      serde_json::json!({ "apps": apps, "seenAt": seen })
+    }),
+    CatalogueVerb::Show { company, id } => of(&company).and_then(|catalogue| {
+      record(
+        catalogue
+          .get(&id)
+          .ok_or_else(|| format!("the catalogue of {company} holds no app {id}")),
+      )
+    }),
+    CatalogueVerb::Source {
+      company,
+      id,
+      version,
+    } => of(&company).and_then(|catalogue| catalogue.source(&id, version.as_deref())),
+    CatalogueVerb::Withdraw { company, id } => {
+      of(&company).and_then(|catalogue| record(kept::withdraw(&catalogue, &id)))
+    }
+    CatalogueVerb::Review {
+      company,
+      id,
+      version,
+      state,
+      report,
+    } => of(&company).and_then(|catalogue| {
+      let text = std::fs::read_to_string(&report).map_err(|why| format!("{}: {why}", report.display()))?;
+
+      record(kept::review(&catalogue, &id, &version, &state, &text))
+    }),
+    CatalogueVerb::Approve {
+      company,
+      id,
+      version,
+      by,
+    } => of(&company).and_then(|catalogue| record(kept::approve(&catalogue, &id, &version, &by))),
+    CatalogueVerb::Install {
+      company,
+      id,
+      account,
+      version,
+      how,
+    } => {
+      of(&company).and_then(|catalogue| record(kept::install(&catalogue, &id, &account, &version, &how)))
+    }
+    CatalogueVerb::Uninstall {
+      company,
+      id,
+      account,
+    } => of(&company).and_then(|catalogue| record(kept::uninstall(&catalogue, &id, &account))),
+    CatalogueVerb::Pass { company, from, to } => of(&company)
+      .and_then(|catalogue| kept::pass(&catalogue, &from, &to))
+      .map(|passed| serde_json::json!(passed)),
+    CatalogueVerb::Promote {
+      company,
+      id,
+      by,
+      note,
+    } => of(&company).and_then(|catalogue| record(kept::promote(&catalogue, &id, &by, &note))),
+    CatalogueVerb::Promotions => Ok(serde_json::Value::Array(kept::promotions(data_root))),
+    CatalogueVerb::Seen { company, account } => of(&company)
+      .and_then(|catalogue| catalogue.seen(&account))
+      .map(|at| serde_json::json!({ "at": at })),
+  };
+
+  for line in &said {
+    eprintln!("bmo-pocket: {line}");
+  }
+
+  match done {
+    Ok(value) => {
+      println!("{value}");
+      ExitCode::SUCCESS
+    }
+    Err(why) => {
+      eprintln!("bmo-pocket: {why}");
+      ExitCode::FAILURE
+    }
+  }
 }
 
 // One personal tool's call relayed to its owner's runner, ending as the relay answers.
@@ -238,6 +494,7 @@ fn main() -> ExitCode {
   let data_root = cli.data_root.clone().unwrap_or_else(default_data_root);
 
   match cli.verb {
+    Verb::Catalogue { verb } => catalogue_verb(&data_root, verb),
     Verb::Nouns => {
       for noun in command::NOUNS {
         println!("{noun}");
@@ -258,12 +515,18 @@ fn main() -> ExitCode {
       source,
       owner,
       version,
+      app,
     } => {
       if let Some(owner) = owner {
         let mut said = Vec::new();
         let folder = PathBuf::from(tool.unwrap_or_default());
-        let done =
-          install::put_owned(&Registry::of(&data_root), &owner, &folder, version.as_deref(), &mut said);
+        let done = install::put_owned(
+          &Registry::of(&data_root),
+          &owner,
+          &folder,
+          (version.as_deref(), app.as_deref()),
+          &mut said,
+        );
 
         return finish(done, &said);
       }

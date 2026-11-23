@@ -20,7 +20,7 @@ TypeScript나 Python으로 작성한 도구가 지니고 다니는 파일 하나
 | `client/` | 제어 소켓의 클라이언트입니다. `docs/openapi.json`을 생성하는 Rust 크레이트 `bmo-pocket-client`와, 그 문서에서 생성한 TypeScript 패키지 `@bmo/pocket-client`가 있습니다 |
 | `console/` | 호스트의 화면을 담은 콘솔 번들 `bmo-pocket-console`입니다. 들여온 고정 bmo-ui 릴리스 위에 만들어져 콘솔 화면이 제공하는 파일로 빌드되며, 매니페스트에 대한 호스트의 선언도 여기 있습니다(`docs/api.md`, 「The console face」) |
 | `deploy/` | 배포가 배포 트리에서 링크하는 호스트의 사용자 유닛 `bmo-mcp-host.service`입니다 |
-| `docs/` | 기준 문서입니다. 도구 만들기(`authoring.md`), 호스트(`mcp-host.md`), 툴북(`toolbook.md`), 레지스트리(`registry.md`), 다른 모든 유닛이 맞추는 경계(`api.md`)와 그 OpenAPI 문서(`openapi.json`)가 있습니다 |
+| `docs/` | 기준 문서입니다. 도구 만들기(`authoring.md`), 호스트(`mcp-host.md`), 툴북(`toolbook.md`), 레지스트리(`registry.md`), 회사 안에서 공유한 개인 앱의 카탈로그(`catalogue.md`), 다른 모든 유닛이 맞추는 경계(`api.md`)와 그 OpenAPI 문서(`openapi.json`)가 있습니다 |
 | `examples/` | Rust, TypeScript, Python으로 각각 작성한 예제 도구 하나이며, 저장소의 테스트가 각각을 올리고 호출합니다 |
 | `host/` | 도구 호스트 `mcp-host`와 명령 `bmo-pocket`(레지스트리의 서브커맨드와 `mcp`)이며, 테스트는 `host/tests/`에 있습니다 |
 | `plugin/` | 하네스 플러그인 `bmo-pocket-plugin`입니다. `bmo-pocket mcp`가 제공하는 MCP 서버와 `bmo-pocket` 스킬이 있습니다 |

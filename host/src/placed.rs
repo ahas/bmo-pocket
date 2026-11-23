@@ -14,7 +14,7 @@ use std::time::Duration;
 use bmo_pocket_client::{Booked, EventKind as Change, ReachedBy, ToolChange};
 use bmo_tool::Hints;
 pub use bmo_tool::manifest::PLACED;
-use bmo_tool::manifest::{MANIFEST, Manifest, PERSONAL_NAMESPACE};
+use bmo_tool::manifest::{AppPart, MANIFEST, Manifest, PERSONAL_NAMESPACE};
 use notify::event::ModifyKind;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
@@ -235,13 +235,28 @@ impl Catalogue {
         continue;
       }
 
-      let manifest = match Manifest::read(&pointer.dir, &pointer.name) {
+      let mut manifest = match Manifest::read(&pointer.dir, &pointer.name) {
         Ok(manifest) => manifest,
         Err(why) => {
           faults.push(format!("{at}: {why}"));
           continue;
         }
       };
+
+      // A received tool is of the shared app its pointer names, whatever `[app]` its maker's manifest names
+      // (docs/mcp-host.md, 「Apps」).
+      if let Some(key) = &pointer.app {
+        let named = manifest.app.take();
+
+        manifest.app = Some(AppPart {
+          key: key.clone(),
+          name: named.as_ref().map_or_else(|| pointer.name.clone(), |app| app.name.clone()),
+          description: named.as_ref().map(|app| app.description.clone()).unwrap_or_default(),
+          icon: named.and_then(|app| app.icon),
+          offered: true,
+          on: false,
+        });
+      }
 
       if let Some(why) = schema_faults(&manifest).or_else(|| manifest.personal_faults().err()) {
         faults.push(format!("{at}: {why}"));

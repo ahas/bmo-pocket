@@ -21,7 +21,7 @@ How to make a tool, test it and put it live with no deployment is `docs/authorin
 | `client/` | the control socket's client: the Rust crate `bmo-pocket-client`, which generates `docs/openapi.json`, and the TypeScript package `@bmo/pocket-client` generated from it |
 | `console/` | the host's screen as a console bundle, `bmo-pocket-console`, on the pinned bmo-ui release it vendors, built into the files the console face serves, and the host's declaration of its manifest (`docs/api.md`, 「The console face」) |
 | `deploy/` | the host's user unit, `bmo-mcp-host.service`, which a deployment links from the deploy tree |
-| `docs/` | the canonical documents: making a tool (`authoring.md`), the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`), the boundary every other unit matches (`api.md`) and its OpenAPI document (`openapi.json`) |
+| `docs/` | the canonical documents: making a tool (`authoring.md`), the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`), the company catalogue of shared personal apps (`catalogue.md`), the boundary every other unit matches (`api.md`) and its OpenAPI document (`openapi.json`) |
 | `examples/` | one example tool written in Rust, TypeScript and Python, each put and called by the repository's tests |
 | `host/` | the tool host, `mcp-host`, and the command `bmo-pocket` (the registry's verbs and `mcp`), with their tests in `host/tests/` |
 | `plugin/` | the harness plugin, `bmo-pocket-plugin`: the MCP server `bmo-pocket mcp` serves and its `bmo-pocket` skill |

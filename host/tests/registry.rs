@@ -710,13 +710,13 @@ fn the_command_says_what_it_did_and_ends_0_1_or_2_as_it_did_refused_or_could_not
 
 // The account service standing in on a loopback port of its own: it keeps each declaration's path and body, and
 // answers each 200, or 409 where `refusing` says so.
-struct AccountService {
+pub(crate) struct AccountService {
   port: u16,
   kept: Arc<std::sync::Mutex<Vec<(String, String, Value)>>>,
 }
 
 impl AccountService {
-  fn start(refusing: bool) -> Self {
+  pub(crate) fn start(refusing: bool) -> Self {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = listener.local_addr().unwrap().port();
     let kept: Arc<std::sync::Mutex<Vec<(String, String, Value)>>> = Arc::default();
@@ -779,14 +779,14 @@ impl AccountService {
     Self { port, kept }
   }
 
-  fn chain(&self) -> mcp_host::chain::Chain {
+  pub(crate) fn chain(&self) -> mcp_host::chain::Chain {
     mcp_host::chain::Chain {
       address: format!("http://127.0.0.1:{}", self.port),
       token: "chain-token".to_owned(),
     }
   }
 
-  fn kept(&self) -> Vec<(String, String, Value)> {
+  pub(crate) fn kept(&self) -> Vec<(String, String, Value)> {
     self.kept.lock().unwrap().clone()
   }
 }

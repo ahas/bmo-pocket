@@ -19,7 +19,7 @@
 | `client/` | 控制 socket 的客户端：生成 `docs/openapi.json` 的 Rust crate `bmo-pocket-client`，以及由该文档生成的 TypeScript 包 `@bmo/pocket-client` |
 | `console/` | 宿主的界面，作为控制台包 `bmo-pocket-console`，基于其内置的固定 bmo-ui 发布版本，构建为控制台界面所提供的文件；以及宿主对其清单的声明（`docs/api.md`，「The console face」） |
 | `deploy/` | 宿主的用户单元 `bmo-mcp-host.service`，部署时从部署树中链接 |
-| `docs/` | 规范文档：制作工具（`authoring.md`）、宿主（`mcp-host.md`）、工具手册（`toolbook.md`）、注册表（`registry.md`）、其他所有单元都要对齐的边界（`api.md`）及其 OpenAPI 文档（`openapi.json`） |
+| `docs/` | 规范文档：制作工具（`authoring.md`）、宿主（`mcp-host.md`）、工具手册（`toolbook.md`）、注册表（`registry.md`）、公司共享个人应用的目录（`catalogue.md`）、其他所有单元都要对齐的边界（`api.md`）及其 OpenAPI 文档（`openapi.json`） |
 | `examples/` | 分别用 Rust、TypeScript 和 Python 编写的示例工具，仓库的测试会逐一注册并调用它们 |
 | `host/` | 工具宿主 `mcp-host` 和命令 `bmo-pocket`（注册表的子命令和 `mcp`），测试位于 `host/tests/` |
 | `plugin/` | harness 插件 `bmo-pocket-plugin`：由 `bmo-pocket mcp` 提供的 MCP 服务器及其 `bmo-pocket` skill |
