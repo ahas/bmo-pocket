@@ -1,3 +1,5 @@
+**English** | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
+
 # pocket
 
 The tool host, `bmo-pocket`: one process serving the MCP tools of every tool session. It reads each tool's
