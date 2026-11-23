@@ -1,0 +1,67 @@
+# What installing the tool host on a fresh machine needs, read by the testbed's install verb (bmo-testbed's
+# docs/install.md, 「The install declaration」). The host deploys before every unit whose own deployment places its
+# tools with `bmo pocket put`, and after the entry command, beside which its deployment links `bmo-pocket`. It mints
+# its own issuer token and console token under the data root's tool-host/ at its first start, so none is made here.
+
+install = 1
+
+# The host, the repository's one service.
+restart = "systemctl --user restart bmo-mcp-host.service"
+
+[[needs]]
+program = "cargo"
+what = "Rust's Cargo, which a deployment builds the host and `bmo-pocket` with: `curl https://sh.rustup.rs -sSf | sh`."
+
+[[needs]]
+program = "cc"
+what = "A C toolchain, whose linker Cargo links the binaries with: the `build-essential` package."
+
+[[needs]]
+check = 'test -x "$HOME/.bun/bin/bun" || command -v bun'
+what = "Bun, which a deployment builds the host's console bundle with: `curl -fsSL https://bun.sh/install | bash`."
+
+[[needs]]
+program = "git"
+what = "git, which the bundle's build step names its release by: the `git` package."
+
+[[needs]]
+program = "curl"
+what = "curl, which the deployment's health check asks the control socket with: the `curl` package."
+
+[[needs]]
+program = "jq"
+what = "jq, which the deployment's console probe writes the face's address and tokens with: the `jq` package."
+
+# The tools face every harness reaches, and the console face the console relays the host's screen from.
+[[port]]
+name = "pocket.tools"
+number = 3290
+
+[[port]]
+name = "pocket.console"
+number = 3291
+
+# The host's variables (docs/api.md, 「The variables」): its user unit reads this file. Naming the console port
+# opens the console face, whose console token the host then writes at its first start.
+[[settings]]
+file = "env/pocket.env"
+text = '''
+BMO_MCP_HOST_PORT={{port.pocket.tools}}
+BMO_MCP_HOST_CONSOLE_PORT={{port.pocket.console}}
+BMO_DATA_DIR={{data_root}}
+'''
+
+# A held session a process needs (docs/mcp-host.md, 「Held sessions」) is declared by the install of the process
+# that holds it, never here.
+
+# The console reaches the host's console face under the console token the host makes at its first start, so these
+# lines wait until that file stands.
+[[line]]
+file = "env/web-console.env"
+key = "POCKET_ADDRESS"
+value = "http://127.0.0.1:{{port.pocket.console}}"
+
+[[line]]
+file = "env/web-console.env"
+key = "POCKET_TOKEN"
+value = "{{file.tool-host/console-token}}"
