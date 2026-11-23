@@ -1,0 +1,82 @@
+{
+  "pocket": {
+    "title": {
+      "screen": "工具"
+    },
+    "view": {
+      "catalogue": "目录",
+      "schedules": "定时调用",
+      "sessions": "会话",
+      "servers": "外部服务器"
+    },
+    "action": {
+      "close": "关闭",
+      "refresh": "重新读取"
+    },
+    "label": {
+      "namespaces": "命名空间",
+      "search": "搜索",
+      "tool": "工具",
+      "toolbar": "工具主机",
+      "tools": "工具",
+      "view": "视图"
+    },
+    "field": {
+      "address": "地址",
+      "arguments": "参数",
+      "capabilities": "能力",
+      "created_at": "签发",
+      "error": "未列出的原因",
+      "expires_at": "失效",
+      "grant": "权限",
+      "grants": "权限",
+      "idempotent": "幂等",
+      "input": "输入模式",
+      "labels": "标签",
+      "last_at": "上次调用",
+      "last_error": "上次失败",
+      "listing": "列表行",
+      "manual": "说明",
+      "namespace": "命名空间",
+      "next_at": "下次调用",
+      "open_world": "开放世界",
+      "output": "输出模式",
+      "reached_by": "调用方工具",
+      "shown": "按名称显示",
+      "variables": "变量"
+    },
+    "status": {
+      "choose_namespace": "选择一个命名空间即可查看其工具。",
+      "destructive": "破坏性",
+      "failed": "无法读取：{why}",
+      "failing": "上次失败",
+      "forever": "直到撤销",
+      "listed": "共 {count} 个工具",
+      "loading": "读取中",
+      "never": "尚无",
+      "no": "否",
+      "no_match": "没有与搜索匹配的内容。",
+      "no_namespaces": "没有提供中的命名空间。",
+      "no_schedules": "没有工具声明定时调用。",
+      "no_servers": "没有已注册的外部服务器。",
+      "no_sessions": "没有活动的工具会话。",
+      "no_tools": "此命名空间没有工具。",
+      "none": "无",
+      "not_listed": "未列出",
+      "read_only": "只读",
+      "running": "运行中",
+      "system": "仅限系统",
+      "unknown": "未知",
+      "yes": "是"
+    },
+    "schema": {
+      "choices": "可选值：{values}",
+      "default": "默认值：{value}",
+      "fixed": "固定值：{value}",
+      "items": "项数：{from}–{to}",
+      "length": "长度：{from}–{to}",
+      "range": "范围：{from}–{to}",
+      "required": "必填"
+    }
+  }
+}

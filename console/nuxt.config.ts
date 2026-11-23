@@ -9,7 +9,9 @@ export default defineNuxtConfig({
     defaultLocale: "ko",
     locales: [
       { code: "ko", language: "ko-KR", file: "ko.json" },
-      { code: "en", language: "en-US", file: "en.json" }
+      { code: "en", language: "en-US", file: "en.json" },
+      { code: "ja", language: "ja-JP", file: "ja.json" },
+      { code: "zh-CN", language: "zh-CN", file: "zh-CN.json" }
     ]
   },
   compatibilityDate: "2025-09-01",

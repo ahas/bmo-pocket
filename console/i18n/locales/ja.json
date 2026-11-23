@@ -1,0 +1,82 @@
+{
+  "pocket": {
+    "title": {
+      "screen": "ツール"
+    },
+    "view": {
+      "catalogue": "カタログ",
+      "schedules": "予約呼び出し",
+      "sessions": "セッション",
+      "servers": "外部サーバー"
+    },
+    "action": {
+      "close": "閉じる",
+      "refresh": "再読み込み"
+    },
+    "label": {
+      "namespaces": "名前空間",
+      "search": "検索",
+      "tool": "ツール",
+      "toolbar": "ツールホスト",
+      "tools": "ツール",
+      "view": "表示"
+    },
+    "field": {
+      "address": "アドレス",
+      "arguments": "引数",
+      "capabilities": "機能",
+      "created_at": "発行",
+      "error": "一覧にない理由",
+      "expires_at": "失効",
+      "grant": "権限",
+      "grants": "権限",
+      "idempotent": "冪等",
+      "input": "入力スキーマ",
+      "labels": "ラベル",
+      "last_at": "最終呼び出し",
+      "last_error": "最終失敗",
+      "listing": "一覧の行",
+      "manual": "説明書",
+      "namespace": "名前空間",
+      "next_at": "次回呼び出し",
+      "open_world": "外部世界",
+      "output": "出力スキーマ",
+      "reached_by": "呼び出し元ツール",
+      "shown": "名前で表示",
+      "variables": "変数"
+    },
+    "status": {
+      "choose_namespace": "名前空間を選ぶと、そのツールが表示されます。",
+      "destructive": "破壊的",
+      "failed": "読み込めませんでした: {why}",
+      "failing": "前回失敗",
+      "forever": "取り消されるまで",
+      "listed": "ツール {count} 件",
+      "loading": "読み込み中",
+      "never": "まだなし",
+      "no": "いいえ",
+      "no_match": "検索に一致するものはありません。",
+      "no_namespaces": "提供中の名前空間はありません。",
+      "no_schedules": "予約を宣言したツールはありません。",
+      "no_servers": "登録された外部サーバーはありません。",
+      "no_sessions": "有効なツールセッションはありません。",
+      "no_tools": "この名前空間にはツールがありません。",
+      "none": "なし",
+      "not_listed": "一覧なし",
+      "read_only": "読み取り専用",
+      "running": "実行中",
+      "system": "システム専用",
+      "unknown": "不明",
+      "yes": "はい"
+    },
+    "schema": {
+      "choices": "選択肢: {values}",
+      "default": "既定値: {value}",
+      "fixed": "固定値: {value}",
+      "items": "項目数: {from}–{to}",
+      "length": "長さ: {from}–{to}",
+      "range": "範囲: {from}–{to}",
+      "required": "必須"
+    }
+  }
+}
