@@ -10,9 +10,10 @@ use hyper_util::rt::TokioIo;
 use serde_json::Value;
 use tokio::net::UnixStream;
 
-/// What a request came back with: its status and its body.
+/// What a request came back with: its status, its headers and its body.
 pub struct Reply {
   pub status: StatusCode,
+  pub headers: http::HeaderMap,
   pub body: Bytes,
 }
 
@@ -74,7 +75,12 @@ pub async fn request_with(
     .await
     .map_err(io::Error::other)?;
   let status = response.status();
+  let headers = response.headers().clone();
   let body = response.into_body().collect().await.map_err(io::Error::other)?.to_bytes();
 
-  Ok(Reply { status, body })
+  Ok(Reply {
+    status,
+    headers,
+    body,
+  })
 }

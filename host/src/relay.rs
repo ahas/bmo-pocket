@@ -55,14 +55,15 @@ impl Answered {
   }
 }
 
-// The passage's two halves, and the runner's process where the road starts one, ended as the relay ends.
-struct Opened {
-  reading: Box<dyn AsyncRead + Unpin + Send>,
-  writing: Box<dyn AsyncWrite + Unpin + Send>,
-  _child: Option<tokio::process::Child>,
+/// The passage's two halves, and the runner's process where the road starts one, ended as the asker ends.
+pub(crate) struct Opened {
+  pub(crate) reading: Box<dyn AsyncRead + Unpin + Send>,
+  pub(crate) writing: Box<dyn AsyncWrite + Unpin + Send>,
+  pub(crate) _child: Option<tokio::process::Child>,
 }
 
-async fn open(runner: &Runner) -> Result<Opened, String> {
+/// The passage the runner's road opens.
+pub(crate) async fn open(runner: &Runner) -> Result<Opened, String> {
   match runner {
     Runner::Socket(path) => {
       let stream = tokio::net::UnixStream::connect(path)

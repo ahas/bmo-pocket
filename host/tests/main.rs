@@ -7,4 +7,5 @@ mod host;
 mod personal;
 mod plugin;
 mod registry;
+mod screens;
 mod units;

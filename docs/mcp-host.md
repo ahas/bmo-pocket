@@ -132,6 +132,29 @@ flowchart TD
 - **The issuer's view, the console's and the event stream leave personal tools out:** they list the platform's
   catalogue, which holds no owner's tool.
 
+## Personal screens
+
+- **A personal tool may carry a screen of its own,** declared by its manifest's `[screen]` (`docs/api.md`,
+  「`[screen]`」): a console bundle built on the owner's machine with bmo-ui's bundle build, which a console attaches
+  for its owner alone as a bundle that differs per reader (bmo-ui's `docs/console-bundles.md`). Its module and files
+  stand on the owner's machine beside the tool's build; the host's copy holds the screen's words, the layer it was
+  built on and its index of files, which it lists the screen by.
+- **Its names are its tool's:** the bundle's name, which is its words' namespace, is `my-` and the tool's name with
+  each `_` written `-`, and its routes stand under `/my/` and the same, so two owners' screens of one name are each
+  their own and none stands where a unit's screen does.
+- **It is reached under a session acting for its owner,** on the control socket's app face (`docs/api.md`,
+  「Personal screens」): the screens of the personal tools the session reaches, a file of one by the digest of its
+  index and its path, and a call of one of the tool's own entries. A withheld app's tool and an entry the record's
+  `entries` leaves out are reached by none of them.
+- **A file is relayed from the owner's machine and checked at home:** the host asks the record's runner for the file
+  and answers it only where its bytes are the ones the index at home names, so what a digest names never changes,
+  and a console may keep it for good.
+- **It has no server behind it:** what its screens read and write is its tool's calls, under the same record and the
+  same checks as any call of the tool, so the screen reaches nothing its tool does not.
+- **Its owner's machine switched off** leaves the listing standing from the copy at home, saying the runner was not
+  reached, and refuses its files, so a console can say the screen cannot be opened rather than draw one that cannot
+  read its data.
+
 ## The session record
 
 - **Issued before the session starts,** over the host's control socket with the issuer token (「Tokens」). The

@@ -1,4 +1,4 @@
-use bmo_tool::manifest::{AppPart, MANIFEST, Manifest};
+use bmo_tool::manifest::{AppPart, MANIFEST, Manifest, screen_name, screen_path};
 use bmo_tool::{Answer, Bundle, Hints, Served, Session, Tool};
 use serde::Deserialize;
 
@@ -314,4 +314,30 @@ fn a_declaration_file_holds_an_app_alone_under_the_manifests_rules() {
   assert!(AppPart::parse(&format!("{app}colour = \"green\"\n")).unwrap_err().contains("colour"));
   assert!(AppPart::parse(&format!("{MANIFEST_TEXT}\n{app}")).unwrap_err().contains("tool"));
   assert!(AppPart::parse("").unwrap_err().contains("app"));
+}
+
+#[test]
+fn a_screen_carries_its_words_layer_and_index_in_the_description_and_names_an_icon_by_its_alphabet() {
+  let with = |screen: &str| format!("{MANIFEST_TEXT}\n[screen]\n{screen}");
+  let manifest = Manifest::parse(&with("icon = \"i-material-symbols-note\"\n"), "echo").unwrap();
+
+  assert_eq!(manifest.screen.unwrap().icon.as_deref(), Some("i-material-symbols-note"));
+  assert_eq!(
+    Manifest::parse(&with(""), "echo").unwrap().description_files(),
+    ["echo.json", "screen/files.json", "screen/layer.json", "screen/words.json", MANIFEST]
+  );
+  assert_eq!(
+    Manifest::parse(MANIFEST_TEXT, "echo").unwrap().description_files(),
+    ["echo.json", MANIFEST]
+  );
+  assert!(
+    Manifest::parse(&with("icon = \"note\"\n"), "echo")
+      .unwrap_err()
+      .contains("no icon's name")
+  );
+  assert!(Manifest::parse(&with("folder = \"ui\"\n"), "echo").unwrap_err().contains("folder"));
+  assert_eq!(
+    (screen_name("weekly_notes"), screen_path("weekly_notes")),
+    ("my-weekly-notes".to_owned(), "/my/weekly-notes".to_owned())
+  );
 }

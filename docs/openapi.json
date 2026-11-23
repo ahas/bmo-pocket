@@ -167,6 +167,11 @@
             "const": "tool-failed",
             "description": "The tool exited uncleanly, or answered what is not a tool result.",
             "type": "string"
+          },
+          {
+            "const": "runner-unreached",
+            "description": "The owner's runner could not be reached, did not answer a screen's file, or answered other bytes.",
+            "type": "string"
           }
         ]
       },
@@ -459,6 +464,72 @@
         },
         "type": "object"
       },
+      "PersonalScreen": {
+        "description": "One personal tool's screen, as a console attaches it for its owner.",
+        "properties": {
+          "digest": {
+            "description": "The SHA-256 of its index's bytes, which every file's path stands under.",
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "layer": {
+            "description": "The release of bmo-ui its bundle was built on.",
+            "type": "string"
+          },
+          "module": {
+            "description": "The path of its module on the app face.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The screen's bundle's name, which is its words' namespace.",
+            "type": "string"
+          },
+          "screenPath": {
+            "description": "The path its routes stand under.",
+            "type": "string"
+          },
+          "stylesheet": {
+            "description": "The path of its stylesheet, where its index holds one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "The key, in its words, of the name it is shown by.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "The personal tool's name.",
+            "type": "string"
+          },
+          "version": {
+            "description": "The version the host's copy of it is placed as.",
+            "type": "string"
+          },
+          "words": {
+            "additionalProperties": true,
+            "description": "Its words, each locale's tree under the locale's code.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "tool",
+          "version",
+          "name",
+          "screenPath",
+          "title",
+          "icon",
+          "layer",
+          "words",
+          "digest",
+          "module",
+          "stylesheet"
+        ],
+        "type": "object"
+      },
       "ReachedBy": {
         "description": "Which of the toolbook's two calling tools reaches a tool: `call` one that only reads, `act` any other.",
         "enum": [
@@ -572,6 +643,45 @@
         "required": [
           "items",
           "more"
+        ],
+        "type": "object"
+      },
+      "ScreenCallRequest": {
+        "additionalProperties": false,
+        "description": "A call of one of a screen's own tool's entries, by the entry's name in the personal namespace.",
+        "properties": {
+          "input": {
+            "additionalProperties": true,
+            "description": "The entry's own arguments.",
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "input"
+        ],
+        "type": "object"
+      },
+      "ScreenPage": {
+        "description": "The screens of the personal tools a session reaches (docs/api.md, 「Personal screens」), and whether the runner its\nrecord names answered.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalScreen"
+            },
+            "type": "array"
+          },
+          "reached": {
+            "description": "Whether the owner's runner answered; the items are the host's copies and stand either way.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "reached"
         ],
         "type": "object"
       },
@@ -2174,6 +2284,417 @@
           "bad-request"
         ],
         "x-token": "either"
+      }
+    },
+    "/screens": {
+      "get": {
+        "operationId": "listScreens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScreenPage"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          }
+        },
+        "summary": "The screens of the personal tools the token's session reaches, each with its words, its layer and the paths of its module and its stylesheet under the digest of its index, and whether the runner the session's record names answered.",
+        "tags": [
+          "screens"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "forbidden"
+        ],
+        "x-token": "session"
+      }
+    },
+    "/screens/{tool}/calls": {
+      "post": {
+        "operationId": "callScreenTool",
+        "parameters": [
+          {
+            "description": "The personal tool's name.",
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScreenCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolCall"
+                }
+              }
+            },
+            "description": "The route's answer."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "bad-request"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: bad-request."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "arguments-misfit"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: arguments-misfit."
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "tool-failed"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: tool-failed."
+          }
+        },
+        "summary": "A call of one of a screen's own tool's entries, by its name in the personal namespace, dispatched as `POST /tool-calls` dispatches it.",
+        "tags": [
+          "screens"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "bad-request",
+          "forbidden",
+          "not-found",
+          "arguments-misfit",
+          "tool-failed"
+        ],
+        "x-token": "session"
+      }
+    },
+    "/screens/{tool}/{digest}/{path}": {
+      "get": {
+        "operationId": "readScreenFile",
+        "parameters": [
+          {
+            "description": "The personal tool's name.",
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The SHA-256 of the screen's index, in lowercase hexadecimal.",
+            "in": "path",
+            "name": "digest",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The file's path in the screen's folder, its folders among it.",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The file's bytes, of the media type its extension names."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "unauthorized"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: unauthorized."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "forbidden"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: forbidden."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "not-found"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: not-found."
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/WireError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "runner-unreached"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "Refused or failed: runner-unreached."
+          }
+        },
+        "summary": "One file of a personal tool's screen, read on its owner's machine and answered where its bytes are the ones the screen's index names; kept for good, since the digest names the build.",
+        "tags": [
+          "screens"
+        ],
+        "x-codes": [
+          "unauthorized",
+          "forbidden",
+          "not-found",
+          "runner-unreached"
+        ],
+        "x-token": "session"
       }
     },
     "/servers": {

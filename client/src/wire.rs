@@ -259,6 +259,52 @@ pub struct ToolCallRequest {
   pub input: Map<String, Value>,
 }
 
+/// The screens of the personal tools a session reaches (docs/api.md, 「Personal screens」), and whether the runner its
+/// record names answered.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenPage {
+  pub items: Vec<PersonalScreen>,
+  /// Whether the owner's runner answered; the items are the host's copies and stand either way.
+  pub reached: bool,
+}
+
+/// One personal tool's screen, as a console attaches it for its owner.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonalScreen {
+  /// The personal tool's name.
+  pub tool: String,
+  /// The version the host's copy of it is placed as.
+  pub version: String,
+  /// The screen's bundle's name, which is its words' namespace.
+  pub name: String,
+  /// The path its routes stand under.
+  pub screen_path: String,
+  /// The key, in its words, of the name it is shown by.
+  pub title: String,
+  pub icon: String,
+  /// The release of bmo-ui its bundle was built on.
+  pub layer: String,
+  /// Its words, each locale's tree under the locale's code.
+  pub words: Map<String, Value>,
+  /// The SHA-256 of its index's bytes, which every file's path stands under.
+  pub digest: String,
+  /// The path of its module on the app face.
+  pub module: String,
+  /// The path of its stylesheet, where its index holds one.
+  pub stylesheet: Option<String>,
+}
+
+/// A call of one of a screen's own tool's entries, by the entry's name in the personal namespace.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenCallRequest {
+  pub name: String,
+  /// The entry's own arguments.
+  pub input: Map<String, Value>,
+}
+
 /// A call made, and the tool's result as the tool answered it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

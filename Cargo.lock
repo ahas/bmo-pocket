@@ -1435,6 +1435,7 @@ name = "mcp-host"
 version = "0.1.0-rev.9"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "bmo-console-face",
  "bmo-pocket-client",
  "bmo-pocket-plugin",

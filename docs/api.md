@@ -40,6 +40,7 @@ CLI」, 「An app on the delegation chain」). How the host behaves behind these
 | 410 | `gone` | `GET /events`, where an event after the cursor is no longer held: one older than the window the host holds, or a cursor of an earlier run of the host (「Events」) |
 | 422 | `arguments-misfit` | `POST /tool-calls`, where the input does not fit the entry's schema in the form the session holds; the sentence names each misfit and carries the schema |
 | 500 | `failed` | the host failed, as where a record could not be kept or taken back on disk; the sentence is the failure |
+| 502 | `runner-unreached` | `GET /screens/{tool}/{digest}/{path}`, where the runner the session's record names cannot be reached, does not answer the file, or answers bytes that are not the ones the screen's index names; the sentence says which (「Personal screens」) |
 | 502 | `tool-failed` | `POST /tool-calls`, where the tool exited uncleanly, answered what is not a tool result, or its external server could not be reached or failed the call; or where the record it ran under was revoked or lapsed mid-call, the sentence saying it was cancelled because its caller is gone (`docs/mcp-host.md`, 「The host's stop」) |
 
 ## The OpenAPI document and the clients
@@ -413,6 +414,49 @@ host tells of its catalogue as the registry changes under it.
   is null. Where none does, `granted` is false, the other three null, and `reason` says why: no entry the session
   holds claims it, or the grant that entry needs.
 
+### Personal screens
+
+The app face: the screens of a session's owner's personal tools, their files and their calls, each under the token of
+a session whose record names that owner (`docs/mcp-host.md`, 「Personal screens」). A console reads them for one reader
+under a session its issuer issued for that reader's account, and relays them to the reader alone.
+
+| Route | Token | Request | Answer |
+|---|---|---|---|
+| `GET /screens` | a session's | | 200 `{items, reached}`: each screen of a personal tool the session reaches, by the tool's name, and whether the record's runner answered; 403 `forbidden` to the issuer's |
+| `GET /screens/{tool}/{digest}/{path}` | a session's | | 200 the file's bytes, of the media type its extension names, kept for good (`cache-control: private, max-age=31536000, immutable`); 404 `not-found` where the tool is no screen the session reaches, the digest is not its screen's or the path is no file of its index; 502 `runner-unreached`; 403 `forbidden` to the issuer's |
+| `POST /screens/{tool}/calls` | a session's | `{name, input}` | as `POST /tool-calls` answers the call of `my/<name>` (「Tool calls」); 404 `not-found` as well where the entry is not one of the tool's own; 403 `forbidden` to the issuer's |
+
+Each item of `GET /screens`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `tool` | string | The personal tool's name |
+| `version` | string | The version the host's copy of it is placed as |
+| `name` | string | The screen's bundle's name, which is its words' namespace: `my-` and the tool's name with each `_` written `-` |
+| `screenPath` | string | The path its routes stand under: `/my/` and the same |
+| `title` | string | The key, in its words, of the name it is shown by: `<name>.title` |
+| `icon` | string | The icon its manifest names, or `i-material-symbols-apps` |
+| `layer` | string | The release of bmo-ui its bundle was built on, as its `layer.json` names it |
+| `words` | object | Its words, each locale's tree under the locale's code |
+| `digest` | string | The SHA-256, in lowercase hexadecimal, of its index's bytes: every file's path stands under it |
+| `module` | string | The path of its module on this face: `/screens/<tool>/<digest>/module.js` |
+| `stylesheet` | string or null | The path of its stylesheet, `style.css` under the same digest, where its index holds one |
+
+- **The digest names the build.** A file's path holds the digest of the index that names the file, so every file of
+  one build stands under one folder and the module's imports of its chunks, written relative to the module, reach
+  them. A new version's screen answers under a new digest, so what a console or a browser kept under a digest is
+  what that digest names for good.
+- **`reached` says whether the owner's machine answered:** the host asks the record's runner which versions it keeps,
+  as agency's runner answers the ask (agency's `docs/person-nodes.md`, 「Personal apps」), and reads `reached` false
+  where the record names no runner or the runner cannot be reached or refuses. The items are the host's copies and
+  stand either way.
+- **A file is read on the owner's machine** (「The runner」): the host checks the tool, the digest and the path
+  against the screen's index at home, asks the runner for the file of the version the host's copy is placed as, and
+  answers its bytes only where their SHA-256 is the one the index names for that path.
+- **A call is the tool's own:** the entry `my/<name>` must be an entry of the tool the path names, dispatched under the
+  session's record through the same schema, withheld-app and runner checks as `POST /tool-calls`, so a screen does
+  nothing its tool's call does not.
+
 ### Tool sessions
 
 | Route | Token | Request | Answer |
@@ -663,6 +707,11 @@ answers as the tool did.
   tool's output on its standard output and the tool's code as its own, 1 where a signal ended the tool; a `refused`,
   a passage that ends unanswered, or a runner it cannot reach is said on its standard error and ends it 1, which the
   host answers as a failed call naming the exit and those lines.
+- **Two other asks reach a runner, for a screen** (「Personal screens」), each its own first line answered by one
+  line, as agency's runner answers them (agency's `docs/person-nodes.md`, 「Personal apps」):
+  `{"owner", "versions": {}}`, answered `{"t": "versions", "tools"}`, which tells the host the runner answers; and
+  `{"owner", "file": {"tool", "version", "path"}}`, a file of the version's `screen/` folder by its path below it,
+  answered `{"t": "file", "bytes"}`, the bytes in base64. A `refused` line answers either where the runner does not.
 - **What a runner does with the call is its own:** it runs the version the asking names and no other, under the run
   words given, with the call on the tool's standard input, confined as its issuer's documents state. A manifest's
   `[permissions]` names what a runner would grant beyond the tool's own folders. The call carries no call-back socket
@@ -771,6 +820,25 @@ tool's is read and given no effect.
 
 - **No runner gives a call the network or a secret yet,** so a personal tool naming either is left out of the
   catalogue.
+
+### `[screen]`
+
+A personal tool's screen (`docs/mcp-host.md`, 「Personal screens」): its presence says the placed version holds the
+screen's bundle build in its `screen/` folder. A platform tool's is read and given no effect: a unit's screens are its
+console bundle.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `icon` | string | The icon a console shows it by, as the component library names an icon (`i-` and kebab-case words); `i-material-symbols-apps` by default |
+
+- **The placed version's `screen/` holds** what bmo-ui's bundle build wrote — `module.js`, the chunks it imports,
+  `style.css` where the screens carry styles of their own, and `layer.json` — beside `words.json`, the screen's words,
+  each locale's tree under the locale's code and every key under the screen's name, `<name>.title` among them, and
+  `files.json`, the screen's index: each file of the folder but the index, by its path below it, with the SHA-256 of
+  its bytes in lowercase hexadecimal. The owner's runner writes the index as it places the version.
+- **The description copy carries three of them:** `screen/words.json`, `screen/layer.json` and `screen/files.json`,
+  beside the manifest, its schemas and its manuals (`docs/registry.md`, 「Put a personal tool」). The module and the
+  rest stay on the owner's machine.
 
 ### The other tables
 

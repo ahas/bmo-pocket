@@ -621,8 +621,12 @@ pub fn put_owned(
   let staged = owned.versions().join(&name).join(format!(".staging-{version}-{}", fresh()));
   let staging = Scratch(Some(staged.clone()));
 
+  if manifest.screen.is_some() {
+    crate::screens::read_screen(&folder, &name).map_err(|why| format!("{name}: its screen: {why}"))?;
+  }
+
   if !placed.join(MANIFEST).exists() {
-    for file in manifest.named_files() {
+    for file in manifest.description_files() {
       let to = staged.join(&file);
 
       if let Some(parent) = to.parent() {

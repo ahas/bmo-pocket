@@ -31,6 +31,8 @@ pub enum ErrorCode {
   Failed,
   /// The tool exited uncleanly, or answered what is not a tool result.
   ToolFailed,
+  /// The owner's runner could not be reached, did not answer a screen's file, or answered other bytes.
+  RunnerUnreached,
 }
 
 impl ErrorCode {
@@ -44,7 +46,7 @@ impl ErrorCode {
       Self::Gone => StatusCode::GONE,
       Self::ArgumentsMisfit => StatusCode::UNPROCESSABLE_ENTITY,
       Self::Failed => StatusCode::INTERNAL_SERVER_ERROR,
-      Self::ToolFailed => StatusCode::BAD_GATEWAY,
+      Self::ToolFailed | Self::RunnerUnreached => StatusCode::BAD_GATEWAY,
     }
   }
 

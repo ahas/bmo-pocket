@@ -14,6 +14,8 @@ publish = false
 
 [workspace.dependencies]
 axum = { version = "0.8.9", features = ["macros", "multipart", "ws"] }
+# A screen's file, carried in base64 on the runner's passage.
+base64 = "0.22.1"
 # A schedule's time, in the host machine's local zone.
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.5.40", features = ["derive", "env", "string"] }

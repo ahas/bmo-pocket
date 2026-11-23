@@ -20,5 +20,6 @@ pub mod relay;
 pub mod residency;
 pub mod running;
 pub mod schedule;
+pub mod screens;
 pub mod server;
 pub mod toolbook;

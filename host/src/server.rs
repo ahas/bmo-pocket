@@ -18,9 +18,11 @@ use axum::{Json, Router};
 use bmo_console_face::ConsoleFace;
 use bmo_pocket_client::{
   CallInHand, Claim, ClaimRequest, Event, EventPage, EventQuery, Health, NameQuery, Namespace,
-  NamespacePage, Schedule, SchedulePage, Server, ServerPage, SessionPage, SessionQuery, StandingSession,
-  TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage, ToolResult, ToolSession, UseQuery,
+  NamespacePage, Schedule, SchedulePage, ScreenCallRequest, ScreenPage, Server, ServerPage, SessionPage,
+  SessionQuery, StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolPage, ToolResult,
+  ToolSession, UseQuery,
 };
+use bmo_tool::manifest::PERSONAL_NAMESPACE;
 use bmo_tool::{Session, SessionRequest};
 use rmcp::transport::streamable_http_server::session::never::NeverSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
@@ -32,6 +34,7 @@ use crate::events::Events;
 use crate::handler::{Claimant, Entry, Handler, Host, Refusal};
 use crate::records::{Reach, Records};
 use crate::schedule::{Schedules, now_ms};
+use crate::screens::{self, ScreenFiles, read_screen};
 use crate::toolbook::{TOOLBOOK, Toolbook};
 
 // The token a request carries, as `Authorization: Bearer <token>`.
@@ -454,8 +457,21 @@ async fn tool_call(
   let Some(found) = control.host.find_full(session, &full, true) else {
     return Err(HostError::UnknownEntry(full));
   };
+
+  call_found(&control, session, &found, called).await
+}
+
+// One entry found under a session's record called with the input asked: each refusal of the host's answered by its
+// status, and the tool's own result as it answered it.
+async fn call_found(
+  control: &Control,
+  session: &Session,
+  found: &Entry,
+  called: ToolCallRequest,
+) -> Result<Json<ToolCall>, HostError> {
+  let full = format!("{}/{}", called.namespace, called.name);
   let started = Instant::now();
-  let answer = control.host.attempt(&found, session, Value::Object(called.input)).await;
+  let answer = control.host.attempt(found, session, Value::Object(called.input)).await;
   let spent_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
 
   let result = match answer {
@@ -474,6 +490,122 @@ async fn tool_call(
     result,
     spent_ms,
   }))
+}
+
+// The personal tools with a screen the session reaches, each once, in order of name (docs/api.md, 「Personal
+// screens」): a withheld app's tool and one whose entries the record's `entries` leaves out are reached by none.
+fn screen_tools(host: &Host, session: &Session) -> Vec<Arc<crate::placed::PlacedTool>> {
+  let mut tools: BTreeMap<String, Arc<crate::placed::PlacedTool>> = BTreeMap::new();
+
+  for entry in host.reached(session) {
+    if entry.tool.owner.is_some() && entry.tool.manifest.screen.is_some() {
+      tools.entry(entry.tool.folder.clone()).or_insert_with(|| entry.tool.clone());
+    }
+  }
+
+  tools.into_values().collect()
+}
+
+// The screen of the tool a path names, as the host's copy of it holds it; or why none stands there.
+fn screen_of(
+  host: &Host,
+  session: &Session,
+  tool: &str,
+) -> Result<(Arc<crate::placed::PlacedTool>, ScreenFiles), HostError> {
+  let found = screen_tools(host, session)
+    .into_iter()
+    .find(|placed| placed.folder == tool)
+    .ok_or_else(|| HostError::UnknownScreen(format!("no screen of a personal tool {tool} is reached")))?;
+  let files = read_screen(&found.dir, &found.folder)
+    .map_err(|why| HostError::UnknownScreen(format!("the screen of {tool} does not read: {why}")))?;
+
+  Ok((found, files))
+}
+
+// The screens of the session's owner's personal tools, as the host's copies hold them, and whether the runner the
+// record names answered.
+async fn screen_page(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+) -> Result<Json<ScreenPage>, HostError> {
+  let session = caller.session()?;
+  let mut items = Vec::new();
+
+  for tool in screen_tools(&control.host, session) {
+    match read_screen(&tool.dir, &tool.folder) {
+      Ok(files) => items.push(screens::listed(&tool.folder, &tool.version(), &tool.manifest, files)),
+      Err(why) => eprintln!("screens: {} of {:?} is left out: {why}", tool.folder, tool.owner),
+    }
+  }
+
+  let reached = match (&session.runner, &session.owner_account) {
+    (Some(runner), Some(owner)) => screens::runner_answers(runner, owner).await,
+    _ => false,
+  };
+
+  Ok(Json(ScreenPage { items, reached }))
+}
+
+// One file of a screen, by the digest of its index and its path, read on the owner's machine and answered where its
+// bytes are the ones the index names, kept for good.
+async fn screen_file(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+  Path((tool, digest, path)): Path<(String, String, String)>,
+) -> Result<Response, HostError> {
+  let session = caller.session()?;
+  let (found, files) = screen_of(&control.host, session, &tool)?;
+
+  if files.digest != digest {
+    return Err(HostError::UnknownScreen(format!("the screen of {tool} stands under another digest")));
+  }
+
+  let Some(sha) = files.index.get(&path) else {
+    return Err(HostError::UnknownScreen(format!("the screen of {tool} holds no file {path}")));
+  };
+  let (Some(runner), Some(owner)) = (&session.runner, &found.owner) else {
+    return Err(HostError::RunnerUnreached("the session's record names no runner".to_owned()));
+  };
+  let bytes = screens::screen_file(runner, owner, &found.folder, &found.version(), &path, sha)
+    .await
+    .map_err(HostError::RunnerUnreached)?;
+
+  Ok(
+    (
+      [
+        (header::CONTENT_TYPE, HeaderValue::from_static(screens::media_type(&path))),
+        (header::CACHE_CONTROL, HeaderValue::from_static("private, max-age=31536000, immutable")),
+      ],
+      bytes,
+    )
+      .into_response(),
+  )
+}
+
+// A call of one of a screen's own tool's entries, dispatched as a call on `POST /tool-calls` is.
+async fn screen_call(
+  State(control): State<Control>,
+  Extension(caller): Extension<Caller>,
+  Path(tool): Path<String>,
+  body: Bytes,
+) -> Result<Json<ToolCall>, HostError> {
+  let session = caller.session()?;
+  let called: ScreenCallRequest =
+    serde_json::from_slice(&body).map_err(|why| HostError::MalformedRequest(why.to_string()))?;
+  let full = format!("{PERSONAL_NAMESPACE}/{}", called.name);
+  let (screen, _) = screen_of(&control.host, session, &tool)?;
+  let found = control
+    .host
+    .find_full(session, &full, false)
+    .filter(|found| Arc::ptr_eq(&found.tool, &screen))
+    .ok_or_else(|| HostError::UnknownEntry(full.clone()))?;
+  let called = ToolCallRequest {
+    namespace: PERSONAL_NAMESPACE.to_owned(),
+    name: called.name,
+    input: called.input,
+  };
+
+  call_found(&control, session, &found, called).await
 }
 
 // Whether the token's session may have an address read, and by which entry, as the call-back socket's claim is
@@ -859,6 +991,9 @@ pub fn control(
     .route("/namespaces/{namespace}/tools/{toolName}", get(one_tool))
     .route("/tool-calls", post(tool_call))
     .route("/claims", post(claim))
+    .route("/screens", get(screen_page))
+    .route("/screens/{tool}/calls", post(screen_call))
+    .route("/screens/{tool}/{digest}/{*path}", get(screen_file))
     .route("/tool-sessions", get(tool_session_page).post(issue))
     .route("/tool-sessions/{token}", get(one_tool_session).delete(revoke))
     .route("/tool-session-records/{id}", delete(revoke_record))

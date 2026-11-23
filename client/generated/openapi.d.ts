@@ -157,6 +157,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/screens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The screens of the personal tools the token's session reaches, each with its words, its layer and the paths of its module and its stylesheet under the digest of its index, and whether the runner the session's record names answered. */
+        get: operations["listScreens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/screens/{tool}/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A call of one of a screen's own tool's entries, by its name in the personal namespace, dispatched as `POST /tool-calls` dispatches it. */
+        post: operations["callScreenTool"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/screens/{tool}/{digest}/{path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One file of a personal tool's screen, read on its owner's machine and answered where its bytes are the ones the screen's index names; kept for good, since the digest names the build. */
+        get: operations["readScreenFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/servers": {
         parameters: {
             query?: never;
@@ -316,7 +367,7 @@ export interface components {
             namespace: string;
         };
         /** @description A stable code a caller decides on, each answered with one status. */
-        ErrorCode: "bad-request" | "unauthorized" | "forbidden" | "not-found" | "no-route" | "gone" | "arguments-misfit" | "failed" | "tool-failed";
+        ErrorCode: "bad-request" | "unauthorized" | "forbidden" | "not-found" | "no-route" | "gone" | "arguments-misfit" | "failed" | "tool-failed" | "runner-unreached";
         /** @description One event of the stream. */
         Event: {
             /**
@@ -431,6 +482,32 @@ export interface components {
              */
             limit?: number | null;
         };
+        /** @description One personal tool's screen, as a console attaches it for its owner. */
+        PersonalScreen: {
+            /** @description The SHA-256 of its index's bytes, which every file's path stands under. */
+            digest: string;
+            icon: string;
+            /** @description The release of bmo-ui its bundle was built on. */
+            layer: string;
+            /** @description The path of its module on the app face. */
+            module: string;
+            /** @description The screen's bundle's name, which is its words' namespace. */
+            name: string;
+            /** @description The path its routes stand under. */
+            screenPath: string;
+            /** @description The path of its stylesheet, where its index holds one. */
+            stylesheet: string | null;
+            /** @description The key, in its words, of the name it is shown by. */
+            title: string;
+            /** @description The personal tool's name. */
+            tool: string;
+            /** @description The version the host's copy of it is placed as. */
+            version: string;
+            /** @description Its words, each locale's tree under the locale's code. */
+            words: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * @description Which of the toolbook's two calling tools reaches a tool: `call` one that only reads, `act` any other.
          * @enum {string}
@@ -474,6 +551,23 @@ export interface components {
         SchedulePage: {
             items: components["schemas"]["Schedule"][];
             more: boolean;
+        };
+        /** @description A call of one of a screen's own tool's entries, by the entry's name in the personal namespace. */
+        ScreenCallRequest: {
+            /** @description The entry's own arguments. */
+            input: {
+                [key: string]: unknown;
+            };
+            name: string;
+        };
+        /**
+         * @description The screens of the personal tools a session reaches (docs/api.md, 「Personal screens」), and whether the runner its
+         *     record names answered.
+         */
+        ScreenPage: {
+            items: components["schemas"]["PersonalScreen"][];
+            /** @description Whether the owner's runner answered; the items are the host's copies and stand either way. */
+            reached: boolean;
         };
         /** @description One external server the host read a registration of, and whether its tools are listed. */
         Server: {
@@ -1167,6 +1261,224 @@ export interface operations {
                     "application/json": components["schemas"]["WireError"] & {
                         /** @enum {unknown} */
                         code?: "unauthorized";
+                    };
+                };
+            };
+        };
+    };
+    listScreens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The route's answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenPage"];
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
+                    };
+                };
+            };
+        };
+    };
+    callScreenTool: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The personal tool's name. */
+                tool: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScreenCallRequest"];
+            };
+        };
+        responses: {
+            /** @description The route's answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolCall"];
+                };
+            };
+            /** @description Refused or failed: bad-request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "bad-request";
+                    };
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
+                    };
+                };
+            };
+            /** @description Refused or failed: not-found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "not-found";
+                    };
+                };
+            };
+            /** @description Refused or failed: arguments-misfit. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "arguments-misfit";
+                    };
+                };
+            };
+            /** @description Refused or failed: tool-failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "tool-failed";
+                    };
+                };
+            };
+        };
+    };
+    readScreenFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The personal tool's name. */
+                tool: string;
+                /** @description The SHA-256 of the screen's index, in lowercase hexadecimal. */
+                digest: string;
+                /** @description The file's path in the screen's folder, its folders among it. */
+                path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file's bytes, of the media type its extension names. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Refused or failed: unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "unauthorized";
+                    };
+                };
+            };
+            /** @description Refused or failed: forbidden. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "forbidden";
+                    };
+                };
+            };
+            /** @description Refused or failed: not-found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "not-found";
+                    };
+                };
+            };
+            /** @description Refused or failed: runner-unreached. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WireError"] & {
+                        /** @enum {unknown} */
+                        code?: "runner-unreached";
                     };
                 };
             };

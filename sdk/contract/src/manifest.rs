@@ -277,6 +277,56 @@ pub struct PermissionsPart {
   pub secrets: Vec<String>,
 }
 
+/// A personal tool's screen (docs/api.md, 「`[screen]`」): its presence says the placed version holds the screen's
+/// bundle build in [`SCREEN_FOLDER`]. A platform tool's is read and given no effect.
+#[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ScreenPart {
+  /// The icon a console shows it by; [`SCREEN_ICON`] where none is named.
+  #[serde(default)]
+  pub icon: Option<String>,
+}
+
+/// The folder of a placed version a personal tool's screen stands in.
+pub const SCREEN_FOLDER: &str = "screen";
+
+/// The files of a screen's folder its description copy carries: its words, the layer it was built on and its index.
+pub const SCREEN_WORDS: &str = "words.json";
+pub const SCREEN_LAYER: &str = "layer.json";
+pub const SCREEN_INDEX: &str = "files.json";
+
+/// The screen's module, which its index always names.
+pub const SCREEN_MODULE: &str = "module.js";
+
+/// The screen's stylesheet, where its index names one.
+pub const SCREEN_STYLESHEET: &str = "style.css";
+
+/// The icon a screen is shown by where its manifest names none.
+pub const SCREEN_ICON: &str = "i-material-symbols-apps";
+
+/// An icon's name as the component library names one: `i-`, then kebab-case words, two at least.
+pub fn icon_name(icon: &str) -> bool {
+  icon.strip_prefix("i-").is_some_and(|rest| {
+    let words: Vec<&str> = rest.split('-').collect();
+
+    words.len() >= 2
+      && words.iter().all(|word| {
+        !word.is_empty() && word.chars().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit())
+      })
+  })
+}
+
+/// A personal tool's screen's bundle name, which is its words' namespace: `my-` and the tool's name with each `_`
+/// written `-` (docs/mcp-host.md, 「Personal screens」).
+pub fn screen_name(tool: &str) -> String {
+  format!("my-{}", tool.replace('_', "-"))
+}
+
+/// The path a personal tool's screen's routes stand under: `/my/` and the tool's name with each `_` written `-`.
+pub fn screen_path(tool: &str) -> String {
+  format!("/my/{}", tool.replace('_', "-"))
+}
+
 /// The namespace every personal tool's entries stand in, which no platform tool's do (docs/mcp-host.md, 「Personal
 /// tools」).
 pub const PERSONAL_NAMESPACE: &str = "my";
@@ -338,6 +388,8 @@ struct Written {
   app: Option<AppPart>,
   #[serde(default)]
   permissions: PermissionsPart,
+  #[serde(default)]
+  screen: Option<ScreenPart>,
 }
 
 /// One tool's manifest, read and held to its rules, its schemas read beside it.
@@ -354,6 +406,8 @@ pub struct Manifest {
   pub app: Option<AppPart>,
   /// What a personal tool's calls may reach beyond its own folders.
   pub permissions: PermissionsPart,
+  /// A personal tool's screen, where it has one.
+  pub screen: Option<ScreenPart>,
 }
 
 /// A name a session calls an entry by: lower-case letters, digits and underscores.
@@ -415,6 +469,7 @@ impl Manifest {
       helper: written.helper,
       app: written.app,
       permissions: written.permissions,
+      screen: written.screen,
     };
 
     manifest.faults(folder)?;
@@ -514,6 +569,12 @@ impl Manifest {
       }
     }
 
+    if let Some(icon) = self.screen.as_ref().and_then(|screen| screen.icon.as_deref())
+      && !icon_name(icon)
+    {
+      return Err(format!("its screen's icon `{icon}` is no icon's name"));
+    }
+
     if let Some(resources) = &self.resources
       && (!namespace_name(&resources.namespace) || resources.capabilities.is_empty())
     {
@@ -584,6 +645,20 @@ impl Manifest {
 
     files.sort();
     files.dedup();
+    files
+  }
+
+  /// The files a personal tool's description copy carries (docs/registry.md, 「Put a personal tool」): those the
+  /// manifest names, and, where it names a screen, the screen's words, layer and index.
+  pub fn description_files(&self) -> Vec<String> {
+    let mut files = self.named_files();
+
+    if self.screen.is_some() {
+      files
+        .extend([SCREEN_WORDS, SCREEN_LAYER, SCREEN_INDEX].map(|file| format!("{SCREEN_FOLDER}/{file}")));
+      files.sort();
+    }
+
     files
   }
 

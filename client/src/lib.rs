@@ -15,7 +15,8 @@ pub use error::{ErrorCode, WireError};
 pub use openapi::{openapi, openapi_json};
 pub use wire::{
   Booked, CallInHand, Claim, ClaimRequest, Connection, Event, EventKind, EventPage, EventQuery, Health,
-  KeptCall, Listing, NameQuery, Namespace, NamespacePage, ReachedBy, Schedule, SchedulePage, Server,
-  ServerPage, SessionPage, SessionQuery, StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest,
-  ToolChange, ToolHints, ToolPage, ToolResult, ToolSession, Transport, UsePage, UseQuery,
+  KeptCall, Listing, NameQuery, Namespace, NamespacePage, PersonalScreen, ReachedBy, Schedule,
+  SchedulePage, ScreenCallRequest, ScreenPage, Server, ServerPage, SessionPage, SessionQuery,
+  StandingSession, TimeQuery, Tool, ToolCall, ToolCallRequest, ToolChange, ToolHints, ToolPage, ToolResult,
+  ToolSession, Transport, UsePage, UseQuery,
 };

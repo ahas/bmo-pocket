@@ -322,6 +322,7 @@ pub fn entries(
     helper: None,
     app: None,
     permissions: Default::default(),
+    screen: None,
   };
 
   (manifest, names, faults)

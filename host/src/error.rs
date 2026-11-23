@@ -29,6 +29,12 @@ pub enum HostError {
   /// No tool of that full name the token sees.
   #[error("Tool {0} not found")]
   UnknownEntry(String),
+  /// No screen, digest or file of a personal tool's screen the token's session reaches stands at the path.
+  #[error("{0}")]
+  UnknownScreen(String),
+  /// The owner's runner could not be reached, did not answer a screen's file, or answered other bytes.
+  #[error("{0}")]
+  RunnerUnreached(String),
   /// No asynchronous call of that id was asked under the token's session.
   #[error("call {0} not found")]
   UnknownCall(String),
@@ -80,9 +86,12 @@ impl HostError {
       Self::IssuerOnly | Self::SessionOnly | Self::GrantRefused(_) | Self::Withheld(_) => {
         ErrorCode::Forbidden
       }
-      Self::UnknownNamespace(_) | Self::UnknownEntry(_) | Self::UnknownCall(_) | Self::UnknownSession => {
-        ErrorCode::NotFound
-      }
+      Self::UnknownNamespace(_)
+      | Self::UnknownEntry(_)
+      | Self::UnknownCall(_)
+      | Self::UnknownSession
+      | Self::UnknownScreen(_) => ErrorCode::NotFound,
+      Self::RunnerUnreached(_) => ErrorCode::RunnerUnreached,
       Self::MalformedRecord(_) | Self::MalformedRequest(_) => ErrorCode::BadRequest,
       Self::ArgumentsMisfit(_) => ErrorCode::ArgumentsMisfit,
       Self::ToolFailed(_) => ErrorCode::ToolFailed,

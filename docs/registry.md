@@ -62,7 +62,8 @@
 ## Put a personal tool
 
 - **The folder holds the tool as its owner's machine built it:** its manifest and the schemas and manuals the
-  manifest names are copied, and whatever else it holds is left out, so no code or data of the owner's reaches the
+  manifest names are copied, and, where the manifest names a `[screen]`, the screen's words, layer and index
+  (`docs/api.md`, 「`[screen]`」); whatever else it holds is left out, so no code or data of the owner's reaches the
   host.
 - **`--version <name>` names the version** the owner's machine placed the tool's build under, so the host's copy and
   the machine's version carry one name and the relay asks for the version the host's copy is placed as; a fresh
@@ -72,6 +73,9 @@
   - the manifest reads, every schema it names is a JSON Schema, and it reads as a personal tool's
     (`docs/mcp-host.md`, 「Personal tools」), so one asking for the network or a secret is refused;
   - none of its entries' full names is held by another of the same owner's tools.
+  - where it names a `[screen]`: its `screen/layer.json` names a layer, its `screen/words.json` is an object of
+    locales whose trees hold the screen's name alone, its title among it, and its `screen/files.json` names
+    `module.js` and every other file by a path inside the folder with a SHA-256.
 - **Nothing is asked to be allowed and nothing is declared:** an owner's sessions hold their own tools whole, so no
   capability or grant is checked against an `--allow`, and a personal tool's `[app]` declares no setting on the
   delegation chain.

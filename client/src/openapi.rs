@@ -13,8 +13,9 @@ use serde_json::{Map, Value, json};
 use crate::error::{ErrorCode, WireError};
 use crate::harness::{ENTRY, MCP_COMMAND, PLUGIN, harness_tools};
 use crate::wire::{
-  Claim, ClaimRequest, Event, EventPage, Health, Namespace, NamespacePage, SchedulePage, ServerPage,
-  SessionPage, StandingSession, Tool, ToolCall, ToolCallRequest, ToolPage, ToolSession, UsePage,
+  Claim, ClaimRequest, Event, EventPage, Health, Namespace, NamespacePage, SchedulePage, ScreenCallRequest,
+  ScreenPage, ServerPage, SessionPage, StandingSession, Tool, ToolCall, ToolCallRequest, ToolPage,
+  ToolSession, UsePage,
 };
 
 /// Where the schemas the routes refer to stand in the document.
@@ -58,6 +59,8 @@ enum Answer {
   Events(Schema, Schema),
   /// No body.
   Empty,
+  /// A file's bytes, of the media type its name's extension names.
+  Bytes,
 }
 
 /// One route of the control socket.
@@ -117,7 +120,8 @@ fn schema<T: JsonSchema>(generator: &mut SchemaGenerator) -> Schema {
 
 fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
   use ErrorCode::{
-    ArgumentsMisfit, BadRequest, Failed, Forbidden, Gone, NotFound, ToolFailed, Unauthorized,
+    ArgumentsMisfit, BadRequest, Failed, Forbidden, Gone, NotFound, RunnerUnreached, ToolFailed,
+    Unauthorized,
   };
 
   vec![
@@ -361,6 +365,50 @@ fn routes(generator: &mut SchemaGenerator) -> Vec<Route> {
     },
     Route {
       method: "get",
+      path: "/screens",
+      operation: "listScreens",
+      tag: "screens",
+      summary: "The screens of the personal tools the token's session reaches, each with its words, its layer and \
+        the paths of its module and its stylesheet under the digest of its index, and whether the runner the \
+        session's record names answered.",
+      token: Token::Session,
+      parameters: vec![],
+      request: None,
+      answer: (200, Answer::Json(schema::<ScreenPage>(generator))),
+      codes: &[Unauthorized, Forbidden],
+    },
+    Route {
+      method: "get",
+      path: "/screens/{tool}/{digest}/{path}",
+      operation: "readScreenFile",
+      tag: "screens",
+      summary: "One file of a personal tool's screen, read on its owner's machine and answered where its bytes are \
+        the ones the screen's index names; kept for good, since the digest names the build.",
+      token: Token::Session,
+      parameters: vec![
+        path_parameter("tool", "The personal tool's name."),
+        path_parameter("digest", "The SHA-256 of the screen's index, in lowercase hexadecimal."),
+        path_parameter("path", "The file's path in the screen's folder, its folders among it."),
+      ],
+      request: None,
+      answer: (200, Answer::Bytes),
+      codes: &[Unauthorized, Forbidden, NotFound, RunnerUnreached],
+    },
+    Route {
+      method: "post",
+      path: "/screens/{tool}/calls",
+      operation: "callScreenTool",
+      tag: "screens",
+      summary: "A call of one of a screen's own tool's entries, by its name in the personal namespace, dispatched \
+        as `POST /tool-calls` dispatches it.",
+      token: Token::Session,
+      parameters: vec![path_parameter("tool", "The personal tool's name.")],
+      request: Some(schema::<ScreenCallRequest>(generator)),
+      answer: (200, Answer::Json(schema::<ToolCall>(generator))),
+      codes: &[Unauthorized, BadRequest, Forbidden, NotFound, ArgumentsMisfit, ToolFailed],
+    },
+    Route {
+      method: "get",
       path: "/servers",
       operation: "listServers",
       tag: "servers",
@@ -401,6 +449,10 @@ impl Route {
           },
         }),
         Answer::Empty => json!({ "description": "Done; no body." }),
+        Answer::Bytes => json!({
+          "description": "The file's bytes, of the media type its extension names.",
+          "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } },
+        }),
       },
     );
 
