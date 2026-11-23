@@ -9,8 +9,10 @@ is shown a few resident tools by name and reaches every other tool through its t
 tool never changes what a running session's prompt begins with. A harness reaches it over HTTP, or through its
 harness plugin, `bmo-pocket mcp`.
 
-The repository also holds the tool SDK: the contract every tool is written to, which Rust tools link, and the
-helpers tools written in TypeScript or Python import.
+The repository also holds the tool SDK: the contract every tool is written to, the call protocol and the manifest
+schema as the host reads them, and the one-file helpers a tool written in TypeScript or Python carries.
+
+How to make a tool, test it and put it live with no deployment is `docs/authoring.md`.
 
 ## Layout
 
@@ -19,11 +21,12 @@ helpers tools written in TypeScript or Python import.
 | `client/` | the control socket's client: the Rust crate `bmo-pocket-client`, which generates `docs/openapi.json`, and the TypeScript package `@bmo/pocket-client` generated from it |
 | `console/` | the host's screen as a console bundle, `bmo-pocket-console`, on the pinned bmo-ui release it vendors, built into the files the console face serves, and the host's declaration of its manifest (`docs/api.md`, 「The console face」) |
 | `deploy/` | the host's user unit, `bmo-mcp-host.service`, which a deployment links from the deploy tree |
-| `docs/` | the canonical documents: the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`), the boundary every other unit matches (`api.md`) and its OpenAPI document (`openapi.json`) |
+| `docs/` | the canonical documents: making a tool (`authoring.md`), the host (`mcp-host.md`), the toolbook (`toolbook.md`), the registry (`registry.md`), the boundary every other unit matches (`api.md`) and its OpenAPI document (`openapi.json`) |
+| `examples/` | one example tool written in Rust, TypeScript and Python, each put and called by the repository's tests |
 | `host/` | the tool host, `mcp-host`, and the command `bmo-pocket` (the registry's verbs and `mcp`), with their tests in `host/tests/` |
 | `plugin/` | the harness plugin, `bmo-pocket-plugin`: the MCP server `bmo-pocket mcp` serves and its `bmo-pocket` skill |
 | `prompts/` | the prompt text the host serves, `tool-use.md`: the paragraph on finding and using tools a session's system prompt carries |
-| `sdk/` | the tool SDK: `sdk/contract/`, the `bmo-tool` crate holding the call protocol and the manifest schema, which Rust tools link; `sdk/ts-kit/` and `sdk/py-kit/`, the helpers a TypeScript or Python tool imports |
+| `sdk/` | the tool SDK: `sdk/contract/`, the `bmo-tool` crate holding the call protocol and the manifest schema as the host reads them; `sdk/ts-kit/` and `sdk/py-kit/`, the helpers a TypeScript or Python tool imports |
 | `tests/` | the checks that span the repository, and `tests/host-contract/`, the host held to what an installed CLI reads of it |
 
 ## Personal data

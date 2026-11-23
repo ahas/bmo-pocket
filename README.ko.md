@@ -8,8 +8,10 @@
 도구는 툴북을 통해 찾아 씁니다. 그래서 도구를 추가하거나 빼도 실행 중인 세션의 프롬프트 첫머리는 바뀌지 않습니다.
 하네스는 HTTP로, 또는 하네스 플러그인 `bmo-pocket mcp`를 통해 호스트에 접근합니다.
 
-이 저장소에는 도구 SDK도 있습니다. 모든 도구가 따르는 계약으로, Rust 도구는 이를 링크하고, TypeScript나 Python으로
-작성한 도구는 그 헬퍼를 가져다 씁니다.
+이 저장소에는 도구 SDK도 있습니다. 모든 도구가 따르는 계약, 곧 호스트가 읽는 호출 프로토콜과 매니페스트 스키마와,
+TypeScript나 Python으로 작성한 도구가 지니고 다니는 파일 하나짜리 헬퍼입니다.
+
+도구를 만들고 시험하고 배포 없이 올리는 방법은 `docs/authoring.md`에 있습니다.
 
 ## 구성
 
@@ -18,11 +20,12 @@
 | `client/` | 제어 소켓의 클라이언트입니다. `docs/openapi.json`을 생성하는 Rust 크레이트 `bmo-pocket-client`와, 그 문서에서 생성한 TypeScript 패키지 `@bmo/pocket-client`가 있습니다 |
 | `console/` | 호스트의 화면을 담은 콘솔 번들 `bmo-pocket-console`입니다. 들여온 고정 bmo-ui 릴리스 위에 만들어져 콘솔 화면이 제공하는 파일로 빌드되며, 매니페스트에 대한 호스트의 선언도 여기 있습니다(`docs/api.md`, 「The console face」) |
 | `deploy/` | 배포가 배포 트리에서 링크하는 호스트의 사용자 유닛 `bmo-mcp-host.service`입니다 |
-| `docs/` | 기준 문서입니다. 호스트(`mcp-host.md`), 툴북(`toolbook.md`), 레지스트리(`registry.md`), 다른 모든 유닛이 맞추는 경계(`api.md`)와 그 OpenAPI 문서(`openapi.json`)가 있습니다 |
+| `docs/` | 기준 문서입니다. 도구 만들기(`authoring.md`), 호스트(`mcp-host.md`), 툴북(`toolbook.md`), 레지스트리(`registry.md`), 다른 모든 유닛이 맞추는 경계(`api.md`)와 그 OpenAPI 문서(`openapi.json`)가 있습니다 |
+| `examples/` | Rust, TypeScript, Python으로 각각 작성한 예제 도구 하나이며, 저장소의 테스트가 각각을 올리고 호출합니다 |
 | `host/` | 도구 호스트 `mcp-host`와 명령 `bmo-pocket`(레지스트리의 서브커맨드와 `mcp`)이며, 테스트는 `host/tests/`에 있습니다 |
 | `plugin/` | 하네스 플러그인 `bmo-pocket-plugin`입니다. `bmo-pocket mcp`가 제공하는 MCP 서버와 `bmo-pocket` 스킬이 있습니다 |
 | `prompts/` | 호스트가 제공하는 프롬프트 텍스트 `tool-use.md`입니다. 세션의 시스템 프롬프트에 들어가는, 도구를 찾고 쓰는 방법에 관한 단락입니다 |
-| `sdk/` | 도구 SDK입니다. Rust 도구가 링크하는, 호출 프로토콜과 매니페스트 스키마를 담은 `bmo-tool` 크레이트 `sdk/contract/`, 그리고 TypeScript나 Python 도구가 가져다 쓰는 헬퍼 `sdk/ts-kit/`과 `sdk/py-kit/`이 있습니다 |
+| `sdk/` | 도구 SDK입니다. 호스트가 읽는 호출 프로토콜과 매니페스트 스키마를 담은 `bmo-tool` 크레이트 `sdk/contract/`, 그리고 TypeScript나 Python 도구가 가져다 쓰는 헬퍼 `sdk/ts-kit/`과 `sdk/py-kit/`이 있습니다 |
 | `tests/` | 저장소 전체에 걸친 검사와, 설치된 CLI가 호스트에서 읽어 가는 것에 호스트를 맞추는 `tests/host-contract/`가 있습니다 |
 
 ## 개인정보

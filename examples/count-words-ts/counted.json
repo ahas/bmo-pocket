@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "words": { "type": "integer", "description": "How many pieces between whitespace the text holds." },
+    "characters": { "type": "integer", "description": "How many Unicode code points the text holds." }
+  },
+  "required": ["words", "characters"]
+}

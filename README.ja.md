@@ -9,8 +9,10 @@
 ツールを追加したり外したりしても、実行中のセッションのプロンプトの冒頭は変わりません。ハーネスは HTTP で、または
 ハーネスプラグイン `bmo-pocket mcp` を通じてホストにアクセスします。
 
-このリポジトリにはツール SDK も含まれています。すべてのツールが従う契約で、Rust のツールはこれをリンクし、
-TypeScript や Python で書かれたツールはそのヘルパーをインポートします。
+このリポジトリにはツール SDK も含まれています。すべてのツールが従う契約、つまりホストが読む呼び出しプロトコルと
+マニフェストスキーマと、TypeScript や Python で書かれたツールが持ち歩く 1 ファイルのヘルパーです。
+
+ツールを作り、試し、デプロイなしで公開する方法は `docs/authoring.md` にあります。
 
 ## 構成
 
@@ -19,11 +21,12 @@ TypeScript や Python で書かれたツールはそのヘルパーをインポ�
 | `client/` | 制御ソケットのクライアントです。`docs/openapi.json` を生成する Rust クレート `bmo-pocket-client` と、そこから生成される TypeScript パッケージ `@bmo/pocket-client` があります |
 | `console/` | ホストの画面をまとめたコンソールバンドル `bmo-pocket-console` です。取り込んだ固定の bmo-ui リリースの上に作られ、コンソール画面が配信するファイルとしてビルドされます。マニフェストに関するホストの宣言もここにあります(`docs/api.md`、「The console face」) |
 | `deploy/` | デプロイがデプロイツリーからリンクするホストのユーザーユニット `bmo-mcp-host.service` です |
-| `docs/` | 正典となるドキュメントです。ホスト(`mcp-host.md`)、ツールブック(`toolbook.md`)、レジストリ(`registry.md`)、他のすべてのユニットが合わせる境界(`api.md`)とその OpenAPI ドキュメント(`openapi.json`)があります |
+| `docs/` | 正典となるドキュメントです。ツールの作り方(`authoring.md`)、ホスト(`mcp-host.md`)、ツールブック(`toolbook.md`)、レジストリ(`registry.md`)、他のすべてのユニットが合わせる境界(`api.md`)とその OpenAPI ドキュメント(`openapi.json`)があります |
+| `examples/` | Rust、TypeScript、Python でそれぞれ書かれた例のツールで、リポジトリのテストがそれぞれを登録して呼び出します |
 | `host/` | ツールホスト `mcp-host` とコマンド `bmo-pocket`(レジストリのサブコマンドと `mcp`)で、テストは `host/tests/` にあります |
 | `plugin/` | ハーネスプラグイン `bmo-pocket-plugin` です。`bmo-pocket mcp` が提供する MCP サーバーと `bmo-pocket` スキルがあります |
 | `prompts/` | ホストが配信するプロンプトテキスト `tool-use.md` です。セッションのシステムプロンプトに含まれる、ツールの探し方と使い方の段落です |
-| `sdk/` | ツール SDK です。Rust のツールがリンクする、呼び出しプロトコルとマニフェストスキーマを持つ `bmo-tool` クレート `sdk/contract/`、そして TypeScript や Python のツールがインポートするヘルパー `sdk/ts-kit/` と `sdk/py-kit/` があります |
+| `sdk/` | ツール SDK です。ホストが読む呼び出しプロトコルとマニフェストスキーマを持つ `bmo-tool` クレート `sdk/contract/`、そして TypeScript や Python のツールがインポートするヘルパー `sdk/ts-kit/` と `sdk/py-kit/` があります |
 | `tests/` | リポジトリ全体にまたがる検査と、インストール済みの CLI がホストから読み取る内容にホストを合わせる `tests/host-contract/` があります |
 
 ## 個人データ

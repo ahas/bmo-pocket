@@ -1,0 +1,24 @@
+[package]
+name = "count-words-rust"
+description = "The example tool in Rust: one entry counting the words and characters of a text."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+# One test target, the harness at tests/main.rs (bmo-chat's docs/conventions.md, 「Rust builds」).
+autotests = false
+
+# The executable holds no tests of its own; the library holds the answer it writes.
+[[bin]]
+name = "count-words-rust"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+# The handed object read and the answer written, with no crate of another repository's: a Rust tool speaks the
+# call protocol through a JSON library of its own choosing.
+serde_json.workspace = true
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

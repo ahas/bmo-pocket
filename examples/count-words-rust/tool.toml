@@ -1,0 +1,22 @@
+# The example tool in Rust (docs/authoring.md): one entry answering how many words and characters a text holds, as
+# text and as the object its output schema states. A put runs the build, which compiles the executable into the
+# registry's own Cargo target folder and puts it into the new version; the manifest and its schemas are copied
+# beside it.
+
+[tool]
+name = "count-words-rust"
+protocol = 1
+language = "rust"
+build = 'CARGO_TARGET_DIR="$BMO_CARGO_TARGET" cargo build --release --locked -p count-words-rust && cp "$BMO_CARGO_TARGET/release/count-words-rust" "$BMO_TOOL_OUT/"'
+check = "cargo test -p count-words-rust"
+run = ["count-words-rust"]
+
+[[entry]]
+namespace = "example"
+name = "count_words_rust"
+title = "Count words"
+description = "Counts the words and the characters of a text: words are its pieces between whitespace, characters its Unicode code points."
+input = "count.json"
+output = "counted.json"
+hints = { read_only = true, idempotent = true }
+capabilities = ["example.read"]

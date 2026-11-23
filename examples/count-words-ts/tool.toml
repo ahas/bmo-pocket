@@ -1,0 +1,20 @@
+# The example tool in TypeScript (docs/authoring.md): one entry answering how many words and characters a text
+# holds, as text and as the object its output schema states. It has no build, so a put copies the folder whole and
+# the host runs the script with Bun, beside the copy of the TypeScript kit it imports.
+
+[tool]
+name = "count-words-ts"
+protocol = 1
+language = "typescript"
+check = "bun test"
+run = ["bun", "count.ts"]
+
+[[entry]]
+namespace = "example"
+name = "count_words_ts"
+title = "Count words"
+description = "Counts the words and the characters of a text: words are its pieces between whitespace, characters its Unicode code points."
+input = "count.json"
+output = "counted.json"
+hints = { read_only = true, idempotent = true }
+capabilities = ["example.read"]

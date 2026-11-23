@@ -1,6 +1,6 @@
 ---
 name: bmo-pocket
-description: Reach the tools a tool host holds for one tool session with the bmo-pocket MCP server. Use when a harness is handed a tool session token for a tool host, when looking for a tool among the namespaces that session may use, when calling one, or when building, testing or debugging a tool placed on the host.
+description: Reach the tools a tool host holds for one tool session with the bmo-pocket MCP server. Use when a harness is handed a tool session token for a tool host, when looking for a tool among the namespaces that session may use, when calling one, or when making, testing, putting or debugging a tool the host serves.
 ---
 
 # bmo-pocket
@@ -47,6 +47,24 @@ name. They stand in `pocket_tools`, and `pocket_call` reaches them.
 2. Where a tool is not listed, `pocket_namespaces` then `pocket_tools` find it, and `pocket_tool` shows what it
    takes.
 3. Call it by its own name, or with `pocket_call`.
+
+## Making a tool
+
+A tool is made where the same kind of work keeps coming back and no tool the host serves does it. The tool host's
+`docs/authoring.md` in the bmo-pocket repository is the guide: where a tool stands, its manifest field by field,
+its schemas, the namespace, capabilities and grants that decide who sees it, the call protocol, and a working
+example in each of Rust, TypeScript and Python under `examples/` to start from. Test it with its own check and
+through a scratch host as the guide says, then:
+
+- `bmo pocket put <folder | git address> --allow <capability>…` places it, served from the next call with no
+  restart. Each `--allow` names one capability or grant the tool may ask for; the put refuses, naming them, those
+  not allowed. Putting the same name again is the upgrade.
+- `bmo pocket list` prints every registered tool, its version and where it came from; `bmo tool call
+  <namespace>/<name> '<arguments>'` tries the live tool.
+- `bmo pocket take <name>` takes it out again. Going back to an earlier version is putting the earlier source.
+
+A service's own tool stands in that service's `tools/` folder and is put by its deployment, not by hand; a run
+writing a tool's code commits it and puts nothing.
 
 ## When a tool answers an error
 

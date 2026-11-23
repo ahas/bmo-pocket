@@ -281,6 +281,8 @@ issues it and keeps it standing, and the process reads its token from the file t
 
 - **`tool.toml`, read by the tool contract crate `bmo-tool`** (`sdk/contract/`), which the host and `bmo-pocket`
   both link. Its schema is stated in full in `docs/api.md` (「The manifest」).
+- **How a tool is written, tested and put** is `docs/authoring.md`, with an example tool in each of Rust,
+  TypeScript and Python under `examples/`.
 
 ### A call
 
@@ -525,7 +527,8 @@ issues it and keeps it standing, and the process reads its token from the file t
   tool of the session's namespaces under the name `<namespace>_<name>`, read afresh at each `tools/list`. A tool
   placed or taken away is in or out of its next list.
 - **The `bmo-pocket` skill** tells a harness what the plugin is for, how to start it with a token, which tool reads
-  what, and how a refusal reads.
+  what, how a refusal reads, and where making a tool is said (`docs/authoring.md`), with the verbs that put, list
+  and take one.
 
 ## Tests
 
@@ -558,6 +561,11 @@ issues it and keeps it standing, and the process reads its token from the file t
   the host's process the same one throughout. A shared helper, registered, serves one record's calls and no
   other's and ends with the record; a server tool is spoken to over MCP and keeps one process across a record's
   calls. A manifest that does not read is said in the log and leaves the rest served.
+- **The examples:** every example tool under `examples/` is put from its folder into a scratch registry, its build
+  run where it has one, and called through the host under a record holding its capability, each answering the
+  same count; a put that does not allow the capability it asks for is refused naming it and places nothing;
+  arguments that do not fit its schema are refused before it runs; each example's own check passes in its folder;
+  and the Python and TypeScript examples carry their language's kit as the kit stands.
 - **External servers:** a stand-in stdio MCP server, registered by configuration, has its tools listed by the
   toolbook under the registration's namespace for a record holding its capability and for no other, a camel-cased
   name made an entry's, a manual described, a read-only tool called through `call` and a tool its annotations do

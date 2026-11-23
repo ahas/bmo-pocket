@@ -1,8 +1,9 @@
 # The workspace: the tool host under `host/`, the tool contract every Rust tool is written to under
-# `sdk/contract/`, the control socket's client under `client/`, the harness plugin under `plugin/`, and the
-# repository's own package at the root, which holds the checks that span the repository in `tests/`.
+# `sdk/contract/`, the control socket's client under `client/`, the harness plugin under `plugin/`, the example
+# tool in Rust under `examples/count-words-rust/`, and the repository's own package at the root, which holds the
+# checks that span the repository in `tests/`, the example tools put and called among them.
 [workspace]
-members = ["client", "host", "plugin", "sdk/contract"]
+members = ["client", "examples/count-words-rust", "host", "plugin", "sdk/contract"]
 resolver = "3"
 
 [workspace.package]
@@ -52,8 +53,16 @@ publish.workspace = true
 autotests = false
 
 [dev-dependencies]
-# The workspace's packages as `cargo metadata` answers them, and the other manifests a project carries.
+# The session record the example tools are called under.
+bmo-tool = { path = "sdk/contract" }
+# The registry and the host the example tools are put into and called through, as `bmo-pocket put` and a session
+# reach them.
+mcp-host = { path = "host" }
+# The workspace's packages as `cargo metadata` answers them, the other manifests a project carries, and the example
+# tools' answers.
 serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
 toml.workspace = true
 
 [[test]]

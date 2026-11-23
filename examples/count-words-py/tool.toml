@@ -1,0 +1,21 @@
+# The example tool in Python (docs/authoring.md): one entry answering how many words and characters a text holds,
+# as text and as the object its output schema states. It has no build, so a put copies the folder whole: the
+# executable, the copy of the Python kit it imports, the schemas and the manual.
+
+[tool]
+name = "count-words-py"
+protocol = 1
+language = "python"
+check = "python3 -m unittest discover -s . -p 'test_*.py' -v"
+run = ["python3", "count.py"]
+
+[[entry]]
+namespace = "example"
+name = "count_words_py"
+title = "Count words"
+description = "Counts the words and the characters of a text: words are its pieces between whitespace, characters its Unicode code points."
+manual = "manual.md"
+input = "count.json"
+output = "counted.json"
+hints = { read_only = true, idempotent = true }
+capabilities = ["example.read"]
