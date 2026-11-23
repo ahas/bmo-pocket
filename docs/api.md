@@ -4,7 +4,8 @@
 unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
 served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
 tables, its files or its process. The host calls no other unit; a console reaches it on the console face alone
-(「The console face」). How the host behaves behind these contracts is
+(「The console face」), and `bmo-pocket put` declares a tool's app on the account service's delegation chain (「The
+CLI」, 「An app on the delegation chain」). How the host behaves behind these contracts is
 `docs/mcp-host.md` and `docs/toolbook.md`; how tools are installed is `docs/registry.md`.
 
 ## Version
@@ -33,7 +34,7 @@ tables, its files or its process. The host calls no other unit; a console reache
 |---|---|---|
 | 400 | `bad-request` | a body or a query that does not read as the route takes it: a session record, a call, a claim, a cursor or a `limit` that is not a positive integer; the sentence names what is wrong |
 | 401 | `unauthorized` | a request carries no bearer token, or one naming neither the issuer token nor a tool session: never issued, revoked, or past its `expiresAt`; on the console face, one that is not the console token |
-| 403 | `forbidden` | the token is right but may not do this: a tool-session token on an issuer's route, or a call whose entry declares a grant the session's grants do not hold, the sentence naming the missing grant; on the console face, a route the screen uses asked with no `Owner-Role` allowing the screen's role |
+| 403 | `forbidden` | the token is right but may not do this: a tool-session token on an issuer's route, a call whose entry declares a grant the session's grants do not hold, the sentence naming the missing grant, or a call of an entry whose app the session's record withholds, the sentence saying it is turned off by the organisation's settings; on the console face, a route the screen uses asked with no `Owner-Role` allowing the screen's role |
 | 404 | `not-found` | the route is right, but the namespace, the entry or the tool session its path or body names is not one the token sees; on the console face, the manifest, the words or a bundle file where the host holds no bundle or no file of that name |
 | 404 | `no-route` | no route answers the method and path |
 | 410 | `gone` | `GET /events`, where an event after the cursor is no longer held: one older than the window the host holds, or a cursor of an earlier run of the host (「Events」) |
@@ -437,6 +438,7 @@ ignored. The issuer states in it everything the host checks a call against, so t
 | `entries` | array of strings or null | The full names of the only entries the session reaches, those for the system alone among them; every entry its namespaces and capabilities give it where absent or null |
 | `variables` | object of strings | Variables handed to every call's environment |
 | `variablesFile` | path | A file holding a JSON object of strings, read afresh at every call and laid over `variables` |
+| `withheldAppsFile` | path | A file holding the apps the session does not reach, `{"apps": [<key>…]}`, read afresh at every listing, description and call (`docs/mcp-host.md`, 「Apps」); every app reached where absent |
 | `labels` | object | The issuer's own metadata, handed to every call inside the record and never read by the host |
 | `ttlMs` | integer or null | How long the session stands, in the request alone; none stands until it is revoked |
 
@@ -454,6 +456,12 @@ The tool session answered, and the record a call is handed, carry the same field
 - **`entries` narrows every road to an entry:** a call, a claim, a listing, the toolbook and a schedule hold the
   session to the entries it names, and any other is unknown to it. The host alone checks it, so the record a tool
   is handed leaves it out (「What a tool is handed」).
+- **`withheldAppsFile` withholds whole apps:** every entry of a tool whose manifest names one of its apps
+  (「`[app]`」) is left out of the toolbook's `list` and the control socket's listings, and its description and
+  every call of it are refused saying it is turned off by the organisation's settings. A resident entry stays in
+  its namespace's tool list, so the session's prefix does not move, and its call is refused the same way. A file
+  that does not stand or does not read withholds every app, said in the host's log. The host alone reads it, so the
+  record a tool is handed leaves it out.
 - **A record holds no path, address or value of the issuer's own** beyond these. What a tool reads of the issuer's
   is in `variables`, `variablesFile` or `labels`, as the issuer puts it there.
 
@@ -679,6 +687,38 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 - **`[[entry.schedule]]`:** a time the host calls the entry by itself (「Schedules」): `cron`, the pattern, and
   `arguments`, the table each call is handed, none by default.
 
+### `[app]`
+
+The app the tool belongs to, where it is one (`docs/mcp-host.md`, 「Apps」). A tool without it is part of the
+system and is never withheld.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `key` | string, required | The app's key: a lower-case letter, then lower-case letters, digits and `-`, at most 50 characters. Every tool and screen naming the same key is one app |
+| `name` | string, required | The name a screen shows it by |
+| `description` | string, required | What it is for, one or two sentences |
+| `icon` | string | The icon a screen shows it by |
+| `offered` | boolean | Whether it is offered everywhere no link of the delegation chain says otherwise; true by default |
+| `on` | boolean | Whether it is on wherever it is offered and no link says otherwise; true by default |
+
+### An app on the delegation chain
+
+- **`put` declares each app's two settings on the account service** (bmo-web's `docs/accounts.md`, 「The
+  delegation chain」) before it places anything, with `PUT /chain/kinds/{key}` and `declaredBy` `pocket`:
+
+| Kind | Shape and mode | Default | Rules | Levels and writers |
+|---|---|---|---|---|
+| `app.<key>.offered` | a flag, `narrowing`: no link below widens what a link above offers | the manifest's `offered` | yes | the platform and units; `manage` |
+| `app.<key>.on` | a flag, `nearest`: the nearest link that says decides, a lock above holding | the manifest's `on` | yes | the platform, units and people; `manage`, written by the person and their heads (`both`) |
+
+- **Each declaration's `description`** is the app's name and description, for a screen to show.
+- **A put refused by the account service, or one with no account service named, places nothing** and says why.
+  The account service is the one `WEB_ADDRESS` names with the token `WEB_TOKEN`, or the file `WEB_TOKEN_FILE`
+  names, each read from `bmo-pocket`'s environment and else from `env/web.env` under the data root, a file of
+  `KEY=VALUE` lines whose value stands verbatim after its first `=`. It is reached over plain HTTP.
+- **What resolves the settings is not the host's.** A session's issuer reads both for the person the session acts
+  for and names the apps that are not both offered and on in the record's `withheldAppsFile`.
+
 ### The other tables
 
 - **`[resources]`:** `namespace`, the namespace its executable serves resources under, and `capabilities`, what a
@@ -697,6 +737,8 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 - A schedule whose pattern does not read.
 - Resources naming no namespace or no capability; a server tool declaring claims or resources.
 - An entry whose full name another tool already holds.
+- An `[app]` whose key is outside its alphabet or longer than 50 characters, or whose name or description is empty;
+  an `[app]` in a shared helper's manifest.
 
 ## The registration of an external server
 
@@ -818,7 +860,9 @@ name is refused, naming it.
 - **What `put` checks before anything is placed:** the manifest reads (「The manifest」); its name is no other
   kind's registration, and each of its entries' full names is held by no other registered tool; and every
   capability and grant it asks for is named by an `--allow`. It prints each one asked for, and each schedule the
-  tool declares, and refuses naming those not allowed.
+  tool declares, and refuses naming those not allowed. Where the manifest names an `[app]`, it then declares the
+  app's two settings on the delegation chain (「An app on the delegation chain」), prints each, and refuses where
+  the account service does not take them.
 - **What `put` places:** it runs the manifest's `build` with `BMO_TOOL_OUT` naming a new version folder and
   `BMO_CARGO_TARGET` a build folder of its own, and copies the manifest and its schema files beside what the build
   put there; with no `build`, or with `--placed` for a folder a service's deployment already built, it copies the

@@ -9,7 +9,7 @@
 - **The host tells sessions apart by the token alone.** Each token is bound to a tool session's record, in which the
   issuer states everything a call is checked against and everything a tool reads of it: the namespaces, the
   capabilities and the grants it holds, which entries it is shown by name and, where it narrows them, which alone it
-  reaches, and the variables and labels its tools are handed (「The session record」).
+  reaches, which apps it does not reach, and the variables and labels its tools are handed (「The session record」).
 - **The host asks no other unit.** What a session may do is what its record carries, so no call waits on an
   account or permission service.
 - **Every tool is placed or registered as an external server:** a folder holding a built tool and its manifest,
@@ -69,6 +69,34 @@ flowchart TD
   toolbook, served at `/mcp/toolbook` beside the namespaces, lists, describes and calls the rest by the same
   dispatch a direct call takes.
 
+## Apps
+
+- **An app is a tool, or several, that people may have turned on or off,** each declaring it in its manifest's
+  `[app]` (`docs/api.md`, 「`[app]`」): its key, its name, its description, its icon and whether it is offered and
+  on where nobody says otherwise. A screen of a unit's console bundle naming the same key is part of the same app.
+- **A tool naming no app is part of the system** — the rooms, sending, the brain, the jobs, a node's commands, the
+  procedures — and is reached by its capabilities alone; no setting withholds it.
+- **Whether an app reaches a person is the delegation chain's,** two settings per app the account service keeps,
+  which `bmo-pocket put` declares from the manifest (`docs/api.md`, 「An app on the delegation chain」): offered,
+  which a link below can only narrow, and on, which the nearest link decides. An app reaches a person where it is
+  both.
+- **The host reads neither.** A session's issuer resolves them for the person the session acts for and writes the
+  apps that do not reach them into the file the record's `withheldAppsFile` names, rewriting it as the person's
+  settings move; the host reads the file afresh at every listing, description and call, so what the issuer writes
+  holds from the session's next request. A file that does not stand or does not read withholds every app, said in
+  the host's log; a record naming none withholds nothing.
+- **A withheld app's entries:**
+  - are left out of the toolbook's `list`, the control socket's listings for the session's token and the claims;
+  - are refused by the toolbook's `describe` and on every road a call takes — by their own name, through the
+    toolbook, on the control socket, through a call-back socket and asynchronously — saying the tool is turned off
+    by the organisation's settings, before anything runs: 403 `forbidden` on the control socket, a failed tool
+    result elsewhere;
+  - stay in their namespace's tool list where the record shows them by name, so a session's prompt never moves
+    for a setting: the call is refused, and the issuer's next session shows them no more.
+- **A call in hand runs to its end;** a withheld app reaches the calls asked after the file says so.
+- **An app recalled at once,** for a fault that cannot wait for the settings to reach every session, is taken out of
+  the registry (`docs/registry.md`, 「Take and list」): its entries leave every session from the next reading.
+
 ## The session record
 
 - **Issued before the session starts,** over the host's control socket with the issuer token (「Tokens」). The
@@ -87,6 +115,8 @@ flowchart TD
   - `variables`, handed to every call's environment, and `variablesFile`, a file read afresh at every call and
     laid over them, so an issuer whose values move while the session stands rewrites the file rather than the
     record;
+  - `withheldAppsFile`, a file naming the apps the session does not reach, read afresh at every listing,
+    description and call (「Apps」); the host alone checks it, so the record a tool is handed leaves it out;
   - `labels`, the issuer's own metadata, handed to every call inside the record;
   - `expiresAt`, from the `ttlMs` the issuer asked for, and `createdAt`.
 - **Where it is kept:** one file per record in `tool-host/sessions/` under the data root, readable by the host's
@@ -543,6 +573,13 @@ issues it and keeps it standing, and the process reads its token from the file t
   is not shown it and is refused when it calls it.
 - **A record's entries:** a record naming `entries` holds and reaches those alone, an entry for the system alone
   among them, and the record its tool is handed leaves the list out.
+- **Apps:** a record whose withheld-apps file names an app is not shown that app's booked entries by the toolbook's
+  `list` or the control socket's listings and is refused its description and its calls on the tools face, through
+  the toolbook, on the control socket and through a call-back socket, saying it is turned off by the
+  organisation's settings, while a tool naming no app is listed and called as before; a resident entry of a
+  withheld app stays in its namespace's tool list and is refused when called; the file rewritten between two calls
+  of one session decides the second; a file that does not read withholds every app; and a manifest naming an
+  `[app]` outside its rules does not read.
 - **Held sessions:** a declaration is issued with its token written beside it, readable by the host's user alone,
   and kept under the same token across beats and a restart of the host; changed, or its session revoked by hand, it
   is issued afresh and the session before revoked; taken away, its session and token file go with it; and one

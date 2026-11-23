@@ -320,6 +320,7 @@ pub fn entries(
     resources: None,
     card: None,
     helper: None,
+    app: None,
   };
 
   (manifest, names, faults)

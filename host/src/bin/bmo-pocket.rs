@@ -211,6 +211,7 @@ fn main() -> ExitCode {
         service,
         placed,
         source,
+        chain: mcp_host::chain::Chain::named(&data_root),
       };
       let mut said = Vec::new();
       let registry = Registry::of(&data_root);

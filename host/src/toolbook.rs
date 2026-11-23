@@ -171,7 +171,7 @@ fn input<T: serde::de::DeserializeOwned>(tool: &str, arguments: Value) -> Result
 
 impl Toolbook {
   async fn list(&self, session: &Session, asked: ListInput) -> Result<CallToolResponse, ErrorData> {
-    let held = self.host.held(session);
+    let held = self.host.reached(session);
     let booked = listed(&held, asked.query.as_deref());
     let mut answer = if booked.is_empty() {
       Answer::text(match asked.query {
@@ -190,6 +190,7 @@ impl Toolbook {
 
   async fn describe(&self, session: &Session, asked: DescribeInput) -> Result<CallToolResponse, ErrorData> {
     match named(self.host.held(session), &asked.tool) {
+      Ok(entry) if entry.withheld() => answered(&Answer::failure(entry.turned_off())),
       Ok(entry) => {
         let mut answer = Answer::text(described(&entry));
 

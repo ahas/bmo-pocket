@@ -219,7 +219,7 @@ impl Caller {
   fn entries(&self, host: &Host) -> Vec<Entry> {
     match self {
       Self::Issuer => host.every(),
-      Self::Session(session) => host.held(session),
+      Self::Session(session) => host.reached(session),
     }
   }
 
@@ -462,6 +462,7 @@ async fn tool_call(
     Ok(result) => result,
     Err(Refusal::Misfit(why)) => return Err(HostError::ArgumentsMisfit(why)),
     Err(Refusal::Denied(why)) => return Err(HostError::GrantRefused(why)),
+    Err(Refusal::Withheld(why)) => return Err(HostError::Withheld(why)),
     Err(Refusal::Failed(why) | Refusal::Cancelled(why)) => return Err(HostError::ToolFailed(why)),
   };
   let result: ToolResult = serde_json::from_value(result)

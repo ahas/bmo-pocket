@@ -262,6 +262,7 @@ impl AsyncCalls {
           let (code, state) = match &refusal {
             Refusal::Misfit(_) => ("arguments-misfit", "refused"),
             Refusal::Denied(_) => ("grant-refused", "refused"),
+            Refusal::Withheld(_) => ("app-withheld", "refused"),
             Refusal::Failed(_) => ("tool-failed", "refused"),
             Refusal::Cancelled(_) => ("cancelled", "cancelled"),
           };

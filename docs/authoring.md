@@ -88,6 +88,21 @@ sets neither.
 An entry may also declare a bundle's narrower form, a listing line, facts, the addresses it claims and the times
 the host calls it by itself; `docs/api.md` states each table, and `docs/mcp-host.md` what the host does with it.
 
+### `[app]`
+
+| Key | What to set |
+|---|---|
+| `key` | Where the tool is something a company, a unit or a person may want off — a product of its own rather than a part of the system — the app's key: a lower-case letter, then lower-case letters, digits and `-`. A screen of the same work names the same key |
+| `name` | The name a person sees it by in the settings |
+| `description` | What it is for, one or two sentences |
+| `icon` | The icon a screen shows it by |
+| `offered` | `false` for an app made for some companies alone, which the platform's administrator then offers to them on the delegation chain; true otherwise |
+| `on` | `false` for an app a person turns on for themselves; true otherwise |
+
+A tool the system cannot work without names no app, and no setting ever withholds it. A put of a tool naming one
+declares its two settings on the account service's delegation chain (`docs/api.md`, 「An app on the delegation
+chain」), so the account service must be reachable where it is put.
+
 ## Entries and their schemas
 
 - **The input schema is a JSON Schema of an object,** one property per argument, each with a `description` the

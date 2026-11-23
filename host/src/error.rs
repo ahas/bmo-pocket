@@ -50,6 +50,9 @@ pub enum HostError {
   /// The session's grants do not hold the entry's grant; the sentence names it.
   #[error("{0}")]
   GrantRefused(String),
+  /// The entry's app is one the session's record withholds; the sentence says so.
+  #[error("{0}")]
+  Withheld(String),
   /// The tool failed before it answered a tool result; the sentence names how.
   #[error("{0}")]
   ToolFailed(String),
@@ -74,7 +77,9 @@ impl HostError {
   pub fn code(&self) -> ErrorCode {
     match self {
       Self::NoToken | Self::UnknownToken | Self::NotTheConsole => ErrorCode::Unauthorized,
-      Self::IssuerOnly | Self::SessionOnly | Self::GrantRefused(_) => ErrorCode::Forbidden,
+      Self::IssuerOnly | Self::SessionOnly | Self::GrantRefused(_) | Self::Withheld(_) => {
+        ErrorCode::Forbidden
+      }
       Self::UnknownNamespace(_) | Self::UnknownEntry(_) | Self::UnknownCall(_) | Self::UnknownSession => {
         ErrorCode::NotFound
       }

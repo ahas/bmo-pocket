@@ -518,6 +518,7 @@ export interface components {
                 [key: string]: string;
             };
             variablesFile?: string | null;
+            withheldAppsFile?: string | null;
         };
         /**
          * @description A tool session that stands, as `GET /tool-sessions` answers it: its holder, its record's reach and its times,

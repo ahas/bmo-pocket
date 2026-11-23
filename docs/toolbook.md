@@ -101,6 +101,8 @@
   - the session record is looked up by the token;
   - the tool must be one the session holds (its record names the tool's namespace and holds the tool's
     capabilities, or a bundle of it), or the call is refused as an unknown tool, by the same words either way;
+  - the tool's app, where it names one, must not be one the record withholds, or the call is refused saying it
+    is turned off by the organisation's settings;
   - for a tool declaring a grant, the record's grants must hold it (`docs/mcp-host.md`, 「Grants」);
   - the tool runs with the session's record and its answer is returned unchanged.
 - **A call takes as long as its tool does either way.** The toolbook adds no wait and no cut of its own, so an
@@ -113,6 +115,9 @@
 - **`call` handed a tool that acts** is refused with `act` named, before anything runs.
 - **`list` and `describe` show only what `call` and `act` would accept.** Each is built from the same session
   filter, so no listed tool is refused as unknown and no unlisted tool is callable.
+- **A tool of an app the record withholds** (`docs/mcp-host.md`, 「Apps」) is left out of `list`, and `describe`,
+  `call` and `act` refuse it saying it is turned off by the organisation's settings, read from the record's
+  withheld-apps file at that request.
 - **Every harness configuration names `toolbook` beside its namespaces,** at the host's `/mcp/toolbook`, with the
   same bearer header.
 - **A harness's allow list names servers, never single MCP tools.** A configuration that lets a harness reach a

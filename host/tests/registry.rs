@@ -707,3 +707,167 @@ fn the_command_says_what_it_did_and_ends_0_1_or_2_as_it_did_refused_or_could_not
   assert_eq!(String::from_utf8_lossy(&pocket(&["list"]).stdout), "No tool is registered.\n");
   assert_eq!(pocket(&["frobnicate"]).status.code(), Some(2));
 }
+
+// The account service standing in on a loopback port of its own: it keeps each declaration's path and body, and
+// answers each 200, or 409 where `refusing` says so.
+struct AccountService {
+  port: u16,
+  kept: Arc<std::sync::Mutex<Vec<(String, String, Value)>>>,
+}
+
+impl AccountService {
+  fn start(refusing: bool) -> Self {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let kept: Arc<std::sync::Mutex<Vec<(String, String, Value)>>> = Arc::default();
+    let keeping = kept.clone();
+
+    listener.set_nonblocking(true).unwrap();
+    std::thread::spawn(move || {
+      let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+
+      runtime.block_on(async move {
+        let listener = TcpListener::from_std(listener).unwrap();
+
+        loop {
+          let (stream, _) = listener.accept().await.unwrap();
+          let keeping = keeping.clone();
+          let answer = hyper::service::service_fn(move |asked: Request<hyper::body::Incoming>| {
+            let keeping = keeping.clone();
+
+            async move {
+              let path = asked.uri().path().to_owned();
+              let bearer = asked
+                .headers()
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_owned();
+              let body = asked.into_body().collect().await.map_err(std::io::Error::other)?.to_bytes();
+
+              keeping.lock().unwrap().push((
+                path,
+                bearer,
+                serde_json::from_slice(&body).unwrap_or(Value::Null),
+              ));
+
+              let (status, said) = if refusing {
+                (
+                  StatusCode::CONFLICT,
+                  json!({ "code": "kind-declared-elsewhere", "error": "declared by another unit" }),
+                )
+              } else {
+                (StatusCode::OK, json!({}))
+              };
+
+              Ok::<_, std::io::Error>(
+                http::Response::builder()
+                  .status(status)
+                  .body(Full::new(Bytes::from(said.to_string())))
+                  .unwrap(),
+              )
+            }
+          });
+
+          tokio::spawn(
+            hyper::server::conn::http1::Builder::new().serve_connection(TokioIo::new(stream), answer),
+          );
+        }
+      });
+    });
+
+    Self { port, kept }
+  }
+
+  fn chain(&self) -> mcp_host::chain::Chain {
+    mcp_host::chain::Chain {
+      address: format!("http://127.0.0.1:{}", self.port),
+      token: "chain-token".to_owned(),
+    }
+  }
+
+  fn kept(&self) -> Vec<(String, String, Value)> {
+    self.kept.lock().unwrap().clone()
+  }
+}
+
+// "An app on the delegation chain" (docs/api.md): a put of a tool naming an app declares its two settings, offered
+// narrowing at the platform and the units and on nearest down to the person, each with the manifest's default, and
+// places the tool; a put of a tool naming none declares nothing; and one whose account service refuses, or names
+// none, places nothing.
+#[test]
+fn a_put_of_an_apps_tool_declares_its_two_settings_on_the_delegation_chain_first() {
+  let scratch = Scratch::new();
+  let registry = scratch.registry();
+  let service = AccountService::start(false);
+  let app =
+    "[app]\nkey = \"almanac\"\nname = \"Almanac\"\ndescription = \"Says when to sow.\"\noffered = false\n";
+  let folder = scratch.source("almanac", &manifest("almanac", "sow_when", app, ""), "a");
+  let said = put(
+    &registry,
+    &Put {
+      chain: Some(service.chain()),
+      ..put_of(folder.to_string_lossy())
+    },
+  )
+  .unwrap();
+
+  assert!(
+    said
+      .iter()
+      .any(|line| line == "declared the setting app.almanac.offered on the delegation chain")
+  );
+  assert!(registry.get("almanac").is_some());
+
+  let kept = service.kept();
+  let (offered, on) = (&kept[0], &kept[1]);
+
+  assert_eq!(kept.len(), 2);
+  assert_eq!(offered.0, "/chain/kinds/app.almanac.offered");
+  assert_eq!(offered.1, "Bearer chain-token");
+  assert_eq!(offered.2["declaredBy"], "pocket");
+  assert_eq!(offered.2["mode"], "narrowing");
+  assert_eq!(offered.2["default"], false);
+  assert_eq!(offered.2["levels"], json!(["platform", "unit"]));
+  assert!(offered.2["description"].as_str().unwrap().contains("Almanac: Says when to sow."));
+  assert_eq!(on.0, "/chain/kinds/app.almanac.on");
+  assert_eq!(on.2["mode"], "nearest");
+  assert_eq!(on.2["default"], true);
+  assert_eq!(on.2["levels"], json!(["platform", "unit", "person"]));
+  assert_eq!(on.2["personWriter"], "both");
+
+  // A tool naming no app declares nothing.
+  put(
+    &registry,
+    &Put {
+      chain: Some(service.chain()),
+      ..put_of(scratch.echo("plain", "plain_echo", "p").to_string_lossy())
+    },
+  )
+  .unwrap();
+  assert_eq!(service.kept().len(), 2);
+
+  // Refused by the account service, or with none named, nothing is placed.
+  let other = scratch.source("sower", &manifest("sower", "sow_where", app, ""), "s");
+  let refusing = AccountService::start(true);
+  let refused = put(
+    &registry,
+    &Put {
+      chain: Some(refusing.chain()),
+      ..put_of(other.to_string_lossy())
+    },
+  )
+  .unwrap_err();
+
+  assert!(
+    refused.contains("did not take the setting app.almanac.offered") && refused.contains("409"),
+    "{refused}"
+  );
+  assert!(registry.get("sower").is_none());
+  assert!(
+    put(&registry, &put_of(other.to_string_lossy()))
+      .unwrap_err()
+      .contains("no account service is named")
+  );
+  assert!(registry.get("sower").is_none());
+}

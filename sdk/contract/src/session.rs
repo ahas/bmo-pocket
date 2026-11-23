@@ -44,6 +44,10 @@ pub struct Session {
   /// A file holding a JSON object of strings, read afresh at every call and laid over `variables`.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub variables_file: Option<PathBuf>,
+  /// A file naming the apps the session does not reach, read afresh at every listing, description and call. The
+  /// host alone checks it, so a tool is handed the record without it.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub withheld_apps_file: Option<PathBuf>,
   /// The issuer's own metadata, handed to every call and never read by the host.
   #[serde(default, skip_serializing_if = "Map::is_empty")]
   pub labels: Map<String, Value>,
@@ -97,6 +101,53 @@ impl Session {
     serde_json::from_str(&text)
       .map_err(|why| format!("its variables file {} is no object of strings: {why}", file.display()))
   }
+
+  /// The apps the session does not reach, read afresh from its `withheldAppsFile`: none where it names no file,
+  /// and why where the file does not stand or does not read as `{"apps": [<key>…]}`, which its reader takes as
+  /// every app withheld.
+  pub fn withheld_apps(&self) -> Result<Withheld, String> {
+    let Some(file) = &self.withheld_apps_file else {
+      return Ok(Withheld::default());
+    };
+    let text = std::fs::read_to_string(file)
+      .map_err(|why| format!("its withheld-apps file {}: {why}", file.display()))?;
+    let read: WithheldFile = serde_json::from_str(&text)
+      .map_err(|why| format!("its withheld-apps file {} does not read: {why}", file.display()))?;
+
+    Ok(Withheld::Some(read.apps))
+  }
+}
+
+/// The apps a session does not reach.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Withheld {
+  /// Those named.
+  Some(BTreeSet<String>),
+  /// Every app: its file did not read.
+  Every,
+}
+
+impl Default for Withheld {
+  fn default() -> Self {
+    Self::Some(BTreeSet::new())
+  }
+}
+
+impl Withheld {
+  /// Whether the app of this key is withheld.
+  pub fn holds(&self, app: &str) -> bool {
+    match self {
+      Self::Some(apps) => apps.contains(app),
+      Self::Every => true,
+    }
+  }
+}
+
+/// A withheld-apps file as its issuer writes it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WithheldFile {
+  apps: BTreeSet<String>,
 }
 
 /// What an issuer asks a session to be issued with: the record less the times the host answers, and how long
@@ -116,6 +167,8 @@ pub struct SessionRequest {
   pub variables: BTreeMap<String, String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub variables_file: Option<PathBuf>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub withheld_apps_file: Option<PathBuf>,
   #[serde(default, skip_serializing_if = "Map::is_empty")]
   pub labels: Map<String, Value>,
   /// How long the session stands, in milliseconds; none stands until it is revoked.
@@ -135,6 +188,7 @@ impl SessionRequest {
       entries: self.entries,
       variables: self.variables,
       variables_file: self.variables_file,
+      withheld_apps_file: self.withheld_apps_file,
       labels: self.labels,
       expires_at: self.ttl_ms.map(|ttl| now.saturating_add(ttl)),
       created_at: now,

@@ -11,6 +11,7 @@ use std::process::Command;
 
 use bmo_tool::manifest::{MANIFEST, Manifest};
 
+use crate::chain::Chain;
 use crate::external::{REGISTRATION, Registration};
 use crate::placed::schema_faults;
 use crate::records::now_ms;
@@ -29,6 +30,8 @@ pub struct Put {
   pub placed: bool,
   /// The source template a bare name is put from, `{repo}` in it standing for `bmo-<name>`.
   pub source: Option<String>,
+  /// The account service a tool's app declares its settings on; a tool naming an app is refused without one.
+  pub chain: Option<Chain>,
 }
 
 /// The placeholder of the source template.
@@ -318,6 +321,19 @@ pub fn put(registry: &Registry, asked: &Put, said: &mut Vec<String>) -> Result<(
   }
 
   clash(registry, &name, &manifest)?;
+
+  // The app's settings stand on the delegation chain before its tool is served, so no session is ever handed an
+  // app whose settings nobody can resolve (docs/api.md, 「An app on the delegation chain」).
+  if let Some(app) = &manifest.app {
+    let Some(chain) = &asked.chain else {
+      return Err(format!(
+        "{name} belongs to the app {}, whose settings could not be declared: no account service is named",
+        app.key
+      ));
+    };
+
+    said.extend(chain.declare(app).map_err(|why| format!("{name}: {why}"))?);
+  }
 
   let version = fresh();
   let staged = registry.versions().join(&name).join(format!(".staging-{version}"));

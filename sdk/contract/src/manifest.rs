@@ -240,6 +240,39 @@ pub struct HelperPart {
   pub description: String,
 }
 
+/// The app a tool belongs to, where it is one a company, a unit or a person may have off (docs/mcp-host.md,
+/// 「Apps」). A tool naming none is part of the system and is never withheld.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AppPart {
+  /// The app's key, which every tool and screen of the app names.
+  pub key: String,
+  pub name: String,
+  pub description: String,
+  #[serde(default)]
+  pub icon: Option<String>,
+  /// Whether it is offered where no link of the delegation chain says otherwise.
+  #[serde(default = "yes")]
+  pub offered: bool,
+  /// Whether it is on where it is offered and no link says otherwise.
+  #[serde(default = "yes")]
+  pub on: bool,
+}
+
+fn yes() -> bool {
+  true
+}
+
+/// The longest key an app may have, so its settings' kind keys stay within the delegation chain's 64 characters.
+pub const APP_KEY_MOST: usize = 50;
+
+/// An app's key: a lower-case letter, then lower-case letters, digits and `-`, at most [`APP_KEY_MOST`] of them.
+pub fn app_key(key: &str) -> bool {
+  key.len() <= APP_KEY_MOST
+    && key.chars().next().is_some_and(|first| first.is_ascii_lowercase())
+    && key.chars().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == '-')
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Written {
@@ -252,6 +285,8 @@ struct Written {
   card: Option<toml::Table>,
   #[serde(default)]
   helper: Option<HelperPart>,
+  #[serde(default)]
+  app: Option<AppPart>,
 }
 
 /// One tool's manifest, read and held to its rules, its schemas read beside it.
@@ -264,6 +299,8 @@ pub struct Manifest {
   pub card: Option<toml::Table>,
   /// Present in a shared helper's manifest alone.
   pub helper: Option<HelperPart>,
+  /// The app the tool belongs to, where it is one.
+  pub app: Option<AppPart>,
 }
 
 /// A name a session calls an entry by: lower-case letters, digits and underscores.
@@ -323,6 +360,7 @@ impl Manifest {
       resources: written.resources,
       card: written.card,
       helper: written.helper,
+      app: written.app,
     };
 
     manifest.faults(folder)?;
@@ -362,6 +400,20 @@ impl Manifest {
         return Err("it has neither an entry nor resources".to_owned());
       }
       _ => {}
+    }
+
+    if let Some(app) = &self.app {
+      if self.helper.is_some() {
+        return Err("a shared helper belongs to no app".to_owned());
+      }
+
+      if !app_key(&app.key) {
+        return Err(format!("`{}` is no app's key", app.key));
+      }
+
+      if app.name.trim().is_empty() || app.description.trim().is_empty() {
+        return Err(format!("the app `{}` has no name or no description", app.key));
+      }
     }
 
     let mut seen = BTreeSet::new();

@@ -3,6 +3,7 @@
 
 pub mod async_calls;
 pub mod caller;
+pub mod chain;
 pub mod command;
 pub mod console;
 pub mod drain;

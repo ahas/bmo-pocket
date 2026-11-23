@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bmo_pocket_client::{Listing, ReachedBy, Tool, ToolHints};
 use bmo_tool::manifest::Entry as Declared;
 use bmo_tool::protocol::Asked;
-use bmo_tool::{Answer, Held, Hints, Session, narrowed};
+use bmo_tool::{Answer, Held, Hints, Session, Withheld, narrowed};
 use rmcp::model::{
   CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, InitializeRequestParams,
   InitializeResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
@@ -57,6 +57,8 @@ pub struct Entry {
   bundle: Option<String>,
   /// Whether the record of the session holding it lists it by name.
   shown: bool,
+  /// Whether its app is one the record of the session holding it withholds.
+  withheld: bool,
 }
 
 impl Entry {
@@ -82,6 +84,20 @@ impl Entry {
   /// is booked.
   pub fn resident(&self) -> bool {
     self.shown
+  }
+
+  /// Whether its app is one the session holding it does not reach: left out of every listing but its
+  /// namespace's resident list, and refused its description and its calls (docs/mcp-host.md, 「Apps」).
+  pub fn withheld(&self) -> bool {
+    self.withheld
+  }
+
+  /// The words its description and its calls are refused with while its app is withheld.
+  pub fn turned_off(&self) -> String {
+    format!(
+      "{} is turned off for this session by the organisation's settings: its app is not offered or not on here.",
+      self.full_name()
+    )
   }
 
   /// Whether it is for the system alone, never shown to a session.
@@ -219,6 +235,7 @@ impl Entry {
 pub enum Refusal {
   Misfit(String),
   Denied(String),
+  Withheld(String),
   Failed(String),
   Cancelled(String),
 }
@@ -227,7 +244,11 @@ impl Refusal {
   /// The sentence it is said with.
   pub fn said(&self) -> &str {
     match self {
-      Self::Misfit(said) | Self::Denied(said) | Self::Failed(said) | Self::Cancelled(said) => said,
+      Self::Misfit(said)
+      | Self::Denied(said)
+      | Self::Withheld(said)
+      | Self::Failed(said)
+      | Self::Cancelled(said) => said,
     }
   }
 }
@@ -248,6 +269,15 @@ fn placed_held(declared: &Declared, session: &Session) -> Option<(Held, Option<S
     .keys()
     .find(|bundle| session.holds(&[bundle]))
     .map(|bundle| (Held::Bundle, Some(bundle.clone())))
+}
+
+// The apps a session does not reach, read afresh from its record's file: every app where the file does not read,
+// said in the host's log.
+fn withheld_apps(session: &Session) -> Withheld {
+  session.withheld_apps().unwrap_or_else(|why| {
+    eprintln!("mcp-host: the record held by {} withholds every app: {why}", session.holder_name);
+    Withheld::Every
+  })
 }
 
 /// Who claims an address among the entries a session holds.
@@ -420,6 +450,7 @@ impl Host {
           held: Held::Whole,
           bundle: None,
           shown: false,
+          withheld: false,
         });
       }
     }
@@ -430,11 +461,15 @@ impl Host {
 
   /// Every tool the session holds, in every namespace, by namespace and name: each whole where the session
   /// holds its every capability, and otherwise in its bundle's form where it holds that bundle.
+  /// An entry of a withheld app is among them, marked so (docs/mcp-host.md, 「Apps」).
   pub fn held(&self, session: &Session) -> Vec<Entry> {
     let catalogue = self.placed.current();
+    let withheld = withheld_apps(session);
     let mut held = Vec::new();
 
     for tool in &catalogue.tools {
+      let off = tool.manifest.app.as_ref().is_some_and(|app| withheld.holds(&app.key));
+
       for (at, declared) in tool.manifest.entries.iter().enumerate() {
         if let Some((form, bundle)) = placed_held(declared, session) {
           held.push(Entry {
@@ -443,6 +478,7 @@ impl Host {
             held: form,
             bundle,
             shown: residency::shows(session, &declared.full_name()),
+            withheld: off,
           });
         }
       }
@@ -450,6 +486,11 @@ impl Host {
 
     held.sort_by_key(|entry| (entry.namespace().to_owned(), entry.name().to_owned()));
     held
+  }
+
+  /// Every tool the session holds whose app it reaches: what its listings show.
+  pub fn reached(&self, session: &Session) -> Vec<Entry> {
+    self.held(session).into_iter().filter(|entry| !entry.withheld()).collect()
   }
 
   /// The tool of this namespace and name the session holds, resident or booked.
@@ -487,6 +528,10 @@ impl Host {
     session: &Session,
     arguments: Value,
   ) -> Result<Value, Refusal> {
+    if entry.withheld() {
+      return Err(Refusal::Withheld(entry.turned_off()));
+    }
+
     let arguments = if arguments.is_null() { json!({}) } else { arguments };
     let schema = entry.input_schema();
     let wrong = misfits(&schema, &arguments);
@@ -559,7 +604,7 @@ impl Host {
   pub async fn claimant(self: &Arc<Self>, session: &Session, address: &str) -> Claimant {
     let mut lacking = Claimant::None;
 
-    for entry in self.held(session) {
+    for entry in self.reached(session) {
       let declared = entry.declared();
 
       if !declared.claims(address) {

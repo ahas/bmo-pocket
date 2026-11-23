@@ -1,4 +1,5 @@
-use bmo_tool::{Session, SessionRequest};
+use bmo_tool::protocol::{Asked, Handed};
+use bmo_tool::{Session, SessionRequest, Withheld};
 use serde_json::json;
 
 #[test]
@@ -88,4 +89,32 @@ fn a_field_the_record_does_not_know_is_refused() {
   }));
 
   assert!(read.unwrap_err().to_string().contains("dataRoot"));
+}
+
+#[test]
+fn the_withheld_apps_are_read_afresh_and_a_file_that_does_not_read_is_said() {
+  let place = tempfile::tempdir().unwrap();
+  let file = place.path().join("withheld.json");
+  let record = Session {
+    withheld_apps_file: Some(file.clone()),
+    ..Session::default()
+  };
+
+  assert!(record.withheld_apps().unwrap_err().contains("withheld.json"));
+
+  std::fs::write(&file, json!({ "apps": ["garden-plan"] }).to_string()).unwrap();
+  assert!(record.withheld_apps().unwrap().holds("garden-plan"));
+  assert!(!record.withheld_apps().unwrap().holds("almanac"));
+
+  std::fs::write(&file, json!({ "apps": [] }).to_string()).unwrap();
+  assert!(!record.withheld_apps().unwrap().holds("garden-plan"));
+
+  std::fs::write(&file, json!(["garden-plan"]).to_string()).unwrap();
+  assert!(record.withheld_apps().is_err());
+  assert!(Withheld::Every.holds("anything"));
+  assert_eq!(Session::default().withheld_apps().unwrap(), Withheld::default());
+
+  let handed = Handed::new(Asked::Start, record);
+
+  assert!(handed.session.withheld_apps_file.is_none(), "a tool is never handed the file");
 }

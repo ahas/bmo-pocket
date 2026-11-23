@@ -250,3 +250,39 @@ fn an_entry_claims_its_hosts_and_their_subdomains_and_nothing_else() {
   assert!(!entry.claims("https://notshop.example/"));
   assert!(!entry.claims("not an address"));
 }
+
+#[test]
+fn a_tool_names_its_app_offered_and_on_unless_it_says_otherwise() {
+  let app = "[app]\nkey = \"garden-plan\"\nname = \"Garden plan\"\ndescription = \"Plans the beds.\"\n";
+  let declared = Manifest::parse(&format!("{MANIFEST_TEXT}\n{app}"), "echo").unwrap().app.unwrap();
+
+  assert_eq!(declared.key, "garden-plan");
+  assert!(declared.offered && declared.on && declared.icon.is_none());
+  assert!(Manifest::parse(MANIFEST_TEXT, "echo").unwrap().app.is_none());
+
+  let closed = format!("{MANIFEST_TEXT}\n{app}offered = false\non = false\nicon = \"i-lucide-sprout\"\n");
+  let closed = Manifest::parse(&closed, "echo").unwrap().app.unwrap();
+
+  assert!(!closed.offered && !closed.on);
+
+  let refused = |text: String| Manifest::parse(&text, "echo").unwrap_err();
+
+  assert!(
+    refused(format!("{MANIFEST_TEXT}\n{}", app.replace("garden-plan", "Garden_plan")))
+      .contains("app's key")
+  );
+  assert!(
+    refused(format!("{MANIFEST_TEXT}\n{}", app.replace("garden-plan", &"g".repeat(51))))
+      .contains("app's key")
+  );
+  assert!(refused(format!("{MANIFEST_TEXT}\n{}", app.replace("Garden plan", " "))).contains("no name"));
+  assert!(refused(format!("{MANIFEST_TEXT}\n{app}colour = \"green\"\n")).contains("colour"));
+
+  let helper =
+    "[tool]\nname = \"web\"\nprotocol = 1\nrun = [\"web-helper\"]\n\n[helper]\ndescription = \"x\"\n";
+
+  assert_eq!(
+    Manifest::parse(&format!("{helper}\n{app}"), "web").unwrap_err(),
+    "a shared helper belongs to no app"
+  );
+}

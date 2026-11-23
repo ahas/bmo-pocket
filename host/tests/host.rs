@@ -2767,3 +2767,144 @@ async fn a_host_stopped_with_a_wake_owed_exits_and_the_host_started_next_queues_
   assert_eq!(queued[0]["said"]["fact"]["state"], "done");
   assert_eq!(end_of(&scratch, &id).unwrap()["wake"], json!({ "id": 1 }));
 }
+
+// The almanac app's tool: two garden entries of one app, answered by one script.
+const ALMANAC_MANIFEST: &str = r#"
+[tool]
+name = "almanac"
+protocol = 1
+run = ["python3", "almanac.py"]
+
+[app]
+key = "almanac"
+name = "Almanac"
+description = "Says when to sow."
+
+[[entry]]
+namespace = "garden"
+name = "sow_when"
+description = "Says when a plant is sown."
+input = "any.json"
+capabilities = ["garden.read"]
+hints = { read_only = true }
+
+[[entry]]
+namespace = "garden"
+name = "sow_where"
+description = "Says where a plant is sown."
+input = "any.json"
+capabilities = ["garden.read"]
+hints = { read_only = true }
+"#;
+
+const ALMANAC_SCRIPT: &str = r#"
+import json, sys
+
+handed = json.load(sys.stdin)
+print(json.dumps({"content": [{"type": "text", "text": "almanac:" + handed["entry"]}], "isError": False}))
+"#;
+
+// "Apps" (docs/mcp-host.md, 「Tests」): a record whose withheld-apps file names an app is not shown its booked
+// entries and is refused its description and its calls on every road, saying it is turned off by the
+// organisation's settings; a tool naming no app is served as before; a resident entry of the app stays listed and
+// is refused; the file rewritten between two calls decides the second; and a file that does not read withholds
+// every app.
+#[tokio::test]
+async fn an_app_a_record_withholds_is_out_of_its_listings_and_refused_on_every_road() {
+  let scratch = Scratch::new();
+
+  place_readers(&scratch);
+  place(
+    &scratch.tools(),
+    "almanac",
+    &[
+      ("tool.toml", ALMANAC_MANIFEST),
+      ("any.json", r#"{ "type": "object" }"#),
+      ("almanac.py", ALMANAC_SCRIPT),
+    ],
+  );
+
+  let host = scratch.start();
+  let file = scratch.data.path().join("withheld.json");
+  let withhold = |apps: Value| fs::write(&file, json!({ "apps": apps }).to_string()).unwrap();
+
+  withhold(json!(["almanac"]));
+
+  let token = issue(
+    &host,
+    &record(
+      &["garden.read"],
+      json!({
+        "holderName": "planter",
+        "shown": ["garden/sow_when", "garden/plant_get"],
+        "variables": { "PLOT": "north" },
+        "withheldAppsFile": file,
+      }),
+    ),
+  )
+  .await;
+  let off = "is turned off for this session by the organisation's settings";
+
+  // Off: the booked entry is out of the toolbook, its description and every call refused; the resident one stays
+  // in its namespace's list and is refused when called; the system's tools are untouched.
+  let listed_book = book(&host, &token).await;
+
+  assert!(
+    !listed_book.contains("sow_where") && listed_book.contains("garden/plant_search"),
+    "{listed_book}"
+  );
+  assert!(
+    text(&called(&host, &token, "toolbook", "describe", json!({ "tool": "garden/sow_where" })).await)
+      .contains(off)
+  );
+  assert!(text(&through(&host, &token, "call", "garden/sow_where", json!({})).await).contains(off));
+  assert_eq!(listed(&host, &token, "garden").await, ["plant_get", "sow_when"]);
+  assert!(text(&called(&host, &token, "garden", "sow_when", json!({})).await).contains(off));
+  assert!(text(&called(&host, &token, "garden", "plant_get", json!({})).await).starts_with("plot/"));
+
+  let tools = control(&host, Method::GET, "/namespaces/garden/tools", Some(&token), None).await;
+  let tools: Value = tools.json().unwrap();
+  let names: Vec<&str> = tools["items"]
+    .as_array()
+    .unwrap()
+    .iter()
+    .map(|tool| tool["name"].as_str().unwrap())
+    .collect();
+
+  assert!(
+    !names.contains(&"sow_when") && !names.contains(&"sow_where") && names.contains(&"plant_get"),
+    "{names:?}"
+  );
+
+  let refused = control(
+    &host,
+    Method::POST,
+    "/tool-calls",
+    Some(&token),
+    Some(&json!({ "namespace": "garden", "name": "sow_where", "input": {} })),
+  )
+  .await;
+
+  assert_eq!(refused.status, StatusCode::FORBIDDEN);
+  assert!(String::from_utf8_lossy(&refused.body).contains(off));
+
+  // On again: the file is read at the next request, with no new session.
+  withhold(json!([]));
+
+  assert!(book(&host, &token).await.contains("garden/sow_where"));
+  assert_eq!(
+    text(&through(&host, &token, "call", "garden/sow_where", json!({})).await),
+    "almanac:garden/sow_where"
+  );
+  assert_eq!(
+    text(&called(&host, &token, "garden", "sow_when", json!({})).await),
+    "almanac:garden/sow_when"
+  );
+
+  // A file that does not read withholds every app, and the system's tools still answer.
+  fs::write(&file, "not json").unwrap();
+
+  assert!(!book(&host, &token).await.contains("sow_where"));
+  assert!(text(&called(&host, &token, "garden", "sow_when", json!({})).await).contains(off));
+  assert!(text(&called(&host, &token, "garden", "plant_get", json!({})).await).starts_with("plot/"));
+}

@@ -61,6 +61,9 @@
     `--allow` names;
   - **its schedules are said:** each schedule an entry declares is printed with its pattern, since the host will
     call that entry by itself.
+  - **its app's settings are declared:** where the manifest names an `[app]`, its two settings are declared on the
+    account service's delegation chain and printed, and the put is refused where they are not taken (`docs/api.md`,
+    「An app on the delegation chain」).
 - **What is placed:**
   - with a `build` command, the command is run through `sh` in the tool's folder with `BMO_TOOL_OUT` naming the new
     version's staging folder and `BMO_CARGO_TARGET` the registry's own Cargo target folder, and the manifest, its
@@ -90,6 +93,9 @@
 
 - **`take <name>`** removes the tool's pointer, under the lock; its versions are the host's to take away once
   nothing holds them. A tool a service registered is taken only with `--service` naming that service.
+- **A take is the emergency recall of an app:** its entries leave every session's listings and calls from the
+  host's next reading, whatever the delegation chain says, while a call already in hand runs to its end. The
+  chain's settings are left as they stand, so a lock written there keeps it off once it is put again.
 - **`list`** prints every pointer: its name, its version, where it was put from, the service it is registered
   for where one is, and its entries' full names, or an external server's namespace and address; `--json` prints
   the pointers as they stand.
