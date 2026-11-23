@@ -436,6 +436,15 @@ export interface components {
          * @enum {string}
          */
         ReachedBy: "call" | "act";
+        /**
+         * @description Where a session's owner's personal tools run (docs/api.md, 「The runner」): a socket the passage is asked on, or a
+         *     command started for each call that speaks it on its standard input and output.
+         */
+        Runner: {
+            socket: string;
+        } | {
+            command: string[];
+        };
         /** @description One schedule an entry declares, and where it stands in the host. */
         Schedule: {
             /** @description The arguments each scheduled call is handed. */
@@ -508,6 +517,8 @@ export interface components {
                 [key: string]: unknown;
             };
             namespaces: string[];
+            ownerAccount?: string | null;
+            runner?: components["schemas"]["Runner"] | null;
             shown?: string[];
             /**
              * Format: uint64

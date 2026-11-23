@@ -48,6 +48,14 @@ pub struct Session {
   /// host alone checks it, so a tool is handed the record without it.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub withheld_apps_file: Option<PathBuf>,
+  /// The account the session acts for, as its issuer judged it: the owner whose personal tools it holds, and no
+  /// other owner's (docs/mcp-host.md, 「Personal tools」).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub owner_account: Option<String>,
+  /// Where its owner's personal tools run, which a call of one is relayed to. The host alone reads it, so a tool is
+  /// handed the record without it.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub runner: Option<Runner>,
   /// The issuer's own metadata, handed to every call and never read by the host.
   #[serde(default, skip_serializing_if = "Map::is_empty")]
   pub labels: Map<String, Value>,
@@ -143,9 +151,20 @@ impl Withheld {
   }
 }
 
-/// A withheld-apps file as its issuer writes it.
+/// Where a session's owner's personal tools run (docs/api.md, 「The runner」): a socket the passage is asked on, or a
+/// command started for each call that speaks it on its standard input and output.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum Runner {
+  /// A socket each call is relayed over, a connection of its own.
+  Socket(PathBuf),
+  /// A command as words, started for each call.
+  Command(Vec<String>),
+}
+
+/// A withheld-apps file as its issuer writes it: its `apps`, beside whatever else the issuer keeps in it, which the
+/// host reads past.
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct WithheldFile {
   apps: BTreeSet<String>,
 }
@@ -169,6 +188,10 @@ pub struct SessionRequest {
   pub variables_file: Option<PathBuf>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub withheld_apps_file: Option<PathBuf>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub owner_account: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub runner: Option<Runner>,
   #[serde(default, skip_serializing_if = "Map::is_empty")]
   pub labels: Map<String, Value>,
   /// How long the session stands, in milliseconds; none stands until it is revoked.
@@ -189,6 +212,8 @@ impl SessionRequest {
       variables: self.variables,
       variables_file: self.variables_file,
       withheld_apps_file: self.withheld_apps_file,
+      owner_account: self.owner_account,
+      runner: self.runner,
       labels: self.labels,
       expires_at: self.ttl_ms.map(|ttl| now.saturating_add(ttl)),
       created_at: now,

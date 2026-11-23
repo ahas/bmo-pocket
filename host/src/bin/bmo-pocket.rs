@@ -91,6 +91,39 @@ enum Verb {
     #[arg(long, env = "BMO_POCKET_TOKEN", hide_env_values = true)]
     token: String,
   },
+  /// The relay the host hands a personal tool's call to: the call on standard input, relayed to the owner's runner,
+  /// its answer on standard output, its errors and its exit code (docs/api.md, 「The runner」).
+  #[command(hide = true)]
+  Relay {
+    /// What the host tells the relay of the call, as JSON: the owner, the tool, its version, its run words and the
+    /// runner.
+    request: String,
+  },
+}
+
+// One personal tool's call relayed to its owner's runner, ending as the relay answers.
+fn relay(request: &str) -> ExitCode {
+  let request: mcp_host::relay::Request = match serde_json::from_str(request) {
+    Ok(request) => request,
+    Err(why) => {
+      eprintln!("bmo-pocket relay: the request does not read: {why}");
+      return ExitCode::from(2);
+    }
+  };
+  let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+    Ok(runtime) => runtime,
+    Err(why) => {
+      eprintln!("bmo-pocket relay: {why}");
+      return ExitCode::FAILURE;
+    }
+  };
+
+  ExitCode::from(runtime.block_on(mcp_host::relay::relay(
+    request,
+    tokio::io::stdin(),
+    tokio::io::stdout(),
+    tokio::io::stderr(),
+  )))
 }
 
 // The harness plugin's MCP server, served until the harness closes it.
@@ -203,6 +236,7 @@ fn main() -> ExitCode {
     Verb::Tool { noun } => tool(noun, &data_root, cli.issuer_token_file.as_deref()),
     Verb::Quiet => quiet(&data_root, cli.issuer_token_file.as_deref()),
     Verb::Mcp { socket, token } => mcp(socket, token),
+    Verb::Relay { request } => relay(&request),
     Verb::Put {
       tool,
       mcp,

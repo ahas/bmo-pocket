@@ -263,6 +263,24 @@ fn yes() -> bool {
   true
 }
 
+/// What a personal tool's calls may reach beyond its own folders (docs/api.md, 「`[permissions]`」): the addresses
+/// on the network and the owner's secrets by name, none of either by default. A platform tool's is read and given no
+/// effect.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PermissionsPart {
+  /// The addresses a call may reach on the network; none reaches none.
+  #[serde(default)]
+  pub network: Vec<String>,
+  /// The names of the owner's secrets a call is handed; none is handed none.
+  #[serde(default)]
+  pub secrets: Vec<String>,
+}
+
+/// The namespace every personal tool's entries stand in, which no platform tool's do (docs/mcp-host.md, 「Personal
+/// tools」).
+pub const PERSONAL_NAMESPACE: &str = "my";
+
 // A declaration file of a screen-only app: the `[app]` table alone.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -318,6 +336,8 @@ struct Written {
   helper: Option<HelperPart>,
   #[serde(default)]
   app: Option<AppPart>,
+  #[serde(default)]
+  permissions: PermissionsPart,
 }
 
 /// One tool's manifest, read and held to its rules, its schemas read beside it.
@@ -332,6 +352,8 @@ pub struct Manifest {
   pub helper: Option<HelperPart>,
   /// The app the tool belongs to, where it is one.
   pub app: Option<AppPart>,
+  /// What a personal tool's calls may reach beyond its own folders.
+  pub permissions: PermissionsPart,
 }
 
 /// A name a session calls an entry by: lower-case letters, digits and underscores.
@@ -392,6 +414,7 @@ impl Manifest {
       card: written.card,
       helper: written.helper,
       app: written.app,
+      permissions: written.permissions,
     };
 
     manifest.faults(folder)?;
@@ -502,6 +525,45 @@ impl Manifest {
       && (self.resources.is_some() || self.entries.iter().any(|entry| entry.claims.is_some()))
     {
       return Err("a server tool declares no claims and no resources".to_owned());
+    }
+
+    Ok(())
+  }
+
+  /// Why the manifest is no personal tool's (docs/mcp-host.md, 「Personal tools」): a personal tool is a tool called a
+  /// process at a time on its owner's machine, its entries in the personal namespace, so it is no shared helper, no
+  /// server, names no helper, serves no resources, claims no page, is called on no schedule and has no entry for the
+  /// system alone or in a bundle's form; and it reaches neither the network nor a secret, which no runner gives a
+  /// call yet.
+  pub fn personal_faults(&self) -> Result<(), String> {
+    if self.helper.is_some() {
+      return Err("a personal tool is no shared helper".to_owned());
+    }
+
+    if self.tool.mode == Mode::Server || !self.tool.shared.is_empty() || self.resources.is_some() {
+      return Err(
+        "a personal tool is called a process at a time, with no server, helper or resources".to_owned(),
+      );
+    }
+
+    for entry in &self.entries {
+      let at = entry.full_name();
+
+      if entry.namespace != PERSONAL_NAMESPACE {
+        return Err(format!(
+          "{at}: a personal tool's entries stand in the namespace `{PERSONAL_NAMESPACE}`"
+        ));
+      }
+
+      if entry.system || !entry.bundle.is_empty() || entry.claims.is_some() || !entry.schedule.is_empty() {
+        return Err(format!(
+          "{at}: a personal tool's entry is for no system alone, has no bundle, claims no page and keeps no schedule"
+        ));
+      }
+    }
+
+    if !self.permissions.network.is_empty() || !self.permissions.secrets.is_empty() {
+      return Err("it asks for the network or a secret, which no personal tool is given yet".to_owned());
     }
 
     Ok(())

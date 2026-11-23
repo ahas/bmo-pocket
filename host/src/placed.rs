@@ -14,7 +14,7 @@ use std::time::Duration;
 use bmo_pocket_client::{Booked, EventKind as Change, ReachedBy, ToolChange};
 use bmo_tool::Hints;
 pub use bmo_tool::manifest::PLACED;
-use bmo_tool::manifest::{MANIFEST, Manifest};
+use bmo_tool::manifest::{MANIFEST, Manifest, PERSONAL_NAMESPACE};
 use notify::event::ModifyKind;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
@@ -31,6 +31,16 @@ pub struct PlacedTool {
   pub dir: PathBuf,
   pub manifest: Manifest,
   pub external: Option<External>,
+  /// The account whose personal tool it is, where it is one: its calls are relayed to that owner's runner
+  /// (docs/mcp-host.md, 「Personal tools」).
+  pub owner: Option<String>,
+}
+
+impl PlacedTool {
+  /// The version it is placed as: its folder's own name.
+  pub fn version(&self) -> String {
+    self.dir.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
+  }
 }
 
 /// Every placed tool and shared helper, as one reading of the tools root and the registry found them.
@@ -40,6 +50,8 @@ pub struct Catalogue {
   pub helpers: BTreeMap<String, Arc<PlacedTool>>,
   /// Every pointer the registry held that read, by name: the version folder each names.
   pub pointers: BTreeMap<String, PathBuf>,
+  /// Every owner's personal tools, by the owner's account (docs/mcp-host.md, 「Personal tools」).
+  pub personal: BTreeMap<String, Vec<Arc<PlacedTool>>>,
 }
 
 // The folders standing in `dir`, by name.
@@ -64,6 +76,17 @@ pub fn schema_faults(manifest: &Manifest) -> Option<String> {
       .find_map(|schema| jsonschema::validator_for(schema).err())
       .map(|why| format!("{}: its schema is not a JSON Schema: {why}", entry.full_name()))
   })
+}
+
+/// Why a platform tool's manifest does not read as one: an entry in the namespace personal tools stand in.
+pub fn platform_faults(manifest: &Manifest) -> Option<String> {
+  manifest
+    .entries
+    .iter()
+    .find(|entry| entry.namespace == PERSONAL_NAMESPACE)
+    .map(|entry| {
+      format!("{}: the namespace `{PERSONAL_NAMESPACE}` is the personal tools' own", entry.full_name())
+    })
 }
 
 impl Catalogue {
@@ -167,6 +190,7 @@ impl Catalogue {
               dir: pointer.dir,
               manifest,
               external: None,
+              owner: None,
             }),
           );
         }
@@ -181,7 +205,69 @@ impl Catalogue {
       externals.keep_only(&linked);
     }
 
+    for (owner, owned) in registry.map(Registry::owners).unwrap_or_default() {
+      catalogue.take_owned(&owner, &owned, &mut faults);
+    }
+
     (catalogue, faults)
+  }
+
+  // One owner's personal tools taken in from the owner's registry: each a placed tool of the owner's whose manifest
+  // reads as a personal tool's, no full name of it another of the same owner's already (docs/mcp-host.md, 「Personal
+  // tools」). Another owner's tool of the same name stands beside it.
+  fn take_owned(&mut self, owner: &str, owned: &Registry, faults: &mut Vec<String>) {
+    let (pointers, unread) = owned.entries();
+    let mut held = BTreeSet::new();
+    let mut tools = Vec::new();
+
+    faults.extend(unread.into_iter().map(|why| format!("owners/{owner}/{why}")));
+
+    for pointer in pointers {
+      let at = format!("owners/{owner}/registry/{}", pointer.name);
+
+      if pointer.owner.as_deref() != Some(owner) {
+        faults.push(format!("{at}: it names no owner, or another than its folder's"));
+        continue;
+      }
+
+      if !pointer.dir.join(MANIFEST).exists() {
+        faults.push(format!("{at}: its placed folder {} is gone", pointer.dir.display()));
+        continue;
+      }
+
+      let manifest = match Manifest::read(&pointer.dir, &pointer.name) {
+        Ok(manifest) => manifest,
+        Err(why) => {
+          faults.push(format!("{at}: {why}"));
+          continue;
+        }
+      };
+
+      if let Some(why) = schema_faults(&manifest).or_else(|| manifest.personal_faults().err()) {
+        faults.push(format!("{at}: {why}"));
+        continue;
+      }
+
+      let names: Vec<String> = manifest.entries.iter().map(|entry| entry.full_name()).collect();
+
+      if let Some(taken) = names.iter().find(|name| held.contains(*name)) {
+        faults.push(format!("{at}: {taken} is another of the owner's tools already"));
+        continue;
+      }
+
+      held.extend(names);
+      tools.push(Arc::new(PlacedTool {
+        folder: pointer.name,
+        dir: pointer.dir,
+        manifest,
+        external: None,
+        owner: Some(owner.to_owned()),
+      }));
+    }
+
+    if !tools.is_empty() {
+      self.personal.insert(owner.to_owned(), tools);
+    }
   }
 
   // One tool taken into the catalogue where its schemas read and no entry of it is another tool's already.
@@ -194,7 +280,7 @@ impl Catalogue {
     held: &mut BTreeSet<String>,
     faults: &mut Vec<String>,
   ) {
-    if let Some(why) = schema_faults(&manifest) {
+    if let Some(why) = schema_faults(&manifest).or_else(|| platform_faults(&manifest)) {
       faults.push(format!("{at}: {why}"));
       return;
     }
@@ -212,6 +298,7 @@ impl Catalogue {
       dir,
       manifest,
       external,
+      owner: None,
     }));
   }
 
@@ -232,7 +319,13 @@ impl Catalogue {
 
   // Every placed folder it serves from, tools and helpers alike.
   fn dirs(&self) -> BTreeSet<PathBuf> {
-    self.tools.iter().chain(self.helpers.values()).map(|tool| tool.dir.clone()).collect()
+    self
+      .tools
+      .iter()
+      .chain(self.helpers.values())
+      .chain(self.personal.values().flatten())
+      .map(|tool| tool.dir.clone())
+      .collect()
   }
 }
 
@@ -260,6 +353,19 @@ pub struct Placed {
   pub events: Events,
   /// What the event stream was last told of each tool, by name; none before the first reading.
   told: Mutex<Option<Told>>,
+  /// The relay a personal tool's call is handed to, as words: `bmo-pocket relay` beside the host's own binary by
+  /// default (docs/mcp-host.md, 「Personal tools」).
+  pub relay: Vec<String>,
+}
+
+/// The relay beside the host's own binary: `bmo-pocket relay`, from the same `bin/`.
+pub fn default_relay() -> Vec<String> {
+  let beside = std::env::current_exe()
+    .ok()
+    .and_then(|exe| exe.parent().map(|bin| bin.join("bmo-pocket")))
+    .unwrap_or_else(|| PathBuf::from("bmo-pocket"));
+
+  vec![beside.to_string_lossy().into_owned(), "relay".to_owned()]
 }
 
 /// What the event stream was last told of each tool, by name: the folder it was served from, or its pointer
@@ -380,7 +486,14 @@ impl Placed {
       retired: Mutex::new(Vec::new()),
       events: Events::default(),
       told: Mutex::new(None),
+      relay: default_relay(),
     }
+  }
+
+  /// The same, handing a personal tool's call to the relay these words start.
+  pub fn relayed_by(mut self, relay: Vec<String>) -> Self {
+    self.relay = relay;
+    self
   }
 
   /// The same, reading the registry beside the tools root.
@@ -434,6 +547,7 @@ impl Placed {
       .tools
       .iter()
       .chain(old.helpers.values())
+      .chain(old.personal.values().flatten())
       .filter(|tool| !kept.contains(&tool.dir) && self.is_version(&tool.dir) && !self.named(&tool.dir))
       .cloned()
       .collect();
@@ -467,7 +581,7 @@ impl Placed {
 
   // Whether a folder is one of the registry's placed versions, the only folders the host ever takes away.
   fn is_version(&self, dir: &Path) -> bool {
-    self.registry.as_ref().is_some_and(|registry| dir.starts_with(registry.versions()))
+    self.registry.as_ref().is_some_and(|registry| registry.holds_version(dir))
   }
 
   // Whether a registry pointer names the folder: a version a name collision displaced keeps its pointer, so it
@@ -476,7 +590,7 @@ impl Placed {
     self
       .registry
       .as_ref()
-      .is_some_and(|registry| registry.entries().0.iter().any(|pointer| pointer.dir == dir))
+      .is_some_and(|registry| registry.every_pointer().iter().any(|pointer| pointer.dir == dir))
   }
 
   /// Every retired version no pointer names and nothing holds any longer taken away: no call, server or helper
@@ -513,21 +627,25 @@ impl Placed {
     let Some(registry) = &self.registry else {
       return;
     };
-    let Ok(_locked) = registry.lock() else {
-      return;
-    };
-    let (pointers, _) = registry.entries();
-    let named: BTreeSet<PathBuf> = pointers.into_iter().map(|pointer| pointer.dir).collect();
+    let owned: Vec<Registry> = registry.owners().into_iter().map(|(_, owned)| owned).collect();
 
-    for (_, tool) in folders(&registry.versions()) {
-      for (version, dir) in folders(&tool) {
-        if version.starts_with('.') || named.contains(&dir) {
-          continue;
-        }
+    for registry in std::iter::once(registry).chain(&owned) {
+      let Ok(_locked) = registry.lock() else {
+        continue;
+      };
+      let (pointers, _) = registry.entries();
+      let named: BTreeSet<PathBuf> = pointers.into_iter().map(|pointer| pointer.dir).collect();
 
-        match std::fs::remove_dir_all(&dir) {
-          Ok(()) => eprintln!("mcp-host: took away {}, which no pointer names", dir.display()),
-          Err(why) => eprintln!("mcp-host: {} could not be taken away: {why}", dir.display()),
+      for (_, tool) in folders(&registry.versions()) {
+        for (version, dir) in folders(&tool) {
+          if version.starts_with('.') || named.contains(&dir) {
+            continue;
+          }
+
+          match std::fs::remove_dir_all(&dir) {
+            Ok(()) => eprintln!("mcp-host: took away {}, which no pointer names", dir.display()),
+            Err(why) => eprintln!("mcp-host: {} could not be taken away: {why}", dir.display()),
+          }
         }
       }
     }
@@ -555,13 +673,16 @@ impl Placed {
       None => None,
     };
     let (changed, mut changes) = tokio::sync::mpsc::unbounded_channel::<()>();
+    let owners = self.registry.as_ref().map(Registry::owners_root);
 
     self.externals.poke_with(changed.clone());
     let mut watcher: RecommendedWatcher = {
-      let (links, folders) = (links.clone(), folders.clone());
+      let (links, folders, owners) = (links.clone(), folders.clone(), owners.clone());
 
       notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        if event.is_ok_and(|event| moves(&event.kind) && concerns(&event.paths, &links, &folders)) {
+        if event.is_ok_and(|event| {
+          moves(&event.kind) && worth_reading(&event.paths, &links, &folders, owners.as_deref())
+        }) {
           let _ = changed.send(());
         }
       })?
@@ -578,6 +699,8 @@ impl Placed {
     if let Some(registry) = &self.registry {
       std::fs::create_dir_all(registry.pointers()).map_err(notify::Error::io)?;
       watcher.watch(&registry.pointers(), RecursiveMode::NonRecursive)?;
+      std::fs::create_dir_all(registry.owners_root()).map_err(notify::Error::io)?;
+      watcher.watch(&registry.owners_root(), RecursiveMode::Recursive)?;
     }
 
     self.reread();
@@ -645,6 +768,33 @@ impl Placed {
 
     Ok(())
   }
+}
+
+/// Whether a change is worth reading the catalogue again for: one under the owners' registries that touches an
+/// owner's folder or its pointers, never a version folder being written or taken away; or any other the watched
+/// folders' rule keeps (「concerns」).
+pub fn worth_reading(
+  paths: &[PathBuf],
+  links: &[PathBuf],
+  folders: &[PathBuf],
+  owners: Option<&Path>,
+) -> bool {
+  if paths.is_empty() {
+    return true;
+  }
+
+  let (owned, rest): (Vec<&PathBuf>, Vec<&PathBuf>) =
+    paths.iter().partition(|path| owners.is_some_and(|root| path.starts_with(root)));
+  let rest: Vec<PathBuf> = rest.into_iter().cloned().collect();
+  let pointer_moved = owned.iter().any(|path| {
+    owners.and_then(|root| path.strip_prefix(root).ok()).is_some_and(|under| {
+      let parts: Vec<_> = under.components().collect();
+
+      parts.len() <= 1 || parts[1].as_os_str() == "registry"
+    })
+  });
+
+  pointer_moved || (!rest.is_empty() && concerns(&rest, links, folders))
 }
 
 /// Every link on the way to `dir`, itself included where it is one: a rename over any of them moves where

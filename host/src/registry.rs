@@ -11,6 +11,14 @@ use serde::{Deserialize, Serialize};
 /// The pointer files' extension.
 const POINTER: &str = "json";
 
+/// The folder under the host's own the owners' registries of personal tools stand in, one each.
+const OWNERS: &str = "owners";
+
+/// An owner's name as a folder holds it: letters, digits, `-` and `_`, as an account's key is written.
+pub fn owner_name(name: &str) -> bool {
+  !name.is_empty() && name.chars().all(|one| one.is_ascii_alphanumeric() || one == '-' || one == '_')
+}
+
 /// Where a tool's registration points, its keys in camel case.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -26,6 +34,10 @@ pub struct Pointer {
   /// The repository whose own tool it is, where a service registered it.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub service: Option<String>,
+  /// The account whose personal tool it is, where it is one: the folder of the owner's registry it stands in names
+  /// the same account.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub owner: Option<String>,
   /// When it was put, in epoch milliseconds; a pointer naming it `put_at` reads too.
   #[serde(alias = "put_at")]
   pub put_at: u64,
@@ -56,6 +68,54 @@ impl Registry {
     Self {
       root: data_root.join("tool-host"),
     }
+  }
+
+  /// The folder every owner's registry of personal tools stands in.
+  pub fn owners_root(&self) -> PathBuf {
+    self.root.join(OWNERS)
+  }
+
+  /// The registry of one owner's personal tools (docs/registry.md, 「Personal tools」): the same layout, under the
+  /// owner's folder.
+  pub fn owned(&self, owner: &str) -> Self {
+    Self {
+      root: self.owners_root().join(owner),
+    }
+  }
+
+  /// Every owner's registry standing, by the owner's name.
+  pub fn owners(&self) -> Vec<(String, Self)> {
+    let mut found: Vec<String> = fs::read_dir(self.owners_root())
+      .into_iter()
+      .flatten()
+      .flatten()
+      .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+      .filter_map(|entry| entry.file_name().into_string().ok())
+      .filter(|name| owner_name(name))
+      .collect();
+
+    found.sort();
+    found.into_iter().map(|owner| (owner.clone(), self.owned(&owner))).collect()
+  }
+
+  /// Every pointer of the registry and of every owner's registry beside it, each that reads.
+  pub fn every_pointer(&self) -> Vec<Pointer> {
+    let mut every = self.entries().0;
+
+    for (_, owned) in self.owners() {
+      every.extend(owned.entries().0);
+    }
+
+    every
+  }
+
+  /// Whether a folder is a placed version of this registry or of an owner's beside it: the only folders the host
+  /// ever takes away.
+  pub fn holds_version(&self, dir: &Path) -> bool {
+    dir.starts_with(self.versions())
+      || dir
+        .strip_prefix(self.owners_root())
+        .is_ok_and(|under| under.components().nth(1).is_some_and(|part| part.as_os_str() == "tools"))
   }
 
   /// The folder of the pointers.

@@ -321,6 +321,7 @@ pub fn entries(
     card: None,
     helper: None,
     app: None,
+    permissions: Default::default(),
   };
 
   (manifest, names, faults)

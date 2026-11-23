@@ -109,6 +109,10 @@ fn the_withheld_apps_are_read_afresh_and_a_file_that_does_not_read_is_said() {
   std::fs::write(&file, json!({ "apps": [] }).to_string()).unwrap();
   assert!(!record.withheld_apps().unwrap().holds("garden-plan"));
 
+  // What else the issuer keeps in the file is read past.
+  std::fs::write(&file, json!({ "apps": ["almanac"], "account": "a1" }).to_string()).unwrap();
+  assert!(record.withheld_apps().unwrap().holds("almanac"));
+
   std::fs::write(&file, json!(["garden-plan"]).to_string()).unwrap();
   assert!(record.withheld_apps().is_err());
   assert!(Withheld::Every.holds("anything"));
@@ -117,4 +121,38 @@ fn the_withheld_apps_are_read_afresh_and_a_file_that_does_not_read_is_said() {
   let handed = Handed::new(Asked::Start, record);
 
   assert!(handed.session.withheld_apps_file.is_none(), "a tool is never handed the file");
+}
+
+#[test]
+fn a_record_names_its_owner_and_runner_and_a_tool_is_handed_the_owner_alone() {
+  let record: Session = serde_json::from_value(json!({
+    "holderName": "tester",
+    "namespaces": [],
+    "capabilities": [],
+    "grants": [],
+    "ownerAccount": "a1",
+    "runner": { "socket": "/run/runner.sock" },
+  }))
+  .unwrap();
+
+  assert_eq!(record.runner, Some(bmo_tool::Runner::Socket("/run/runner.sock".into())));
+
+  let commanded: Session = serde_json::from_value(json!({
+    "holderName": "tester",
+    "namespaces": [],
+    "capabilities": [],
+    "grants": [],
+    "runner": { "command": ["runner", "--root", "/r"] },
+  }))
+  .unwrap();
+
+  assert_eq!(
+    commanded.runner,
+    Some(bmo_tool::Runner::Command(vec!["runner".into(), "--root".into(), "/r".into()]))
+  );
+
+  let handed = Handed::new(Asked::Start, record);
+
+  assert_eq!(handed.session.owner_account.as_deref(), Some("a1"));
+  assert!(handed.session.runner.is_none(), "a tool is never handed the runner");
 }

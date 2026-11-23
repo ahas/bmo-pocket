@@ -22,5 +22,5 @@ pub use ceiling::{Capped, MAX_ANSWER_CHARS, MAX_VALUE_CHARS, Said, cap_items, ca
 pub use input::{AtLeastOne, Digits, IsoDay, NonEmpty, Positive, WebAddress};
 pub use kept::{Keeping, Kept};
 pub use resources::Resources;
-pub use session::{Granted, Session, SessionRequest, Withheld};
+pub use session::{Granted, Runner, Session, SessionRequest, Withheld};
 pub use tool::{Bundle, Grant, Held, Hints, Pending, Served, Tool, narrowed};

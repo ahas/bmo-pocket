@@ -10,7 +10,9 @@
   - `tool-host/registry/<name>.json`, one pointer per registered tool;
   - `tool-host/tools/<name>/<version>/`, each placed version of a tool, or of an external server's registration;
   - `tool-host/registry.lock`, the lock every change to the registry is made under;
-  - `tool-host/build/`, where a put clones and builds, and is cleared again.
+  - `tool-host/build/`, where a put clones and builds, and is cleared again;
+  - `tool-host/owners/<account>/`, each owner's registry of personal tools, of the same layout (「Personal
+    tools」).
 - **Only the host and `bmo-pocket` read or write these files.** Another unit registers, takes and lists tools
   through `bmo-pocket` alone (`docs/api.md`, 「The CLI」), so the shape of a pointer is this repository's own.
 
@@ -19,6 +21,7 @@
 - **One JSON object per tool, its keys in camelCase:** `name`, the tool's name, which is its manifest's; `version`,
   the placed version it points at; `dir`, that version's folder; `origin`, where it was put from (`path:<folder>`,
   `git:<address>`, `name:<name>`, or `path:<file>` for an external server's registration); `service`, the repository whose own tool it is, where a service registered it;
+  `owner`, the account whose personal tool it is, in an owner's registry alone;
   and `putAt`, when, in epoch milliseconds. A pointer naming the time `put_at` reads as one naming it `putAt`, and
   is written as `putAt` at its next put.
 - **A pointer is written whole or not at all:** written beside its place under a name of its own, then renamed
@@ -39,6 +42,22 @@
   ends, as a helper placed anew serves the records started after it.
 - **A version no pointer names when the host starts** is one no call can hold, and is taken away then, under the
   registry's lock, so a put placing a version that moment is never caught between its version and its pointer.
+
+## Personal tools
+
+- **Each owner's personal tools stand in a registry of their own,** `tool-host/owners/<account>/`, of the registry's
+  layout: `registry/<name>.json` one pointer each, `tools/<name>/<version>/` each placed version, `registry.lock`
+  the lock its changes are made under. The account is a name of letters, digits, `-` and `_`.
+- **A personal tool's version here is a copy of its description alone:** its manifest, its schemas and its manuals,
+  which the host lists, describes and checks it by. Its code, its builds and its data stand on its owner's machine,
+  under the version of the same name (`docs/mcp-host.md`, 「Personal tools」).
+- **Its pointer names its owner,** the account its registry's folder names; a pointer naming no owner, or another,
+  is left out and said in the log.
+- **A name is the owner's alone:** two owners' registries may each hold a tool of the same name and the same entries.
+- **Its versions are kept and taken away as every version is** (「Versions」): a call in flight goes on in the
+  version it started in, and a version no pointer names is taken away once nothing holds it, and at the host's start.
+- **`bmo-pocket put` places platform tools alone, and no verb places a personal tool yet:** an owner's registry is
+  written under its own lock and the rules above, as a put writes the platform's.
 
 ## Put
 
@@ -109,8 +128,8 @@
   folder is.
 - **Shared helpers are found here alone:** a helper is registered like any tool, and a tool names the helpers it
   uses by their registered names.
-- **The host watches the registry folder** as it watches the tools root, and reads the catalogue again once the
-  changes settle: a put, an upgrade or a take is served from the next call, with no restart of the host or of a
+- **The host watches the registry folder and every owner's pointers** as it watches the tools root, and reads the
+  catalogue again once the changes settle: a put, an upgrade or a take is served from the next call, with no restart of the host or of a
   session, and changes no running session's prompt (`docs/toolbook.md`, 「Why」).
 - **The host tells each put, upgrade and take on its event stream** as it reads it (`docs/api.md`, 「Events」):
   `tool.placed` once the new version is served, naming the tool's namespaces and entries, and `tool.removed` once

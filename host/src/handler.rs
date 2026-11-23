@@ -484,6 +484,29 @@ impl Host {
       }
     }
 
+    // Its owner's personal tools, each entry held whole and booked: its owner is who holds it, whatever capabilities
+    // it names (docs/mcp-host.md, 「Personal tools」).
+    let owned = session.owner_account.as_ref().and_then(|owner| catalogue.personal.get(owner));
+
+    for tool in owned.into_iter().flatten() {
+      let off = tool.manifest.app.as_ref().is_some_and(|app| withheld.holds(&app.key));
+
+      for (at, declared) in tool.manifest.entries.iter().enumerate() {
+        if declared.system || !session.reaches(&declared.full_name()) {
+          continue;
+        }
+
+        held.push(Entry {
+          tool: tool.clone(),
+          at,
+          held: Held::Whole,
+          bundle: None,
+          shown: false,
+          withheld: off,
+        });
+      }
+    }
+
     held.sort_by_key(|entry| (entry.namespace().to_owned(), entry.name().to_owned()));
     held
   }

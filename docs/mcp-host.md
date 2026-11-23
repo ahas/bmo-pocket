@@ -9,7 +9,8 @@
 - **The host tells sessions apart by the token alone.** Each token is bound to a tool session's record, in which the
   issuer states everything a call is checked against and everything a tool reads of it: the namespaces, the
   capabilities and the grants it holds, which entries it is shown by name and, where it narrows them, which alone it
-  reaches, which apps it does not reach, and the variables and labels its tools are handed (「The session record」).
+  reaches, which apps it does not reach, the owner whose personal tools it holds and where they run, and the
+  variables and labels its tools are handed (「The session record」).
 - **The host asks no other unit.** What a session may do is what its record carries, so no call waits on an
   account or permission service.
 - **Every tool is placed or registered as an external server:** a folder holding a built tool and its manifest,
@@ -98,6 +99,38 @@ flowchart TD
 - **An app recalled at once,** for a fault that cannot wait for the settings to reach every session, is taken out of
   the registry (`docs/registry.md`, 「Take and list」): its entries leave every session from the next reading.
 
+## Personal tools
+
+- **A personal tool is a tool of one person's own, run on that person's machine:** its source, its build, its
+  versions and its data stand there, and the host holds a copy of its description alone — its manifest, schemas and
+  manuals — in the owner's registry (`docs/registry.md`, 「Personal tools」). The host lists, describes and checks
+  it from that copy, and relays each call to the owner's runner.
+- **Its pointer names its owner, and so does the session's record:** a session holds the personal tools of the
+  account its record's `ownerAccount` names and of no other account, so another owner's tool is neither listed,
+  described nor called for it, refused as an unknown tool. The issuer judges which account a session acts for; the
+  host compares names.
+- **Its entries stand in the namespace `my`,** which no platform tool's do, and full names clash per owner alone:
+  two owners may each hold `my/weekly_summary`, and of two tools of one owner naming the same entry the one read
+  first keeps it.
+- **It is held whole and booked:** its owner's sessions hold each of its entries whatever capabilities they name,
+  the toolbook lists, describes and calls them, and no namespace lists them by name. A record's `entries` narrows
+  them as it narrows every entry, and a withheld app withholds a personal tool naming it as any other.
+- **It is a tool called a process at a time:** a personal tool is no shared helper, no server and serves no
+  resources; it names no helper, and its entries claim no page, keep no schedule, are for no system alone and have no
+  bundle. It asks for neither the network nor a secret (`docs/api.md`, 「`[permissions]`」), which no runner gives
+  a call yet. A manifest outside these rules leaves the tool out, said in the log.
+- **A call is relayed, the host's call contract unchanged** (`docs/api.md`, 「The runner」): the host starts its
+  relay, `bmo-pocket relay` beside its own binary, in the tool's placed folder here, in a process group of its own
+  and a clean environment of the host's path, home and runtime directory alone, and hands it the call on standard
+  input as it would the tool's own executable, the record less its variables and with no call-back socket or helper.
+  The relay asks the runner the record's `runner` names to run the version the host's copy is placed as, under the
+  manifest's run words, and answers what the tool wrote and how it ended. A record naming no runner fails the call
+  saying so.
+- **A call whose caller is gone ends on the owner's machine too:** the host ends the relay's process group, as it
+  ends every such call's (「The host's stop」), the passage closes, and the runner ends the tool's process.
+- **The issuer's view, the console's and the event stream leave personal tools out:** they list the platform's
+  catalogue, which holds no owner's tool.
+
 ## The session record
 
 - **Issued before the session starts,** over the host's control socket with the issuer token (「Tokens」). The
@@ -118,6 +151,8 @@ flowchart TD
     record;
   - `withheldAppsFile`, a file naming the apps the session does not reach, read afresh at every listing,
     description and call (「Apps」); the host alone checks it, so the record a tool is handed leaves it out;
+  - `ownerAccount`, the account the session acts for, whose personal tools it holds, and `runner`, where they run
+    (「Personal tools」); the host alone reads `runner`, so the record a tool is handed leaves it out;
   - `labels`, the issuer's own metadata, handed to every call inside the record;
   - `expiresAt`, from the `ttlMs` the issuer asked for, and `createdAt`.
 - **Where it is kept:** one file per record in `tool-host/sessions/` under the data root, readable by the host's
@@ -581,6 +616,13 @@ issues it and keeps it standing, and the process reads its token from the file t
   withheld app stays in its namespace's tool list and is refused when called; the file rewritten between two calls
   of one session decides the second; a file that does not read withholds every app; and a manifest naming an
   `[app]` outside its rules does not read.
+- **Personal tools:** two owners each holding a personal tool of the same full name each list, describe and call
+  their own; a session naming one owner neither lists nor calls the other's, and one naming no owner holds neither;
+  a platform tool in the namespace `my` and a personal tool outside its rules are left out; a call is relayed to a
+  stand-in runner over a socket and over a command, the tool's run words, version and call reaching it and its
+  answer, its errors and its code coming back as the tool's; a record naming no runner fails the call saying so; a
+  refusal or a runner that cannot be reached fails it saying why; and a call whose caller goes away mid-call ends the
+  relay, whose passage the stand-in runner sees close.
 - **Held sessions:** a declaration is issued with its token written beside it, readable by the host's user alone,
   and kept under the same token across beats and a restart of the host; changed, or its session revoked by hand, it
   is issued afresh and the session before revoked; taken away, its session and token file go with it; and one

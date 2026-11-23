@@ -438,7 +438,9 @@ ignored. The issuer states in it everything the host checks a call against, so t
 | `entries` | array of strings or null | The full names of the only entries the session reaches, those for the system alone among them; every entry its namespaces and capabilities give it where absent or null |
 | `variables` | object of strings | Variables handed to every call's environment |
 | `variablesFile` | path | A file holding a JSON object of strings, read afresh at every call and laid over `variables` |
-| `withheldAppsFile` | path | A file holding the apps the session does not reach, `{"apps": [<key>…]}`, read afresh at every listing, description and call (`docs/mcp-host.md`, 「Apps」); every app reached where absent |
+| `withheldAppsFile` | path | A file holding the apps the session does not reach, `{"apps": [<key>…]}` beside whatever else its issuer keeps in it, read afresh at every listing, description and call (`docs/mcp-host.md`, 「Apps」); every app reached where absent |
+| `ownerAccount` | string | The account the session acts for, as its issuer judged it: the owner whose personal tools it holds (`docs/mcp-host.md`, 「Personal tools」); none of any owner's where absent |
+| `runner` | object | Where the owner's personal tools run, `{"socket": <path>}` or `{"command": [<word>…]}` (「The runner」); a call of a personal tool fails where absent |
 | `labels` | object | The issuer's own metadata, handed to every call inside the record and never read by the host |
 | `ttlMs` | integer or null | How long the session stands, in the request alone; none stands until it is revoked |
 
@@ -462,6 +464,9 @@ The tool session answered, and the record a call is handed, carry the same field
   its namespace's tool list, so the session's prefix does not move, and its call is refused the same way. A file
   that does not stand or does not read withholds every app, said in the host's log. The host alone reads it, so the
   record a tool is handed leaves it out.
+- **`ownerAccount` and `runner` reach an owner's personal tools:** a session holds the personal tools of the owner
+  its record names and of no other, and each call of one is relayed to the runner the record names. The host alone
+  reads `runner`, so the record a tool is handed leaves it out.
 - **A record holds no path, address or value of the issuer's own** beyond these. What a tool reads of the issuer's
   is in `variables`, `variablesFile` or `labels`, as the issuer puts it there.
 
@@ -600,7 +605,7 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 |---|---|
 | `protocol` | 1 |
 | `kind` | What is asked, with the fields of its kind beside it (below) |
-| `session` | The session record the call is made under, its token and its `entries` left out |
+| `session` | The session record the call is made under, its token, its `entries`, its withheld-apps file and its runner left out; for a personal tool, its variables left out too |
 | `callback` | The call's own call-back socket into the host; none for a helper |
 | `shared` | Each shared helper's socket, by the helper's name; none where the tool names none |
 
@@ -632,6 +637,36 @@ One JSON object on standard input, or in `BMO_TOOL_START` for a server's start:
 |---|---|---|
 | `call` | `entry` (full name), `arguments?` | the entry's tool result, dispatched under the same record through the same schema, capability and grant checks as a session's call; an entry for the system alone among those reached |
 | `claim` | `address` | `{"entry", "arguments"}` of the entry the record holds that claims the address, or `{"entry": null}` |
+
+### The runner
+
+A personal tool's call is run on its owner's machine by the runner its session's record names (`docs/mcp-host.md`,
+「Personal tools」), which whoever issues records provides. The host hands the call to its relay, `bmo-pocket relay`,
+started as any tool's executable is, the call on its standard input; the relay asks the runner over the passage and
+answers as the tool did.
+
+- **The road is the record's `runner`:** `{"socket": <path>}`, a unix socket the relay connects to for each call,
+  or `{"command": [<word>…]}`, a command the relay starts for each call, the passage its standard input and output.
+- **The passage is one line asked, then lines answered,** each a JSON object:
+
+| Line | Fields | Meaning |
+|---|---|---|
+| the asking, first | `owner`, `tool`, `version`, `run`, `call` | The owner's account; the tool's name; the version the host's copy of it is placed as, its version folder's name; the manifest's run words; and the call, the object a tool's executable is handed (「What a tool is handed」) |
+| `{"t": "said"}` | `line` | A line the tool wrote on its standard error |
+| `{"t": "end"}` | `code`, `out` | The tool ended: the code it ended with, null where a signal ended it, and what it wrote on its standard output |
+| `{"t": "refused"}` | `why` | The runner did not run it, and why |
+
+- **The asking side keeps the passage open until it is answered:** nothing more is sent after the first line, so
+  the passage closing before its end is the call's caller gone, and the runner ends the tool's process. The relay
+  ended — its call's process group ended by the host, as every call whose caller is gone is — closes it.
+- **The relay answers as the tool's executable would:** each `said` line on its standard error, then at `end` the
+  tool's output on its standard output and the tool's code as its own, 1 where a signal ended the tool; a `refused`,
+  a passage that ends unanswered, or a runner it cannot reach is said on its standard error and ends it 1, which the
+  host answers as a failed call naming the exit and those lines.
+- **What a runner does with the call is its own:** it runs the version the asking names and no other, under the run
+  words given, with the call on the tool's standard input, confined as its issuer's documents state. A manifest's
+  `[permissions]` names what a runner would grant beyond the tool's own folders. The call carries no call-back socket
+  and no helper's socket, since none reaches the host from the owner's machine.
 
 ### A shared helper's socket
 
@@ -724,6 +759,19 @@ system and is never withheld.
 - **What resolves the settings is not the host's.** A session's issuer reads both for the person the session acts
   for and names the apps that are not both offered and on in the record's `withheldAppsFile`.
 
+### `[permissions]`
+
+What a personal tool's calls may reach beyond its own folders (`docs/mcp-host.md`, 「Personal tools」). A platform
+tool's is read and given no effect.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `network` | array of strings | The addresses a call may reach on the network; none, the default, reaches none |
+| `secrets` | array of strings | The names of the owner's secrets a call is handed; none, the default, is handed none |
+
+- **No runner gives a call the network or a secret yet,** so a personal tool naming either is left out of the
+  catalogue.
+
 ### The other tables
 
 - **`[resources]`:** `namespace`, the namespace its executable serves resources under, and `capabilities`, what a
@@ -741,7 +789,9 @@ system and is never withheld.
   tool's folder or one that does not stand there.
 - A schedule whose pattern does not read.
 - Resources naming no namespace or no capability; a server tool declaring claims or resources.
-- An entry whose full name another tool already holds.
+- An entry whose full name another tool already holds; of a personal tool, another of the same owner's.
+- A platform tool's entry in the namespace `my`, which personal tools stand in; a personal tool outside the rules
+  of `docs/mcp-host.md`, 「Personal tools」.
 - An `[app]` whose key is outside its alphabet or longer than 50 characters, or whose name or description is empty;
   an `[app]` in a shared helper's manifest.
 
@@ -862,8 +912,10 @@ name is refused, naming it.
 | `list [--json]` | Every registered tool: its name, its version, where it was put from, the service it is registered for and its entries, or an external server's namespace and address; `--json` prints the pointers (`docs/registry.md`, 「A pointer」) as a JSON array |
 | `app <file>` | Declares a screen-only app's two settings on the delegation chain from a file holding the `[app]` table alone (「An app on the delegation chain」), printing each; it refuses a file holding anything else or an `[app]` that does not read, and places nothing in the registry |
 | `mcp [--socket <path>] [--token <token>]` | Serves the harness plugin on standard input and output (「The harness plugin」) |
+| `relay <request>` | The host's relay of a personal tool's call (「The runner」): `<request>` is what the host tells it as JSON, `owner`, `tool`, `version`, `run` and `runner`; the call on standard input; answered as the tool did. Run by the host, never by a person, and left out of the usage |
 
-- **What `put` checks before anything is placed:** the manifest reads (「The manifest」); its name is no other
+- **What `put` checks before anything is placed:** the manifest reads (「The manifest」), none of its entries in the
+  personal tools' namespace `my`; its name is no other
   kind's registration, and each of its entries' full names is held by no other registered tool; and every
   capability and grant it asks for is named by an `--allow`. It prints each one asked for, and each schedule the
   tool declares, and refuses naming those not allowed. Where the manifest names an `[app]`, it then declares the

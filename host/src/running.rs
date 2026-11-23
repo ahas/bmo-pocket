@@ -250,6 +250,14 @@ async fn asking(
   session: &Session,
   asked: Asked,
 ) -> Result<Value, String> {
+  // A personal tool is relayed to its owner's runner (docs/mcp-host.md, 「Personal tools」).
+  if let Some(owner) = &tool.owner {
+    let result = relayed(host, tool, owner, session, asked).await;
+
+    host.placed.sweep();
+    return result;
+  }
+
   // An external server's tool is asked for its calls alone, on its registration's connection.
   if let Some(external) = &tool.external {
     return match asked {
@@ -286,10 +294,65 @@ async fn asking(
   result
 }
 
+// One call of a personal tool relayed to its owner's runner: the host's relay started in the tool's placed folder at
+// home, in a clean environment of the host's path, home and runtime directory alone, and handed the call on standard
+// input as any tool's executable is. The tool is handed its record without its variables, and with no call-back
+// socket or helper, since it runs on its owner's machine; the relay is told the owner, the tool, its version, its
+// run words and the runner the record names.
+async fn relayed(
+  host: &Host,
+  tool: &PlacedTool,
+  owner: &str,
+  session: &Session,
+  asked: Asked,
+) -> Result<Value, String> {
+  let Asked::Call { .. } = asked else {
+    return Err("a personal tool is asked for its calls alone".to_owned());
+  };
+  let Some(runner) = &session.runner else {
+    return Err("the session's record names no runner its owner's personal tools run on".to_owned());
+  };
+  let Some((program, words)) = host.placed.relay.split_first() else {
+    return Err("the host names no relay".to_owned());
+  };
+  let request = crate::relay::Request {
+    owner: owner.to_owned(),
+    tool: tool.folder.clone(),
+    version: tool.version(),
+    run: tool.manifest.tool.run.clone(),
+    runner: runner.clone(),
+  };
+  let request =
+    serde_json::to_string(&request).map_err(|why| format!("the relay could not be asked: {why}"))?;
+  let record = Session {
+    variables: BTreeMap::new(),
+    variables_file: None,
+    ..session.clone()
+  };
+  let handed = Handed::new(asked, record);
+  let mut command = Command::new(program);
+
+  command.args(words).arg(request).current_dir(&tool.dir).env_clear();
+
+  for kept in KEPT {
+    if let Some(value) = std::env::var_os(kept) {
+      command.env(kept, value);
+    }
+  }
+
+  ended_with_host(&mut command);
+  run_once(command, tool, &handed).await
+}
+
 // One process run to its end for one thing asked, its answer read off its standard output.
 async fn once(host: &Host, tool: &PlacedTool, session: &Session, handed: &Handed) -> Result<Value, String> {
+  run_once(command(host, tool, session), tool, handed).await
+}
+
+// One process of a command run to its end for one thing asked, its answer read off its standard output.
+async fn run_once(mut command: Command, tool: &PlacedTool, handed: &Handed) -> Result<Value, String> {
   let input = serde_json::to_vec(handed).map_err(|why| format!("the call could not be written: {why}"))?;
-  let mut child = command(host, tool, session)
+  let mut child = command
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())

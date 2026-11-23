@@ -14,7 +14,7 @@ use bmo_tool::manifest::{AppPart, MANIFEST, Manifest};
 
 use crate::chain::Chain;
 use crate::external::{REGISTRATION, Registration};
-use crate::placed::schema_faults;
+use crate::placed::{platform_faults, schema_faults};
 use crate::records::now_ms;
 use crate::registry::{Pointer, Registry};
 
@@ -289,7 +289,7 @@ pub fn put(registry: &Registry, asked: &Put, said: &mut Vec<String>) -> Result<(
   let manifest =
     Manifest::read(&folder, &name).map_err(|why| format!("{name}: its manifest does not read: {why}"))?;
 
-  if let Some(why) = schema_faults(&manifest) {
+  if let Some(why) = schema_faults(&manifest).or_else(|| platform_faults(&manifest)) {
     return Err(format!("{name}: {why}"));
   }
 
@@ -363,6 +363,7 @@ pub fn put(registry: &Registry, asked: &Put, said: &mut Vec<String>) -> Result<(
     dir: placed.clone(),
     origin: origin.clone(),
     service: asked.service.clone(),
+    owner: None,
     put_at: now_ms(),
   };
 
@@ -459,6 +460,7 @@ pub fn register_server(registry: &Registry, asked: &Put, said: &mut Vec<String>)
     dir: placed.clone(),
     origin: origin.clone(),
     service: asked.service.clone(),
+    owner: None,
     put_at: now_ms(),
   };
 

@@ -9,7 +9,7 @@ mod openapi;
 pub mod transport;
 mod wire;
 
-pub use bmo_tool::{Granted, Session, SessionRequest};
+pub use bmo_tool::{Granted, Runner, Session, SessionRequest};
 pub use client::{Failure, Pocket, default_socket};
 pub use error::{ErrorCode, WireError};
 pub use openapi::{openapi, openapi_json};

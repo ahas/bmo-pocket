@@ -4,6 +4,7 @@
 mod commands;
 mod external;
 mod host;
+mod personal;
 mod plugin;
 mod registry;
 mod units;

@@ -467,6 +467,40 @@
         ],
         "type": "string"
       },
+      "Runner": {
+        "description": "Where a session's owner's personal tools run (docs/api.md, 「The runner」): a socket the passage is asked on, or a\ncommand started for each call that speaks it on its standard input and output.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "description": "A socket each call is relayed over, a connection of its own.",
+            "properties": {
+              "socket": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "socket"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "description": "A command as words, started for each call.",
+            "properties": {
+              "command": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "command"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "Schedule": {
         "description": "One schedule an entry declares, and where it stands in the host.",
         "properties": {
@@ -675,6 +709,22 @@
             },
             "type": "array",
             "uniqueItems": true
+          },
+          "ownerAccount": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Runner"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "shown": {
             "items": {
