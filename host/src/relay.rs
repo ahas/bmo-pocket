@@ -2,17 +2,28 @@
 //! runner」): started by the host as any tool's executable is, the call on its standard input, it asks the owner's
 //! runner over the passage the session's record names and answers what the runner's run of the tool answered, on
 //! its standard output, its errors and its exit code. It holds the passage open until the runner answers, so the
-//! relay ended — its caller gone — closes the passage, and the runner ends the tool's process.
+//! relay ended — its caller gone — closes the passage, and the runner ends the tool's process. The secrets a call is
+//! handed are read here, at home, and travel on the passage's first line alone: never on a command line, in a log
+//! or in what the relay says.
 
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+use base64::Engine;
 use bmo_tool::Runner;
+use bmo_tool::manifest::secret_name;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 
+/// The most bytes one secret handed to a call holds.
+pub const SECRET_BYTES: u64 = 64 * 1024;
+
 /// What the host tells the relay of one call, beside the call itself: the owner and the tool, the version the host's
-/// copy of it is placed as, its run words, and the runner the session's record names.
+/// copy of it is placed as, its run words, the runner the session's record names, the addresses the call may reach,
+/// and the names of the secrets it is handed with the folder they are read from. Names alone: no value is ever told
+/// the relay on its command line.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Request {
@@ -21,10 +32,17 @@ pub struct Request {
   pub version: String,
   pub run: Vec<String>,
   pub runner: Runner,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub network: Vec<String>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub secrets: Vec<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub secret_space: Option<PathBuf>,
 }
 
-/// What the passage is asked, on its first line: the owner, the tool and its version, its run words, and the call
-/// as the tool's executable is handed it.
+/// What the passage is asked, on its first line: the owner, the tool and its version, its run words, the call as the
+/// tool's executable is handed it, the addresses it may reach, and the secrets it is handed for this call alone, each
+/// file's bytes in base64 by its name.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Passage {
@@ -33,6 +51,56 @@ pub struct Passage {
   pub version: String,
   pub run: Vec<String>,
   pub call: Value,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub network: Vec<String>,
+  #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+  pub secrets: BTreeMap<String, String>,
+}
+
+/// The secrets named, read from the owner's secret space, each file's bytes in base64 by its name; or why not, naming
+/// the secret and never what a file holds. A name that is no plain file's, one that stands as no regular file — a link
+/// or a folder among them — and a file over [`SECRET_BYTES`] are refused.
+pub fn secrets(space: Option<&Path>, names: &[String]) -> Result<BTreeMap<String, String>, String> {
+  let mut handed = BTreeMap::new();
+
+  if names.is_empty() {
+    return Ok(handed);
+  }
+
+  let Some(space) = space else {
+    return Err("the call names secrets, and no secret space is named to hand them from".to_owned());
+  };
+
+  for name in names {
+    if !secret_name(name) {
+      return Err(format!("{name:?} is no secret's name"));
+    }
+
+    let path = space.join(name);
+    let missing = || {
+      format!(
+        "the secret {name} this app needs is not in the owner's secret space; save it under that name first"
+      )
+    };
+    let standing = std::fs::symlink_metadata(&path).map_err(|_| missing())?;
+
+    if !standing.file_type().is_file() {
+      return Err(missing());
+    }
+
+    if standing.len() > SECRET_BYTES {
+      return Err(format!(
+        "the secret {name} holds more than {SECRET_BYTES} bytes, the most a call is handed"
+      ));
+    }
+
+    let bytes =
+      std::fs::read(&path).map_err(|why| format!("the secret {name} could not be read: {}", why.kind()))?;
+
+    handed.insert(name.clone(), base64::engine::general_purpose::STANDARD.encode(bytes));
+  }
+
+  Ok(handed)
 }
 
 /// One line the passage answers: a line the tool wrote on its standard error; its end, with the code it ended with,
@@ -127,12 +195,22 @@ pub async fn relay(
       return 1;
     }
   };
+  // Read before the runner is asked, so a secret missing stops the call here, naming it.
+  let secrets = match secrets(request.secret_space.as_deref(), &request.secrets) {
+    Ok(secrets) => secrets,
+    Err(why) => {
+      say(why).await;
+      return 1;
+    }
+  };
   let passage = Passage {
     owner: request.owner,
     tool: request.tool,
     version: request.version,
     run: request.run,
     call,
+    network: request.network,
+    secrets,
   };
   let mut opened = match open(&request.runner).await {
     Ok(opened) => opened,

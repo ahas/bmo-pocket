@@ -74,7 +74,8 @@
 - **What is checked before anything is placed,** each refusal naming what failed:
   - the account is an owner's name;
   - the manifest reads, every schema it names is a JSON Schema, and it reads as a personal tool's
-    (`docs/mcp-host.md`, 「Personal tools」), so one asking for the network or a secret is refused;
+    (`docs/mcp-host.md`, 「Personal tools」), what its `[permissions]` names reading as addresses and secrets' names
+    (`docs/api.md`, 「`[permissions]`」);
   - none of its entries' full names is held by another of the same owner's tools.
   - where it names a `[screen]`: its `screen/layer.json` names a layer, its `screen/words.json` is an object of
     locales whose trees hold the screen's name alone, its title among it, and its `screen/files.json` names

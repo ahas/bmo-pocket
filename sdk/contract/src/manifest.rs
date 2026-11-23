@@ -277,6 +277,119 @@ pub struct PermissionsPart {
   pub secrets: Vec<String>,
 }
 
+impl PermissionsPart {
+  /// Why what it names does not read: an address that is no [`NetworkAddress`], or a name that is no secret's
+  /// ([`secret_name`]).
+  pub fn faults(&self) -> Result<(), String> {
+    for address in &self.network {
+      NetworkAddress::read(address).map_err(|why| format!("[permissions] network: {why}"))?;
+    }
+
+    for name in &self.secrets {
+      if !secret_name(name) {
+        return Err(format!(
+          "[permissions] secrets: {name:?} is no secret's name: a plain file name of letters, digits, `.`, `_` and \
+           `-`, opening on no dot and not ending in `.previous`"
+        ));
+      }
+    }
+
+    Ok(())
+  }
+
+  /// Whether it asks for anything beyond the tool's own folders.
+  pub fn asks(&self) -> bool {
+    !self.network.is_empty() || !self.secrets.is_empty()
+  }
+}
+
+/// Whether a name is a secret's as the console's secret store writes one (bmo-web's `docs/boundary.md`, 「The secret
+/// store」): one to 200 bytes of letters, digits, `.`, `_` and `-`, opening on no dot and not ending in `.previous`.
+pub fn secret_name(name: &str) -> bool {
+  !name.is_empty()
+    && name.len() <= 200
+    && !name.starts_with('.')
+    && !name.ends_with(".previous")
+    && name.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '.' | '_' | '-'))
+}
+
+/// One address a personal tool may reach (docs/api.md, 「`[permissions]`」): a host name, or every name under a domain
+/// where it opens on `*.`, and the one port it names, or 80 and 443 where it names none. A name is never an IP
+/// address, so no address is reached but through a name its manifest lists.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NetworkAddress {
+  /// The host name, in lower case, its `*.` taken off where it names a domain's subdomains.
+  pub host: String,
+  /// Whether it names every name under `host`, and not `host` itself.
+  pub subdomains: bool,
+  /// The port it names; none names 80 and 443.
+  pub port: Option<u16>,
+}
+
+impl NetworkAddress {
+  /// The address as a manifest writes it, or why it is none.
+  pub fn read(written: &str) -> Result<Self, String> {
+    let (name, port) = match written.rsplit_once(':') {
+      Some((name, port)) => {
+        let port = port
+          .parse::<u16>()
+          .ok()
+          .filter(|port| *port > 0)
+          .ok_or_else(|| format!("{written:?} names no port between 1 and 65535"))?;
+
+        (name, Some(port))
+      }
+      None => (written, None),
+    };
+    let (host, subdomains) = match name.strip_prefix("*.") {
+      Some(domain) => (domain, true),
+      None => (name, false),
+    };
+    let host = host.to_ascii_lowercase();
+    let labels: Vec<&str> = host.split('.').collect();
+    let label = |label: &str| {
+      !label.is_empty()
+        && label.len() <= 63
+        && !label.starts_with('-')
+        && !label.ends_with('-')
+        && label.chars().all(|one| one.is_ascii_alphanumeric() || one == '-')
+    };
+
+    if host.len() > 253 || labels.len() < 2 || !labels.iter().all(|one| label(one)) {
+      return Err(format!(
+        "{written:?} is no host name: labels of letters, digits and `-` parted by dots, two at least, opening on \
+         `*.` alone where it names a domain's subdomains"
+      ));
+    }
+
+    if labels.last().is_some_and(|last| last.chars().all(|one| one.is_ascii_digit())) {
+      return Err(format!("{written:?} is an IP address, and a tool reaches a name alone"));
+    }
+
+    if labels.last() == Some(&"localhost") {
+      return Err(format!("{written:?} names this machine, which no tool reaches"));
+    }
+
+    Ok(Self {
+      host,
+      subdomains,
+      port,
+    })
+  }
+
+  /// Whether it lets a call reach `host` at `port`.
+  pub fn admits(&self, host: &str, port: u16) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    let named = if self.subdomains {
+      host.strip_suffix(&self.host).is_some_and(|head| head.len() > 1 && head.ends_with('.'))
+    } else {
+      host == self.host
+    };
+
+    named && self.port.map_or(port == 80 || port == 443, |own| own == port)
+  }
+}
+
 /// A personal tool's screen (docs/api.md, 「`[screen]`」): its presence says the placed version holds the screen's
 /// bundle build in [`SCREEN_FOLDER`]. A platform tool's is read and given no effect.
 #[derive(Clone, Debug, Default, Deserialize, serde::Serialize, PartialEq, Eq)]
@@ -594,8 +707,7 @@ impl Manifest {
   /// Why the manifest is no personal tool's (docs/mcp-host.md, 「Personal tools」): a personal tool is a tool called a
   /// process at a time on its owner's machine, its entries in the personal namespace, so it is no shared helper, no
   /// server, names no helper, serves no resources, claims no page, is called on no schedule and has no entry for the
-  /// system alone or in a bundle's form; and it reaches neither the network nor a secret, which no runner gives a
-  /// call yet.
+  /// system alone or in a bundle's form; and what its `[permissions]` names reads as addresses and secrets' names.
   pub fn personal_faults(&self) -> Result<(), String> {
     if self.helper.is_some() {
       return Err("a personal tool is no shared helper".to_owned());
@@ -623,11 +735,7 @@ impl Manifest {
       }
     }
 
-    if !self.permissions.network.is_empty() || !self.permissions.secrets.is_empty() {
-      return Err("it asks for the network or a secret, which no personal tool is given yet".to_owned());
-    }
-
-    Ok(())
+    self.permissions.faults()
   }
 
   /// The files of the folder the manifest itself names: the manifest, every schema and every manual, each by

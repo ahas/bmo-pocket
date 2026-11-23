@@ -56,6 +56,11 @@ pub struct Session {
   /// handed the record without it.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub runner: Option<Runner>,
+  /// The folder its owner's secrets stand in, one file a secret, which a call of a personal tool naming secrets is
+  /// handed from (docs/mcp-host.md, 「Personal tools」). The host alone reads it, so a tool is handed the record
+  /// without it.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub secret_space: Option<PathBuf>,
   /// The issuer's own metadata, handed to every call and never read by the host.
   #[serde(default, skip_serializing_if = "Map::is_empty")]
   pub labels: Map<String, Value>,
@@ -124,6 +129,34 @@ impl Session {
 
     Ok(Withheld::Some(read.apps))
   }
+
+  /// What its owner's personal tools may reach beyond their own folders, read afresh from its `withheldAppsFile`:
+  /// both where it names no file, and the file's `personal` otherwise, neither where it says nothing of them; why
+  /// where the file does not stand or does not read, which its reader takes as neither.
+  pub fn personal_reach(&self) -> Result<Reach, String> {
+    let Some(file) = &self.withheld_apps_file else {
+      return Ok(Reach {
+        network: true,
+        secrets: true,
+      });
+    };
+    let text = std::fs::read_to_string(file)
+      .map_err(|why| format!("its withheld-apps file {}: {why}", file.display()))?;
+    let read: WithheldFile = serde_json::from_str(&text)
+      .map_err(|why| format!("its withheld-apps file {} does not read: {why}", file.display()))?;
+
+    Ok(read.personal)
+  }
+}
+
+/// What a session's owner's personal tools may reach beyond their own folders, as the issuer judged it for the
+/// person: the network, at the addresses a tool's manifest names, and the secrets it names.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Reach {
+  #[serde(default)]
+  pub network: bool,
+  #[serde(default)]
+  pub secrets: bool,
 }
 
 /// The apps a session does not reach.
@@ -162,11 +195,13 @@ pub enum Runner {
   Command(Vec<String>),
 }
 
-/// A withheld-apps file as its issuer writes it: its `apps`, beside whatever else the issuer keeps in it, which the
-/// host reads past.
+/// A withheld-apps file as its issuer writes it: its `apps`, and its `personal`, what the person's personal tools may
+/// reach, beside whatever else the issuer keeps in it, which the host reads past.
 #[derive(Deserialize)]
 struct WithheldFile {
   apps: BTreeSet<String>,
+  #[serde(default)]
+  personal: Reach,
 }
 
 /// What an issuer asks a session to be issued with: the record less the times the host answers, and how long
@@ -192,6 +227,8 @@ pub struct SessionRequest {
   pub owner_account: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub runner: Option<Runner>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub secret_space: Option<PathBuf>,
   #[serde(default, skip_serializing_if = "Map::is_empty")]
   pub labels: Map<String, Value>,
   /// How long the session stands, in milliseconds; none stands until it is revoked.
@@ -214,6 +251,7 @@ impl SessionRequest {
       withheld_apps_file: self.withheld_apps_file,
       owner_account: self.owner_account,
       runner: self.runner,
+      secret_space: self.secret_space,
       labels: self.labels,
       expires_at: self.ttl_ms.map(|ttl| now.saturating_add(ttl)),
       created_at: now,

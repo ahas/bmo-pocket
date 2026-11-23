@@ -121,8 +121,13 @@ flowchart TD
   them as it narrows every entry, and a withheld app withholds a personal tool naming it as any other.
 - **It is a tool called a process at a time:** a personal tool is no shared helper, no server and serves no
   resources; it names no helper, and its entries claim no page, keep no schedule, are for no system alone and have no
-  bundle. It asks for neither the network nor a secret (`docs/api.md`, 「`[permissions]`」), which no runner gives
-  a call yet. A manifest outside these rules leaves the tool out, said in the log.
+  bundle. A manifest outside these rules leaves the tool out, said in the log.
+- **It may ask for the network and secrets,** by its manifest's `[permissions]` (`docs/api.md`, 「`[permissions]`」):
+  addresses by host name and the names of secrets in its owner's secret space. A call of it is refused, saying the
+  organisation does not allow it, where the record's withheld-apps file does not let the owner's personal tools have
+  what it asks for; otherwise the relay hands the runner the addresses and the secrets' values, read from the
+  record's `secretSpace` for that call alone, a secret missing there refusing the call by its name (`docs/api.md`,
+  「The runner」).
 - **A call is relayed, the host's call contract unchanged** (`docs/api.md`, 「The runner」): the host starts its
   relay, `bmo-pocket relay` beside its own binary, in the tool's placed folder here, in a process group of its own
   and a clean environment of the host's path, home and runtime directory alone, and hands it the call on standard
@@ -178,8 +183,9 @@ flowchart TD
     record;
   - `withheldAppsFile`, a file naming the apps the session does not reach, read afresh at every listing,
     description and call (「Apps」); the host alone checks it, so the record a tool is handed leaves it out;
-  - `ownerAccount`, the account the session acts for, whose personal tools it holds, and `runner`, where they run
-    (「Personal tools」); the host alone reads `runner`, so the record a tool is handed leaves it out;
+  - `ownerAccount`, the account the session acts for, whose personal tools it holds, `runner`, where they run, and
+    `secretSpace`, the folder their secrets are read from (「Personal tools」); the host alone reads `runner` and
+    `secretSpace`, so the record a tool is handed leaves them out;
   - `labels`, the issuer's own metadata, handed to every call inside the record;
   - `expiresAt`, from the `ttlMs` the issuer asked for, and `createdAt`.
 - **Where it is kept:** one file per record in `tool-host/sessions/` under the data root, readable by the host's

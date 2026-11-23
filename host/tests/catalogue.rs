@@ -135,7 +135,7 @@ fn a_share_is_refused_for_what_no_personal_app_may_be_and_without_an_account_ser
   assert!(refused(&share_of("v1", outside), true).contains("outside the app's folder"));
   assert!(
     refused(
-      &share_of("v1", bundle("weekly", "weekly_summary", "[permissions]\nnetwork = [\"example.org\"]\n")),
+      &share_of("v1", bundle("weekly", "weekly_summary", "[permissions]\nnetwork = [\"*\"]\n")),
       true
     )
     .contains("network")

@@ -482,9 +482,10 @@ ignored. The issuer states in it everything the host checks a call against, so t
 | `entries` | array of strings or null | The full names of the only entries the session reaches, those for the system alone among them; every entry its namespaces and capabilities give it where absent or null |
 | `variables` | object of strings | Variables handed to every call's environment |
 | `variablesFile` | path | A file holding a JSON object of strings, read afresh at every call and laid over `variables` |
-| `withheldAppsFile` | path | A file holding the apps the session does not reach, `{"apps": [<key>…]}` beside whatever else its issuer keeps in it, read afresh at every listing, description and call (`docs/mcp-host.md`, 「Apps」); every app reached where absent |
+| `withheldAppsFile` | path | A file holding the apps the session does not reach, `{"apps": [<key>…]}`, and what its owner's personal tools may reach, `"personal": {"network": <bool>, "secrets": <bool>}`, beside whatever else its issuer keeps in it, read afresh at every listing, description and call (`docs/mcp-host.md`, 「Apps」, 「Personal tools」); every app reached, and the network and secrets both, where absent |
 | `ownerAccount` | string | The account the session acts for, as its issuer judged it: the owner whose personal tools it holds (`docs/mcp-host.md`, 「Personal tools」); none of any owner's where absent |
 | `runner` | object | Where the owner's personal tools run, `{"socket": <path>}` or `{"command": [<word>…]}` (「The runner」); a call of a personal tool fails where absent |
+| `secretSpace` | path | The folder the owner's secrets stand in, one file a secret, which a call of a personal tool naming secrets is handed from (「The runner」); such a call fails where absent |
 | `labels` | object | The issuer's own metadata, handed to every call inside the record and never read by the host |
 | `ttlMs` | integer or null | How long the session stands, in the request alone; none stands until it is revoked |
 
@@ -511,6 +512,11 @@ The tool session answered, and the record a call is handed, carry the same field
 - **`ownerAccount` and `runner` reach an owner's personal tools:** a session holds the personal tools of the owner
   its record names and of no other, and each call of one is relayed to the runner the record names. The host alone
   reads `runner`, so the record a tool is handed leaves it out.
+- **The file's `personal` and `secretSpace` let a personal tool past its own folders:** a call of a personal tool
+  whose manifest's `[permissions]` names addresses is refused unless the file's `personal.network` is true, and one
+  naming secrets unless its `personal.secrets` is true, each saying the organisation does not allow it; a file that
+  says nothing of them allows neither, and one that does not read allows neither, said in the host's log. The
+  secrets are read from `secretSpace`. The host alone reads it, so the record a tool is handed leaves it out.
 - **A record holds no path, address or value of the issuer's own** beyond these. What a tool reads of the issuer's
   is in `variables`, `variablesFile` or `labels`, as the issuer puts it there.
 
@@ -695,7 +701,7 @@ answers as the tool did.
 
 | Line | Fields | Meaning |
 |---|---|---|
-| the asking, first | `owner`, `tool`, `version`, `run`, `call` | The owner's account; the tool's name; the version the host's copy of it is placed as, its version folder's name; the manifest's run words; and the call, the object a tool's executable is handed (「What a tool is handed」) |
+| the asking, first | `owner`, `tool`, `version`, `run`, `call`, `network?`, `secrets?` | The owner's account; the tool's name; the version the host's copy of it is placed as, its version folder's name; the manifest's run words; the call, the object a tool's executable is handed (「What a tool is handed」); the addresses the call may reach, as its manifest's `[permissions]` writes them, none where absent; and the secrets it is handed for this call alone, each file's bytes in base64 by the secret's name, none where absent |
 | `{"t": "said"}` | `line` | A line the tool wrote on its standard error |
 | `{"t": "end"}` | `code`, `out` | The tool ended: the code it ended with, null where a signal ended it, and what it wrote on its standard output |
 | `{"t": "refused"}` | `why` | The runner did not run it, and why |
@@ -713,9 +719,15 @@ answers as the tool did.
   `{"owner", "file": {"tool", "version", "path"}}`, a file of the version's `screen/` folder by its path below it,
   answered `{"t": "file", "bytes"}`, the bytes in base64. A `refused` line answers either where the runner does not.
 - **What a runner does with the call is its own:** it runs the version the asking names and no other, under the run
-  words given, with the call on the tool's standard input, confined as its issuer's documents state. A manifest's
-  `[permissions]` names what a runner would grant beyond the tool's own folders. The call carries no call-back socket
-  and no helper's socket, since none reaches the host from the owner's machine.
+  words given, with the call on the tool's standard input, confined as its issuer's documents state: it lets the
+  tool reach the addresses `network` names and no other, and hands it the secrets `secrets` carries for the call's
+  span alone (agency's `docs/person-nodes.md`, 「The network and secrets of a call」). The call carries no call-back
+  socket and no helper's socket, since none reaches the host from the owner's machine.
+- **The secrets are read at home, by the relay, as the call starts:** each name the manifest's `[permissions]`
+  lists, a file of the record's `secretSpace` read whole, its bytes unchanged. A name that stands there as no regular
+  file — none at all, a link or a folder — refuses the call naming the secret, before the runner is asked, and so
+  does a file over 64 KiB. The host tells the relay the names and the folder alone; a value travels on the passage's
+  first line and nowhere else, never on a command line, in what the relay says or in a log.
 
 ### A shared helper's socket
 
@@ -818,8 +830,17 @@ tool's is read and given no effect.
 | `network` | array of strings | The addresses a call may reach on the network; none, the default, reaches none |
 | `secrets` | array of strings | The names of the owner's secrets a call is handed; none, the default, is handed none |
 
-- **No runner gives a call the network or a secret yet,** so a personal tool naming either is left out of the
-  catalogue.
+- **An address is a host name, and its port where it names one:** `api.example.com` reaches that name on ports 80
+  and 443, `api.example.com:8443` on that port alone, and `*.example.com` every name under `example.com` — not
+  `example.com` itself — on 80 and 443, or on the port it names. A name is two labels at least of letters, digits
+  and `-`, parted by dots, compared in any case. Nothing else is written: no IP address, no other wildcard, no
+  `localhost`, so a call reaches no address but through a name its manifest lists.
+- **A secret's name is a plain file name of the owner's secret space,** as the console's secret store writes one
+  (bmo-web's `docs/boundary.md`, 「The secret store」): letters, digits, `.`, `_` and `-`, at most 200 bytes, opening
+  on no dot and not ending in `.previous`.
+- **A manifest naming anything else is no personal tool's,** and is refused at its put and left out at its reading.
+- **What it names is given a call only where the delegation chain allows it for the person,** as the session's
+  record says (「The session record」), and where the owner's runner gives it (「The runner」).
 
 ### `[screen]`
 
@@ -985,7 +1006,7 @@ name is refused, naming it.
 | `catalogue promotions` | Every company's requests to make an app a platform app, as a JSON array of `{company, id, title, maker, by, at, note}` |
 | `app <file>` | Declares a screen-only app's two settings on the delegation chain from a file holding the `[app]` table alone (「An app on the delegation chain」), printing each; it refuses a file holding anything else or an `[app]` that does not read, and places nothing in the registry |
 | `mcp [--socket <path>] [--token <token>]` | Serves the harness plugin on standard input and output (「The harness plugin」) |
-| `relay <request>` | The host's relay of a personal tool's call (「The runner」): `<request>` is what the host tells it as JSON, `owner`, `tool`, `version`, `run` and `runner`; the call on standard input; answered as the tool did. Run by the host, never by a person, and left out of the usage |
+| `relay <request>` | The host's relay of a personal tool's call (「The runner」): `<request>` is what the host tells it as JSON, `owner`, `tool`, `version`, `run`, `runner`, and where the manifest names them `network`, `secrets`, the secrets' names, and `secretSpace`; the call on standard input; answered as the tool did. Run by the host, never by a person, and left out of the usage |
 
 - **What `put` checks before anything is placed:** the manifest reads (「The manifest」), none of its entries in the
   personal tools' namespace `my`; its name is no other

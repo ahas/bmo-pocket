@@ -201,7 +201,7 @@ fn a_platform_tool_in_my_and_a_personal_tool_outside_its_rules_are_left_out() {
     "networked",
     "v1",
     &format!(
-      "{}\n[permissions]\nnetwork = [\"example.com\"]\n",
+      "{}\n[permissions]\nnetwork = [\"192.0.2.1\"]\n",
       personal_manifest("networked", "my", "fetch", "")
     ),
   );
@@ -227,7 +227,10 @@ fn a_platform_tool_in_my_and_a_personal_tool_outside_its_rules_are_left_out() {
   assert!(
     said.contains("registry/elsewhere: notes/jot: a personal tool's entries stand in the namespace `my`")
   );
-  assert!(said.contains("registry/networked: it asks for the network or a secret"), "{said}");
+  assert!(
+    said.contains("registry/networked: [permissions] network: \"192.0.2.1\" is an IP address"),
+    "{said}"
+  );
   assert!(said.contains("registry/timed: my/tick: a personal tool's entry"), "{said}");
   assert!(
     said.contains("registry/misplaced: it names no owner, or another than its folder's"),
@@ -428,6 +431,93 @@ async fn a_call_whose_caller_goes_away_closes_the_runner_s_passage() {
     .unwrap();
 }
 
+// A personal tool asking for an address and a secret, and a session acting for `a1` over the runner socket given, its
+// withheld-apps file saying what the person's personal tools may reach and its secret space the folder given.
+fn reaching_session(scratch: &Scratch, socket: &Path, reach: Value, space: &Path) -> Session {
+  let file = scratch.dir.path().join(format!("withheld-{}.json", reach.to_string().len()));
+
+  fs::write(&file, json!({ "apps": [], "account": "a1", "personal": reach }).to_string()).unwrap();
+
+  let mut record = serde_json::to_value(session(Some("a1"), json!({ "socket": socket }))).unwrap();
+
+  record["withheldAppsFile"] = json!(file);
+  record["secretSpace"] = json!(space);
+  serde_json::from_value(record).unwrap()
+}
+
+// "a call of a personal tool naming addresses and secrets hands the runner the addresses and each secret's bytes for
+// that call, where the person's chain allows them; it is refused saying the organisation does not allow it where it
+// does not, and naming the secret where the owner's space holds none of that name, the runner never asked"
+#[tokio::test]
+async fn a_call_is_handed_its_addresses_and_secrets_where_the_chain_allows_them() {
+  let scratch = Scratch::new();
+
+  scratch.personal(
+    "a1",
+    Some("a1"),
+    "weekly",
+    "v1",
+    &format!(
+      "{}\n[permissions]\nnetwork = [\"api.example.com\", \"*.example.org:8443\"]\nsecrets = [\"team-key\"]\n",
+      personal_manifest("weekly", "my", "weekly_summary", "")
+    ),
+  );
+
+  let host = scratch.host();
+  let socket = scratch.runner_socket();
+  let mut asking = socket_runner(&socket, answered_with_text);
+  let space = scratch.dir.path().join("env").join("users").join("a1");
+
+  fs::create_dir_all(&space).unwrap();
+  fs::write(space.join("team-key"), "stand-in value\n").unwrap();
+
+  let both = json!({ "network": true, "secrets": true });
+  let record = reaching_session(&scratch, &socket, both.clone(), &space);
+  let entry = host.find_full(&record, "my/weekly_summary", false).unwrap();
+  let answer = host.answer(&entry, &record, json!({ "text": "hello" })).await.unwrap();
+
+  assert_eq!(text(&answer), "ran:hello", "{answer}");
+
+  let asked = asking.recv().await.unwrap();
+
+  assert_eq!(asked["network"], json!(["api.example.com", "*.example.org:8443"]));
+  assert_eq!(asked["secrets"], json!({ "team-key": "c3RhbmQtaW4gdmFsdWUK" }));
+  // The tool is handed its record without the secret space or the withheld-apps file.
+  assert!(asked["call"]["session"].get("secretSpace").is_none(), "{asked}");
+  assert!(asked["call"]["session"].get("withheldAppsFile").is_none(), "{asked}");
+
+  let fails = async |record: &Session| {
+    let answer = host.answer(&entry, record, json!({})).await.unwrap();
+
+    assert_eq!(answer["isError"], true, "{answer}");
+    text(&answer)
+  };
+
+  // The chain allowing the network alone: the call is refused before the runner is asked.
+  let network_alone = reaching_session(&scratch, &socket, json!({ "network": true }), &space);
+  let refused = fails(&network_alone).await;
+
+  assert!(
+    refused
+      .contains("asks for a secret, which the organisation does not allow this person's personal apps"),
+    "{refused}"
+  );
+
+  // A space holding no secret of the name: refused naming it, the value of no other secret said.
+  let empty = scratch.dir.path().join("env").join("users").join("b2");
+
+  fs::create_dir_all(&empty).unwrap();
+
+  let missing = fails(&reaching_session(&scratch, &socket, both, &empty)).await;
+
+  assert!(
+    missing.contains("the secret team-key this app needs is not in the owner's secret space"),
+    "{missing}"
+  );
+  assert!(!missing.contains("stand-in value"), "{missing}");
+  assert!(asking.try_recv().is_err(), "the runner was asked a call that was refused");
+}
+
 // `bmo-pocket` run on the scratch data root, answering its exit code, what it said and why it refused.
 fn pocket(scratch: &Scratch, words: &[&str]) -> (i32, String, String) {
   let ran = std::process::Command::new(env!("CARGO_BIN_EXE_bmo-pocket"))
@@ -491,7 +581,7 @@ fn an_owner_put_places_the_description_copy_alone_under_the_version_its_machine_
 
   assert_eq!(found.tool.version(), "100-abc");
 
-  // Outside a personal tool's rules: a namespace not `my`, the network asked for, a bad version name.
+  // Outside a personal tool's rules: a namespace not `my`, an address that is no host name, a bad version name.
   let elsewhere = built(&scratch, "elsewhere", &personal_manifest("elsewhere", "notes", "jot", ""));
   let (code, _, refused) = pocket(&scratch, &["put", "--owner", "a1", elsewhere.to_str().unwrap()]);
 
@@ -502,14 +592,14 @@ fn an_owner_put_places_the_description_copy_alone_under_the_version_its_machine_
     &scratch,
     "reaching",
     &format!(
-      "{}\n[permissions]\nnetwork = [\"example.com\"]\n",
+      "{}\n[permissions]\nnetwork = [\"*\"]\n",
       personal_manifest("reaching", "my", "reach", "")
     ),
   );
   let (code, _, refused) = pocket(&scratch, &["put", "--owner", "a1", reaching.to_str().unwrap()]);
 
   assert_eq!(code, 1);
-  assert!(refused.contains("the network or a secret"), "{refused}");
+  assert!(refused.contains("[permissions] network: \"*\" is no host name"), "{refused}");
 
   let (code, _, refused) =
     pocket(&scratch, &["put", "--owner", "a1", "--version", "../up", weekly.to_str().unwrap()]);

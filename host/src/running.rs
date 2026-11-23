@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use bmo_tool::manifest::Mode;
 use bmo_tool::protocol::{Asked, CallBack, Handed, START_VARIABLE};
-use bmo_tool::{Answer, Kept, Session};
+use bmo_tool::{Answer, Kept, Reach, Session};
 use rmcp::model::CallToolRequestParams;
 use rmcp::service::{Peer, RunningService};
 use rmcp::transport::TokioChildProcess;
@@ -298,7 +298,8 @@ async fn asking(
 // home, in a clean environment of the host's path, home and runtime directory alone, and handed the call on standard
 // input as any tool's executable is. The tool is handed its record without its variables, and with no call-back
 // socket or helper, since it runs on its owner's machine; the relay is told the owner, the tool, its version, its
-// run words and the runner the record names.
+// run words, the runner the record names, and what its manifest's `[permissions]` names where the record's reach
+// lets the tool have it, the call being refused where it does not.
 async fn relayed(
   host: &Host,
   tool: &PlacedTool,
@@ -315,12 +316,49 @@ async fn relayed(
   let Some((program, words)) = host.placed.relay.split_first() else {
     return Err("the host names no relay".to_owned());
   };
+  let permissions = &tool.manifest.permissions;
+
+  if permissions.asks() {
+    let reach = session.personal_reach().unwrap_or_else(|why| {
+      eprintln!(
+        "mcp-host: the record held by {} reaches neither the network nor a secret: {why}",
+        session.holder_name
+      );
+      Reach::default()
+    });
+
+    for (asks, reaches, what) in [
+      (!permissions.network.is_empty(), reach.network, "the network"),
+      (!permissions.secrets.is_empty(), reach.secrets, "a secret"),
+    ] {
+      if asks && !reaches {
+        return Err(format!(
+          "tools/{} asks for {what}, which the organisation does not allow this person's personal apps",
+          tool.folder
+        ));
+      }
+    }
+  }
+
+  let secret_space = match (&session.secret_space, permissions.secrets.is_empty()) {
+    (_, true) => None,
+    (Some(space), false) => Some(space.clone()),
+    (None, false) => {
+      return Err(format!(
+        "tools/{} names secrets, and the session's record names no secret space to hand them from",
+        tool.folder
+      ));
+    }
+  };
   let request = crate::relay::Request {
     owner: owner.to_owned(),
     tool: tool.folder.clone(),
     version: tool.version(),
     run: tool.manifest.tool.run.clone(),
     runner: runner.clone(),
+    network: permissions.network.clone(),
+    secrets: permissions.secrets.clone(),
+    secret_space,
   };
   let request =
     serde_json::to_string(&request).map_err(|why| format!("the relay could not be asked: {why}"))?;

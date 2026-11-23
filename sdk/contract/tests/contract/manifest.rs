@@ -1,4 +1,6 @@
-use bmo_tool::manifest::{AppPart, MANIFEST, Manifest, screen_name, screen_path};
+use bmo_tool::manifest::{
+  AppPart, MANIFEST, Manifest, NetworkAddress, PermissionsPart, screen_name, screen_path,
+};
 use bmo_tool::{Answer, Bundle, Hints, Served, Session, Tool};
 use serde::Deserialize;
 
@@ -340,4 +342,56 @@ fn a_screen_carries_its_words_layer_and_index_in_the_description_and_names_an_ic
     (screen_name("weekly_notes"), screen_path("weekly_notes")),
     ("my-weekly-notes".to_owned(), "/my/weekly-notes".to_owned())
   );
+}
+
+// "an address a personal tool may reach is a host name, every name under a domain where it opens on `*.`, on 80 and 443
+// or the one port it names; an IP address, another wildcard and this machine are no address"
+#[test]
+fn an_address_is_a_host_name_or_a_domain_s_subdomains_on_its_ports() {
+  let read = |written: &str| NetworkAddress::read(written).unwrap();
+  let plain = read("API.Example.com");
+
+  assert!(plain.admits("api.example.com", 443) && plain.admits("api.example.com.", 80));
+  assert!(!plain.admits("api.example.com", 8080) && !plain.admits("www.example.com", 443));
+
+  let ported = read("api.example.com:8443");
+
+  assert!(ported.admits("api.example.com", 8443) && !ported.admits("api.example.com", 443));
+
+  let under = read("*.example.org");
+
+  assert!(under.admits("a.example.org", 443) && under.admits("a.b.example.org", 80));
+  assert!(!under.admits("example.org", 443) && !under.admits("badexample.org", 443));
+
+  for (written, why) in [
+    ("192.0.2.1", "is an IP address"),
+    ("192.0.2.1:80", "is an IP address"),
+    ("[::1]:443", "is no host name"),
+    ("*", "is no host name"),
+    ("api.*.com", "is no host name"),
+    ("example", "is no host name"),
+    ("api.localhost", "names this machine"),
+    ("api.example.com:0", "names no port"),
+    ("api.example.com:http", "names no port"),
+    ("-api.example.com", "is no host name"),
+  ] {
+    let refused = NetworkAddress::read(written).unwrap_err();
+
+    assert!(refused.contains(why), "{written}: {refused}");
+  }
+}
+
+// "a secret's name is a plain file name of the owner's secret space"
+#[test]
+fn a_secret_is_named_by_a_plain_file_name() {
+  let named = |secrets: &[&str]| PermissionsPart {
+    network: Vec::new(),
+    secrets: secrets.iter().map(|name| (*name).to_owned()).collect(),
+  };
+
+  assert!(named(&["team-key", "slack.token", "A_B"]).faults().is_ok());
+
+  for name in ["../env", ".hidden", "key.previous", "a/b", ""] {
+    assert!(named(&[name]).faults().unwrap_err().contains("no secret's name"), "{name}");
+  }
 }

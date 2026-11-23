@@ -836,6 +836,12 @@
               }
             ]
           },
+          "secretSpace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "shown": {
             "items": {
               "type": "string"

@@ -613,6 +613,7 @@ export interface components {
             namespaces: string[];
             ownerAccount?: string | null;
             runner?: components["schemas"]["Runner"] | null;
+            secretSpace?: string | null;
             shown?: string[];
             /**
              * Format: uint64

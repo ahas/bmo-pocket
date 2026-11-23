@@ -57,8 +57,8 @@ pub struct Handed {
 }
 
 impl Handed {
-  /// What a tool is handed for `asked` under `session`, the record less its `entries`, its withheld-apps file and
-  /// its runner, which the host alone reads.
+  /// What a tool is handed for `asked` under `session`, the record less its `entries`, its withheld-apps file, its
+  /// runner and its secret space, which the host alone reads.
   pub fn new(asked: Asked, session: Session) -> Self {
     Self {
       protocol: PROTOCOL,
@@ -67,6 +67,7 @@ impl Handed {
         entries: None,
         withheld_apps_file: None,
         runner: None,
+        secret_space: None,
         ..session
       },
       callback: None,
