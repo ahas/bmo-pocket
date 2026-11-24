@@ -39,7 +39,7 @@ pub fn kind_key(app: &str, setting: &str) -> String {
 /// and on, a flag the nearest link decides, at the platform, the units and the person, written by the person and
 /// their heads.
 pub fn kinds(app: &AppPart) -> Vec<(String, Value)> {
-  let said = format!("{}: {}", app.name.trim(), app.description.trim());
+  let said = format!("{}: {}", app.name.one().trim(), app.description.one().trim());
   let offered = kind_key(&app.key, "offered");
   let on = kind_key(&app.key, "on");
 

@@ -96,11 +96,16 @@ the host calls it by itself; `docs/api.md` states each table, and `docs/mcp-host
 | Key | What to set |
 |---|---|
 | `key` | Where the tool is something a company, a unit or a person may want off — a product of its own rather than a part of the system — the app's key: a lower-case letter, then lower-case letters, digits and `-`. A screen of the same work names the same key |
-| `name` | The name a person sees it by in the settings |
-| `description` | What it is for, one or two sentences |
+| `name` | The name a person sees it by in the settings: a plain string in the language of whoever asked for the tool, or a table of locales (`ko`, `en`, `ja`, `zh-CN`) where they asked for several |
+| `description` | What it is for, one or two sentences, written as `name` is |
+| `language` | The locale a plain `name` and `description` are written in |
 | `icon` | The icon a screen shows it by |
 | `offered` | `false` for an app made for some companies alone, which the platform's administrator then offers to them on the delegation chain; true otherwise |
 | `on` | `false` for an app a person turns on for themselves; true otherwise |
+
+Other languages are optional: write the asker's own, and add a locale only when they ask for it. A reader whose
+locale an app does not hold is shown its text translated as they read it (`docs/catalogue.md`, 「Text in several
+languages」).
 
 A tool the system cannot work without names no app, and no setting ever withholds it. A put of a tool naming one
 declares its two settings on the account service's delegation chain (`docs/api.md`, 「An app on the delegation

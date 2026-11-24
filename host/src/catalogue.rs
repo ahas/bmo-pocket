@@ -1,15 +1,15 @@
-//! A company's catalogue of the personal apps its people share (docs/catalogue.md): one record an app, the source
-//! bundle of each version shared, and the moment each reader last looked, under `tool-host/catalogue/<company>/`,
-//! each change made under the catalogue's lock and each file written whole. The verbs `bmo-pocket catalogue` hands
+//! A company's catalogue of the personal apps, skills and MCP servers its people share (docs/catalogue.md): one
+//! record an item, the source bundle of each version shared, and the moment each reader last looked, under
+//! `tool-host/catalogue/<company>/`, each change made under the catalogue's lock and each file written whole. The verbs `bmo-pocket catalogue` hands
 //! its words to stand here; the host's call path reads none of it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::unix::io::AsRawFd;
 use std::path::{Component, Path, PathBuf};
 
-use bmo_tool::manifest::{APP_KEY_MOST, AppPart, MANIFEST, Manifest};
+use bmo_tool::manifest::{APP_KEY_MOST, AppPart, LOCALES, MANIFEST, Manifest, PermissionsPart, Text};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -94,15 +94,43 @@ pub struct Promotion {
   pub note: String,
 }
 
+/// The file at a bundle's root that names its kind, by kind (docs/catalogue.md, 「Kinds」).
+const KIND_FILES: [(&str, &str); 3] = [("app", MANIFEST), ("skill", SKILL), ("mcp", MCP)];
+
+/// A skill's file, its front matter and its body.
+pub const SKILL: &str = "SKILL.md";
+
+/// An MCP server's declaration.
+pub const MCP: &str = "mcp.toml";
+
+/// The language a plain text is read in where neither the item nor its share names one.
+const FALLBACK_LANGUAGE: &str = "en";
+
+fn app_kind() -> String {
+  "app".to_owned()
+}
+
 /// An app's record (docs/catalogue.md, 「An app's record」).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Record {
   pub id: String,
+  #[serde(default = "app_kind")]
+  pub kind: String,
   pub key: String,
   pub name: String,
   pub title: String,
   pub description: String,
+  /// The maker's language, the one `title` and `description` are written in.
+  #[serde(default)]
+  pub language: Option<String>,
+  #[serde(default)]
+  pub titles: BTreeMap<String, String>,
+  #[serde(default)]
+  pub descriptions: BTreeMap<String, String>,
+  /// The locales whose text a translation wrote.
+  #[serde(default)]
+  pub machine: BTreeSet<String>,
   pub maker: String,
   pub owner: String,
   pub unit: String,
@@ -127,6 +155,21 @@ impl Record {
         .find(|one| one.version == name)
         .ok_or_else(|| format!("the app {} has no version {name}", self.id)),
       None => self.versions.last().ok_or_else(|| format!("the app {} has no version", self.id)),
+    }
+  }
+
+  // `title` and `description` set again from the text by locale: the maker's language's, else the first held.
+  fn settle_text(&mut self) {
+    let language = self.language.clone().unwrap_or_else(|| FALLBACK_LANGUAGE.to_owned());
+    let pick =
+      |texts: &BTreeMap<String, String>| texts.get(&language).or_else(|| texts.values().next()).cloned();
+
+    if let Some(title) = pick(&self.titles) {
+      self.title = title;
+    }
+
+    if let Some(description) = pick(&self.descriptions) {
+      self.description = description;
     }
   }
 
@@ -182,10 +225,17 @@ fn inside(path: &str) -> bool {
   !path.is_empty() && Path::new(path).components().all(|part| matches!(part, Component::Normal(_)))
 }
 
-// An app's name: a lower-case letter, then lower-case letters, digits and `_`.
+// An app's or an MCP server's name: a lower-case letter, then lower-case letters, digits and `_`.
 fn app_name(name: &str) -> bool {
   name.chars().next().is_some_and(|first| first.is_ascii_lowercase())
     && name.chars().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == '_')
+}
+
+/// A skill's name: a lower-case letter, then lower-case letters, digits and `-`, at most 64.
+pub fn skill_name(name: &str) -> bool {
+  name.len() <= 64
+    && name.chars().next().is_some_and(|first| first.is_ascii_lowercase())
+    && name.chars().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == '-')
 }
 
 // A version's name: letters, digits, `-`, `_` and `.`, opening on no dot.
@@ -384,6 +434,295 @@ pub struct Share<'a> {
   pub targets: Value,
   pub bundle: Bundle,
   pub review_required: bool,
+  /// The maker's language, which a plain text the item names no language for is read in.
+  pub language: Option<&'a str>,
+}
+
+/// What a bundle reads as, whatever its kind: its name, its texts and the language a plain one is written in, and
+/// what it asks for.
+#[derive(Clone, Debug)]
+pub struct Read {
+  pub kind: &'static str,
+  pub name: String,
+  pub title: Text,
+  pub description: Text,
+  pub language: Option<String>,
+  pub permissions: Permissions,
+}
+
+// A skill's front matter: what a share reads of it. Every other key stays the program's.
+#[derive(Deserialize)]
+struct FrontMatter {
+  name: String,
+  description: String,
+  #[serde(default)]
+  title: Option<Text>,
+  #[serde(default)]
+  summary: Option<Text>,
+  #[serde(default)]
+  language: Option<String>,
+}
+
+/// An MCP server's declaration, `mcp.toml` (docs/catalogue.md, 「Kinds」).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpFile {
+  pub server: ServerPart,
+  #[serde(default)]
+  pub permissions: PermissionsPart,
+}
+
+/// The `[server]` table of an MCP server's declaration.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServerPart {
+  pub name: String,
+  pub title: Text,
+  pub description: Text,
+  #[serde(default)]
+  pub language: Option<String>,
+  pub transport: String,
+  #[serde(default)]
+  pub command: Vec<String>,
+  #[serde(default)]
+  pub build: Option<String>,
+  #[serde(default)]
+  pub url: Option<String>,
+  #[serde(default)]
+  pub auth: Option<String>,
+  #[serde(default)]
+  pub header: Option<String>,
+  #[serde(default)]
+  pub secret: Option<String>,
+}
+
+impl McpFile {
+  /// The declaration a text holds, held to its rules: a local server names a command, a remote one an `http` or
+  /// `https` address and, where it authenticates, the secret's name and, for a header, the header's.
+  pub fn read(text: &str) -> Result<Self, String> {
+    let file: Self = toml::from_str(text).map_err(|why| format!("its {MCP} does not read: {why}"))?;
+    let server = &file.server;
+
+    if !app_name(&server.name) {
+      return Err(format!("{:?} is no MCP server's name", server.name));
+    }
+
+    if server.title.is_empty() || server.description.is_empty() {
+      return Err(format!("the MCP server {} has no title or no description", server.name));
+    }
+
+    for text in [&server.title, &server.description] {
+      text.faults()?;
+    }
+
+    language_faults(server.language.as_deref())?;
+
+    match server.transport.as_str() {
+      "local" => {
+        if server.command.first().is_none_or(|word| word.trim().is_empty()) {
+          return Err("a local MCP server names its command".to_owned());
+        }
+
+        if server.url.is_some()
+          || server.auth.is_some()
+          || server.header.is_some()
+          || server.secret.is_some()
+        {
+          return Err("a local MCP server names no address, auth, header or secret".to_owned());
+        }
+      }
+      "remote" => {
+        let url = server.url.as_deref().unwrap_or_default();
+        let parsed = url::Url::parse(url).map_err(|why| format!("{url:?} is no address: {why}"))?;
+
+        if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+          return Err(format!("{url:?} is no http or https address"));
+        }
+
+        if !server.command.is_empty() || server.build.is_some() {
+          return Err("a remote MCP server names no command and no build".to_owned());
+        }
+
+        match (server.auth.as_deref().unwrap_or("none"), &server.secret, &server.header) {
+          ("none", None, None) => {}
+          ("bearer", Some(secret), None) | ("header", Some(secret), Some(_))
+            if bmo_tool::manifest::secret_name(secret) => {}
+          (auth, _, _) => {
+            return Err(format!(
+              "auth {auth:?}: none names no secret; bearer names its secret; header names its header and its secret"
+            ));
+          }
+        }
+      }
+      other => return Err(format!("{other:?} is no transport: local or remote")),
+    }
+
+    file.permissions.faults()?;
+    Ok(file)
+  }
+
+  /// What its calls ask for: its `[permissions]`, and a remote server's host and secret beside them.
+  pub fn permissions(&self) -> Permissions {
+    let mut network = self.permissions.network.clone();
+    let mut secrets = self.permissions.secrets.clone();
+
+    if let Some(url) = self.server.url.as_deref().and_then(|url| url::Url::parse(url).ok())
+      && let Some(host) = url.host_str()
+    {
+      let address = match url.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_owned(),
+      };
+
+      if !network.contains(&address) {
+        network.push(address);
+      }
+    }
+
+    if let Some(secret) = &self.server.secret
+      && !secrets.contains(secret)
+    {
+      secrets.push(secret.clone());
+    }
+
+    Permissions { network, secrets }
+  }
+}
+
+fn language_faults(language: Option<&str>) -> Result<(), String> {
+  match language {
+    Some(language) if !LOCALES.contains(&language) => {
+      Err(format!("`{language}` is no locale: {}", LOCALES.join(", ")))
+    }
+    _ => Ok(()),
+  }
+}
+
+// A skill's front matter and body: the markdown convention of a YAML mapping between a first line of `---` and the
+// next. The mapping is read by the YAML library; only its two fences are found here, since no library of the
+// workspace reads a markdown file's front matter.
+fn front_matter(text: &str) -> Result<FrontMatter, String> {
+  let mut lines = text.split_inclusive('\n');
+  let opening = lines.next().unwrap_or_default();
+
+  if opening.trim_end() != "---" {
+    return Err(format!("its {SKILL} opens on no front matter"));
+  }
+
+  let mut yaml = String::new();
+
+  for line in lines {
+    if line.trim_end() == "---" {
+      let read: FrontMatter = serde_norway::from_str(&yaml)
+        .map_err(|why| format!("its {SKILL}'s front matter does not read: {why}"))?;
+
+      return Ok(read);
+    }
+
+    yaml.push_str(line);
+  }
+
+  Err(format!("its {SKILL}'s front matter is never closed"))
+}
+
+// A skill read off its bundle.
+fn read_skill(bundle: &Bundle) -> Result<Read, String> {
+  let text = bundle.files.get(SKILL).ok_or_else(|| format!("the bundle holds no {SKILL}"))?;
+  let front = front_matter(text)?;
+
+  if !skill_name(&front.name) {
+    return Err(format!("{:?} is no skill's name", front.name));
+  }
+
+  if front.description.trim().is_empty() {
+    return Err(format!("the skill {} has no description", front.name));
+  }
+
+  for text in front.title.iter().chain(front.summary.iter()) {
+    text.faults()?;
+  }
+
+  language_faults(front.language.as_deref())?;
+
+  Ok(Read {
+    kind: "skill",
+    title: front.title.unwrap_or_else(|| front.name.clone().into()),
+    description: front.summary.unwrap_or_else(|| front.description.clone().into()),
+    name: front.name,
+    language: front.language,
+    permissions: Permissions::default(),
+  })
+}
+
+// An MCP server read off its bundle.
+fn read_mcp(bundle: &Bundle) -> Result<Read, String> {
+  let text = bundle.files.get(MCP).ok_or_else(|| format!("the bundle holds no {MCP}"))?;
+  let file = McpFile::read(text)?;
+  let permissions = file.permissions();
+  let server = file.server;
+
+  Ok(Read {
+    kind: "mcp",
+    name: server.name,
+    title: server.title,
+    description: server.description,
+    language: server.language,
+    permissions,
+  })
+}
+
+// An app read off its bundle, its manifest read as a personal tool's in a scratch folder.
+fn read_app(scratch: &Path, bundle: &Bundle) -> Result<Read, String> {
+  let manifest = read_manifest(scratch, bundle)?;
+  let name = manifest.tool.name.clone();
+
+  if !app_name(&name) {
+    return Err(format!("{name:?} is no app's name"));
+  }
+
+  if let Some(why) = schema_faults(&manifest).or_else(|| manifest.personal_faults().err()) {
+    return Err(format!("{name}: {why}"));
+  }
+
+  let first = manifest.entries.first();
+  let (title, description, language) = match &manifest.app {
+    Some(app) => (app.name.clone(), app.description.clone(), app.language.clone()),
+    None => (
+      first.and_then(|entry| entry.title.clone()).unwrap_or_else(|| name.clone()).into(),
+      first.map(|entry| entry.description.clone()).unwrap_or_default().into(),
+      None,
+    ),
+  };
+
+  Ok(Read {
+    kind: "app",
+    name,
+    title,
+    description,
+    language,
+    permissions: Permissions {
+      network: manifest.permissions.network.clone(),
+      secrets: manifest.permissions.secrets.clone(),
+    },
+  })
+}
+
+/// A bundle read as the kind the file at its root names (docs/catalogue.md, 「Kinds」); refused where none or several
+/// stand there.
+pub fn read_bundle(scratch: &Path, bundle: &Bundle) -> Result<Read, String> {
+  let named: Vec<&str> = KIND_FILES
+    .iter()
+    .filter(|(_, file)| bundle.files.contains_key(*file))
+    .map(|(kind, _)| *kind)
+    .collect();
+
+  match named.as_slice() {
+    ["app"] => read_app(scratch, bundle),
+    ["skill"] => read_skill(bundle),
+    ["mcp"] => read_mcp(bundle),
+    [] => Err(format!("the bundle holds none of {MANIFEST}, {SKILL} and {MCP} at its root")),
+    _ => Err(format!("the bundle holds more than one of {MANIFEST}, {SKILL} and {MCP} at its root")),
+  }
 }
 
 // The bundle's files written into a scratch folder, its manifest read there as a personal tool's, and the folder
@@ -447,27 +786,26 @@ pub fn share(
   }
 
   let scratch = catalogue.root.join(".reading").join(format!("{}-{}", now_ms(), std::process::id()));
-  let manifest = read_manifest(&scratch, &asked.bundle)?;
-  let name = manifest.tool.name.clone();
+  let read = read_bundle(&scratch, &asked.bundle)?;
+  let name = read.name.clone();
+  let language = read
+    .language
+    .clone()
+    .or_else(|| asked.language.map(str::to_owned))
+    .unwrap_or_else(|| FALLBACK_LANGUAGE.to_owned());
 
-  if !app_name(&name) {
-    return Err(format!("{name:?} is no app's name"));
-  }
-
-  if let Some(why) = schema_faults(&manifest).or_else(|| manifest.personal_faults().err()) {
-    return Err(format!("{name}: {why}"));
-  }
+  language_faults(Some(&language))?;
 
   let id = format!("{}-{name}", asked.maker);
   let key = app_key(&catalogue.company, asked.maker, &name);
-  let first = manifest.entries.first();
-  let (title, description) = match &manifest.app {
-    Some(app) => (app.name.clone(), app.description.clone()),
-    None => (
-      first.and_then(|entry| entry.title.clone()).unwrap_or_else(|| name.clone()),
-      first.map(|entry| entry.description.clone()).unwrap_or_default(),
-    ),
-  };
+  let titles = read.title.by_locale(&language);
+  let descriptions = read.description.by_locale(&language);
+  let title = read.title.in_locale(&language).unwrap_or_else(|| read.title.one()).to_owned();
+  let description = read
+    .description
+    .in_locale(&language)
+    .unwrap_or_else(|| read.description.one())
+    .to_owned();
   let Some(chain) = chain else {
     return Err(format!(
       "the settings of the app {key} could not be declared: no account service is named"
@@ -475,8 +813,9 @@ pub fn share(
   };
   let app = AppPart {
     key: key.clone(),
-    name: title.clone(),
-    description: if description.trim().is_empty() { title.clone() } else { description.clone() },
+    name: read.title.clone(),
+    description: if read.description.is_empty() { read.title.clone() } else { read.description.clone() },
+    language: Some(language.clone()),
     icon: None,
     offered: false,
     on: false,
@@ -488,10 +827,15 @@ pub fn share(
   let now = now_ms();
   let mut record = catalogue.get(&id).unwrap_or_else(|| Record {
     id: id.clone(),
+    kind: read.kind.to_owned(),
     key: key.clone(),
     name: name.clone(),
     title: title.clone(),
     description: description.clone(),
+    language: None,
+    titles: BTreeMap::new(),
+    descriptions: BTreeMap::new(),
+    machine: BTreeSet::new(),
     maker: asked.maker.to_owned(),
     owner: asked.maker.to_owned(),
     unit: asked.unit.to_owned(),
@@ -508,24 +852,38 @@ pub fn share(
     return Err(format!("the app {id} has shared version {} already", asked.version));
   }
 
+  if record.kind != read.kind {
+    return Err(format!("the app {id} is shared as {}, never as {}", record.kind, read.kind));
+  }
+
   let hash = source_hash(&asked.bundle.files);
   let bundle = serde_json::to_string(&asked.bundle).map_err(|why| why.to_string())?;
 
   write_whole(&catalogue.source_file(&id, asked.version), &bundle)
     .map_err(|why| format!("the source of {id} could not be kept: {why}"))?;
 
+  // The new version's text by locale stands over what was held, and a locale it does not hold stays.
+  for (locale, text) in titles {
+    record.machine.remove(&locale);
+    record.titles.insert(locale, text);
+  }
+
+  for (locale, text) in descriptions {
+    record.machine.remove(&locale);
+    record.descriptions.insert(locale, text);
+  }
+
+  record.language = Some(language);
   record.title = title;
   record.description = description;
+  record.settle_text();
   record.unit = asked.unit.to_owned();
   record.targets = asked.targets.clone();
   record.withdrawn = None;
   record.versions.push(Version {
     version: asked.version.to_owned(),
     source_hash: hash.clone(),
-    permissions: Permissions {
-      network: manifest.permissions.network.clone(),
-      secrets: manifest.permissions.secrets.clone(),
-    },
+    permissions: read.permissions.clone(),
     shared_at: now,
     review: Review {
       state: "pending".to_owned(),
@@ -541,6 +899,53 @@ pub fn share(
   catalogue.put(&mut record)?;
   said.push(format!("shared {id} version {} as {hash}", asked.version));
   Ok(record)
+}
+
+/// One locale's text of an item set, `machine` where a translation wrote it, or cleared where `text` is none; the
+/// last locale an item holds is never cleared (docs/catalogue.md, 「Text in several languages」).
+pub fn set_text(
+  catalogue: &Catalogue,
+  id: &str,
+  locale: &str,
+  text: Option<(&str, &str)>,
+  machine: bool,
+) -> Result<Record, String> {
+  if !LOCALES.contains(&locale) {
+    return Err(format!("`{locale}` is no locale: {}", LOCALES.join(", ")));
+  }
+
+  catalogue.change(id, |record| {
+    match text {
+      Some((title, description)) => {
+        if title.trim().is_empty() || description.trim().is_empty() {
+          return Err("a locale's text holds a title and a description".to_owned());
+        }
+
+        record.titles.insert(locale.to_owned(), title.to_owned());
+        record.descriptions.insert(locale.to_owned(), description.to_owned());
+
+        if machine {
+          record.machine.insert(locale.to_owned());
+        } else {
+          record.machine.remove(locale);
+        }
+      }
+      None => {
+        let held: BTreeSet<&String> = record.titles.keys().chain(record.descriptions.keys()).collect();
+
+        if held.iter().all(|one| one.as_str() == locale) {
+          return Err(format!("the app {id} holds no text but its {locale}, which stays"));
+        }
+
+        record.titles.remove(locale);
+        record.descriptions.remove(locale);
+        record.machine.remove(locale);
+      }
+    }
+
+    record.settle_text();
+    Ok(())
+  })
 }
 
 /// The app withdrawn: no new install from now; every copy goes on.

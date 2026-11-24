@@ -395,3 +395,26 @@ fn a_secret_is_named_by_a_plain_file_name() {
     assert!(named(&[name]).faults().unwrap_err().contains("no secret's name"), "{name}");
   }
 }
+
+// An app's name and description are each a plain string or a table of locales (docs/api.md, 「`[app]`」); several
+// languages are optional, and a table naming a locale outside the four, or an empty string, does not read.
+#[test]
+fn an_apps_text_is_a_plain_string_or_a_table_of_locales() {
+  let table = "[app]\nkey = \"garden-plan\"\nlanguage = \"en\"\nname = { en = \"Garden plan\", ja = \"庭の計画\" }\ndescription = \"Plans the beds.\"\n";
+  let declared = AppPart::parse(table).unwrap();
+
+  assert_eq!(declared.name.in_locale("ja"), Some("庭の計画"));
+  assert_eq!(declared.name.in_locale("ko"), None);
+  assert_eq!(declared.name.one(), "Garden plan");
+  assert_eq!(declared.description.in_locale("ko"), Some("Plans the beds."));
+  assert_eq!(declared.description.by_locale("en").len(), 1);
+  assert_eq!(declared.language.as_deref(), Some("en"));
+  assert!(AppPart::parse(&table.replace("ja =", "fr =")).unwrap_err().contains("no locale"));
+  assert!(AppPart::parse(&table.replace("\"庭の計画\"", "\"\"")).unwrap_err().contains("empty"));
+  assert!(
+    AppPart::parse(&table.replace("language = \"en\"", "language = \"fr\""))
+      .unwrap_err()
+      .contains("no locale")
+  );
+  assert!(AppPart::parse(&table.replace("{ en = \"Garden plan\", ja = \"庭の計画\" }", "{}")).is_err());
+}

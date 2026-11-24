@@ -48,6 +48,8 @@ rmcp = { workspace = true, features = ["client", "reqwest", "transport-child-pro
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# A shared skill's front matter read as a share checks it (docs/catalogue.md, 「Kinds」).
+serde_norway.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

@@ -247,8 +247,11 @@ pub struct HelperPart {
 pub struct AppPart {
   /// The app's key, which every tool and screen of the app names.
   pub key: String,
-  pub name: String,
-  pub description: String,
+  pub name: Text,
+  pub description: Text,
+  /// The locale a plain string of the name and the description is written in, where the manifest names one.
+  #[serde(default)]
+  pub language: Option<String>,
   #[serde(default)]
   pub icon: Option<String>,
   /// Whether it is offered where no link of the delegation chain says otherwise.
@@ -467,11 +470,107 @@ impl AppPart {
       return Err(format!("`{}` is no app's key", self.key));
     }
 
-    if self.name.trim().is_empty() || self.description.trim().is_empty() {
+    if self.name.is_empty() || self.description.is_empty() {
       return Err(format!("the app `{}` has no name or no description", self.key));
     }
 
+    for text in [&self.name, &self.description] {
+      text.faults().map_err(|why| format!("the app `{}`: {why}", self.key))?;
+    }
+
+    if let Some(language) = &self.language
+      && !LOCALES.contains(&language.as_str())
+    {
+      return Err(format!("the app `{}`: `{language}` is no locale: {}", self.key, LOCALES.join(", ")));
+    }
+
     Ok(())
+  }
+}
+
+/// The locales a text may be written in (docs/api.md, 「`[app]`」).
+pub const LOCALES: [&str; 4] = ["ko", "en", "ja", "zh-CN"];
+
+/// A text a screen shows: a plain string, written in its maker's language, or one string for each locale it holds
+/// (docs/api.md, 「`[app]`」). Several languages are optional.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, serde::Serialize)]
+#[serde(untagged)]
+pub enum Text {
+  Plain(String),
+  Locales(BTreeMap<String, String>),
+}
+
+impl Default for Text {
+  fn default() -> Self {
+    Self::Plain(String::new())
+  }
+}
+
+impl From<&str> for Text {
+  fn from(text: &str) -> Self {
+    Self::Plain(text.to_owned())
+  }
+}
+
+impl From<String> for Text {
+  fn from(text: String) -> Self {
+    Self::Plain(text)
+  }
+}
+
+impl Text {
+  /// Whether it holds no string that says anything.
+  pub fn is_empty(&self) -> bool {
+    match self {
+      Self::Plain(text) => text.trim().is_empty(),
+      Self::Locales(texts) => texts.values().all(|text| text.trim().is_empty()),
+    }
+  }
+
+  /// Why it does not read: a table naming a locale outside [`LOCALES`], or holding an empty string.
+  pub fn faults(&self) -> Result<(), String> {
+    let Self::Locales(texts) = self else { return Ok(()) };
+
+    if texts.is_empty() {
+      return Err("a text table holds no locale".to_owned());
+    }
+
+    for (locale, text) in texts {
+      if !LOCALES.contains(&locale.as_str()) {
+        return Err(format!("`{locale}` is no locale: {}", LOCALES.join(", ")));
+      }
+
+      if text.trim().is_empty() {
+        return Err(format!("its `{locale}` text is empty"));
+      }
+    }
+
+    Ok(())
+  }
+
+  /// The text by locale, a plain string standing under `language`.
+  pub fn by_locale(&self, language: &str) -> BTreeMap<String, String> {
+    match self {
+      Self::Plain(text) if text.trim().is_empty() => BTreeMap::new(),
+      Self::Plain(text) => BTreeMap::from([(language.to_owned(), text.clone())]),
+      Self::Locales(texts) => texts.clone(),
+    }
+  }
+
+  /// The string in `locale`, where it holds that locale's or is a plain string.
+  pub fn in_locale(&self, locale: &str) -> Option<&str> {
+    match self {
+      Self::Plain(text) => Some(text),
+      Self::Locales(texts) => texts.get(locale).map(String::as_str),
+    }
+  }
+
+  /// One string where one is needed: English where it holds it, else a plain string, else the first it holds.
+  pub fn one(&self) -> &str {
+    match self {
+      Self::Plain(text) => text,
+      Self::Locales(texts) => texts.get("en").or_else(|| texts.values().next()).map_or("", String::as_str),
+    }
   }
 }
 

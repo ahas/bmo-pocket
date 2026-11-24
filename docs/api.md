@@ -791,11 +791,20 @@ system and is never withheld.
 | Key | Type | Meaning |
 |---|---|---|
 | `key` | string, required | The app's key: a lower-case letter, then lower-case letters, digits and `-`, at most 50 characters. Every tool and screen naming the same key is one app |
-| `name` | string, required | The name a screen shows it by |
-| `description` | string, required | What it is for, one or two sentences |
+| `name` | text, required | The name a screen shows it by |
+| `description` | text, required | What it is for, one or two sentences |
+| `language` | string | The locale a plain string of `name` and `description` is written in, out of `ko`, `en`, `ja` and `zh-CN` |
 | `icon` | string | The icon a screen shows it by |
 | `offered` | boolean | Whether it is offered everywhere no link of the delegation chain says otherwise; true by default |
 | `on` | boolean | Whether it is on wherever it is offered and no link says otherwise; true by default |
+
+- **A text is a plain string or a table of locales.** A table names one string for each locale it holds, out of
+  `ko`, `en`, `ja` and `zh-CN`, at least one, none of them empty; `name = { ko = "오늘 날짜", en = "Today's date" }`.
+  Several languages are optional: a text may hold one locale or all four, and nothing is refused for a locale it
+  lacks. A plain string is written in the locale `language` names, else in its maker's language, which whoever reads
+  it names (`docs/catalogue.md`, 「Text in several languages」).
+- **Where one string is needed** — a chain declaration's description, a log line — the text's English is read where
+  it holds English, else its own language's string, else the first it holds.
 
 ### An app on the delegation chain
 
@@ -1002,7 +1011,7 @@ name is refused, naming it.
 | `take --owner <account> <name>` | Takes the owner's personal tool of the name out of the owner's registry |
 | `list [--json]` | Every registered tool: its name, its version, where it was put from, the service it is registered for and its entries, or an external server's namespace and address; `--json` prints the pointers (`docs/registry.md`, 「A pointer」) as a JSON array |
 | `list --owner <account> [--json]` | Every personal tool of the owner's: its name, its version and its entries; `--json` prints each pointer with `entries`, each `{name, title, description}` by full name, and `permissions`, `{network, secrets}`, as a JSON array |
-| `catalogue <verb> --company <unit> …` | A company's catalogue of shared personal apps (`docs/catalogue.md`), each verb printing what it keeps as JSON on standard output: `share --maker <account> --unit <unit> --version <name> --targets <json> --bundle <file> [--review-required]` shares a version, declaring the app's two settings on the delegation chain; `list [--reader <account>]` prints `{apps, seenAt}`; `show <id>`; `source <id> [--version <name>]` prints the version's `{version, sourceHash, files}`, checked against its recorded hash; `withdraw <id>`; `review <id> --version <name> --state <written\|failed> --report <file>`; `approve <id> --version <name> --by <account>`; `install <id> --account <account> --version <name> --how <self\|unit>` and `uninstall <id> --account <account>` keep a receiver's copy; `pass --from <account> --to <account>`; `promote <id> --by <account> [--note <text>]`; `seen --account <account>` |
+| `catalogue <verb> --company <unit> …` | A company's catalogue of shared personal apps, skills and MCP servers (`docs/catalogue.md`), each verb printing what it keeps as JSON on standard output: `share --maker <account> --unit <unit> --version <name> --targets <json> --bundle <file> [--language <locale>] [--review-required]` shares a version, its kind read off the bundle, declaring the item's two settings on the delegation chain; `text <id> --locale <locale> (--title <text> --description <text> [--machine] \| --clear)` sets or clears one locale's text; `list [--reader <account>]` prints `{apps, seenAt}`; `show <id>`; `source <id> [--version <name>]` prints the version's `{version, sourceHash, files}`, checked against its recorded hash; `withdraw <id>`; `review <id> --version <name> --state <written\|failed> --report <file>`; `approve <id> --version <name> --by <account>`; `install <id> --account <account> --version <name> --how <self\|unit>` and `uninstall <id> --account <account>` keep a receiver's copy; `pass --from <account> --to <account>`; `promote <id> --by <account> [--note <text>]`; `seen --account <account>` |
 | `catalogue promotions` | Every company's requests to make an app a platform app, as a JSON array of `{company, id, title, maker, by, at, note}` |
 | `app <file>` | Declares a screen-only app's two settings on the delegation chain from a file holding the `[app]` table alone (「An app on the delegation chain」), printing each; it refuses a file holding anything else or an `[app]` that does not read, and places nothing in the registry |
 | `mcp [--socket <path>] [--token <token>]` | Serves the harness plugin on standard input and output (「The harness plugin」) |

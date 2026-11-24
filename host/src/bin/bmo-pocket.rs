@@ -124,7 +124,8 @@ enum Verb {
 
 #[derive(Subcommand)]
 enum CatalogueVerb {
-  /// Shares a version of a maker's app, declaring its two settings on the delegation chain.
+  /// Shares a version of a maker's item, its kind read off the bundle, declaring its two settings on the delegation
+  /// chain.
   Share {
     #[arg(long)]
     company: String,
@@ -145,6 +146,26 @@ enum CatalogueVerb {
     /// Whether a head must approve the version before anybody installs it.
     #[arg(long)]
     review_required: bool,
+    /// The maker's language, which a plain text the item names no language for is read in.
+    #[arg(long)]
+    language: Option<String>,
+  },
+  /// One locale's text of an item set, or cleared.
+  Text {
+    #[arg(long)]
+    company: String,
+    id: String,
+    #[arg(long)]
+    locale: String,
+    #[arg(long, required_unless_present = "clear", requires = "description")]
+    title: Option<String>,
+    #[arg(long, required_unless_present = "clear", requires = "title")]
+    description: Option<String>,
+    /// Whether a translation wrote it.
+    #[arg(long, conflicts_with = "clear")]
+    machine: bool,
+    #[arg(long, conflicts_with_all = ["title", "description"])]
+    clear: bool,
   },
   /// Every app's record, and with `--reader` the moment that reader last looked.
   List {
@@ -266,6 +287,7 @@ fn catalogue_verb(data_root: &Path, verb: CatalogueVerb) -> ExitCode {
       targets,
       bundle,
       review_required,
+      language,
     } => (|| {
       let catalogue = of(&company)?;
       let targets: serde_json::Value =
@@ -282,10 +304,27 @@ fn catalogue_verb(data_root: &Path, verb: CatalogueVerb) -> ExitCode {
         targets,
         bundle,
         review_required,
+        language: language.as_deref(),
       };
 
       record(kept::share(&catalogue, chain.as_ref(), &asked, &mut said))
     })(),
+    CatalogueVerb::Text {
+      company,
+      id,
+      locale,
+      title,
+      description,
+      machine,
+      clear,
+    } => of(&company).and_then(|catalogue| {
+      let text = match (clear, title.as_deref(), description.as_deref()) {
+        (false, Some(title), Some(description)) => Some((title, description)),
+        _ => None,
+      };
+
+      record(kept::set_text(&catalogue, &id, &locale, text, machine))
+    }),
     CatalogueVerb::List { company, reader } => of(&company).map(|catalogue| {
       let apps = catalogue.list();
       let seen = reader.as_deref().and_then(|reader| catalogue.seen_at(reader));

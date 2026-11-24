@@ -250,8 +250,9 @@ impl Catalogue {
 
         manifest.app = Some(AppPart {
           key: key.clone(),
-          name: named.as_ref().map_or_else(|| pointer.name.clone(), |app| app.name.clone()),
+          name: named.as_ref().map_or_else(|| pointer.name.clone().into(), |app| app.name.clone()),
           description: named.as_ref().map(|app| app.description.clone()).unwrap_or_default(),
+          language: named.as_ref().and_then(|app| app.language.clone()),
           icon: named.and_then(|app| app.icon),
           offered: true,
           on: false,

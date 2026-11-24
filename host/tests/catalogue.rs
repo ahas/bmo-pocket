@@ -1,7 +1,9 @@
 //! A company's catalogue (docs/catalogue.md): a share checked, declared on a stand-in account service and kept with
 //! its source hash; the hash reckoned alike whatever order the files come in, and a bundle changed on disk refused;
 //! the copies, the review, the approval, the withdrawal, an owner's passing and a promotion kept; a received tool
-//! put with the app its pointer names and read as of that app; and the CLI's words.
+//! put with the app its pointer names and read as of that app; a skill and an MCP server shared as kinds of their own,
+//! a bundle naming no kind or several refused; the text by locale, a plain string in the maker's language, one locale
+//! set, marked and cleared; and the CLI's words.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -41,7 +43,37 @@ fn share_of<'a>(version: &'a str, bundle: Bundle) -> Share<'a> {
     targets: json!([{ "team": true }, { "heads": true }]),
     bundle,
     review_required: false,
+    language: None,
   }
+}
+
+// A skill's bundle: `SKILL.md` with the front matter given, and a reference file.
+fn skill(front: &str) -> Bundle {
+  Bundle {
+    files: BTreeMap::from([
+      (
+        "SKILL.md".to_owned(),
+        format!("---\n{front}---\n\nWhen asked for the week, read the notes.\n"),
+      ),
+      ("reference/notes.md".to_owned(), "Where the notes stand.\n".to_owned()),
+    ]),
+  }
+}
+
+// An MCP server's bundle: `mcp.toml` holding the `[server]` table given and what `more` adds.
+fn mcp(server: &str, more: &str) -> Bundle {
+  Bundle {
+    files: BTreeMap::from([(
+      "mcp.toml".to_owned(),
+      format!(
+        "[server]\nname = \"tracker\"\ntitle = \"Tracker\"\ndescription = \"Reads the tracker.\"\n{server}\n{more}"
+      ),
+    )]),
+  }
+}
+
+fn shared(kept: &Catalogue, service: &AccountService, asked: &Share) -> Result<catalogue::Record, String> {
+  catalogue::share(kept, Some(&service.chain()), asked, &mut Vec::new())
 }
 
 #[test]
@@ -251,7 +283,7 @@ fn a_received_tool_is_read_as_of_the_shared_app_its_pointer_names() {
   let tool = &placed.personal["21"][0];
 
   assert_eq!(tool.manifest.app.as_ref().unwrap().key, "shared-3-17-weekly");
-  assert_eq!(tool.manifest.app.as_ref().unwrap().name, "Weekly");
+  assert_eq!(tool.manifest.app.as_ref().unwrap().name, "Weekly".into());
 }
 
 #[test]
@@ -280,4 +312,249 @@ fn the_cli_prints_what_the_catalogue_keeps_as_json() {
   let promotions: Value = serde_json::from_slice(&pocket(&["catalogue", "promotions"]).stdout).unwrap();
 
   assert_eq!(promotions, json!([]));
+}
+
+#[test]
+fn a_skill_is_shared_as_a_kind_of_its_own_asking_for_nothing() {
+  let dir = tempfile::tempdir().unwrap();
+  let service = AccountService::start(false);
+  let kept = Catalogue::of(dir.path(), "3").unwrap();
+  let record = shared(
+    &kept,
+    &service,
+    &share_of(
+      "v1",
+      skill(
+        "name: week-notes\ndescription: Use when the person asks about their week.\nallowed-tools: Read\n",
+      ),
+    ),
+  )
+  .unwrap();
+
+  assert_eq!(record.kind, "skill");
+  assert_eq!(record.id, "17-week-notes");
+  assert_eq!(record.key, "shared-3-17-week-notes");
+  assert_eq!(record.title, "week-notes");
+  assert_eq!(record.description, "Use when the person asks about their week.");
+  assert_eq!(record.versions[0].permissions, catalogue::Permissions::default());
+  assert_eq!(service.kept()[0].0, "/chain/kinds/app.shared-3-17-week-notes.offered");
+
+  let refused = |bundle: Bundle| shared(&kept, &service, &share_of("v9", bundle)).unwrap_err();
+
+  assert!(refused(skill("name: Week Notes\ndescription: x\n")).contains("no skill's name"));
+  assert!(refused(skill("name: week-notes\ndescription: \"\"\n")).contains("no description"));
+  assert!(refused(skill("name: [week\n")).contains("does not read"));
+
+  let mut open = skill("");
+
+  open.files.insert("SKILL.md".to_owned(), "No front matter here.\n".to_owned());
+  assert!(refused(open).contains("no front matter"));
+}
+
+#[test]
+fn an_mcp_server_asks_for_its_address_host_and_its_secret_and_holds_to_its_transport() {
+  let dir = tempfile::tempdir().unwrap();
+  let service = AccountService::start(false);
+  let kept = Catalogue::of(dir.path(), "3").unwrap();
+  let record = shared(
+    &kept,
+    &service,
+    &share_of(
+      "v1",
+      mcp(
+        "transport = \"remote\"\nurl = \"https://mcp.example.com:8443/mcp\"\nauth = \"bearer\"\nsecret = \"tracker-token\"\n",
+        "[permissions]\nnetwork = [\"files.example.com\"]\n",
+      ),
+    ),
+  )
+  .unwrap();
+
+  assert_eq!(record.kind, "mcp");
+  assert_eq!(record.id, "17-tracker");
+  assert_eq!(record.versions[0].permissions.network, ["files.example.com", "mcp.example.com:8443"]);
+  assert_eq!(record.versions[0].permissions.secrets, ["tracker-token"]);
+
+  let local = shared(
+    &kept,
+    &service,
+    &share_of("v2", mcp("transport = \"local\"\ncommand = [\"python3\", \"server.py\"]\n", "")),
+  )
+  .unwrap();
+
+  assert_eq!(local.versions[1].permissions, catalogue::Permissions::default());
+
+  let refused = |server: &str| shared(&kept, &service, &share_of("v9", mcp(server, ""))).unwrap_err();
+
+  assert!(refused("transport = \"local\"\n").contains("names its command"));
+  assert!(
+    refused("transport = \"remote\"\nurl = \"ftp://mcp.example.com\"\n").contains("no http or https")
+  );
+  assert!(
+    refused("transport = \"remote\"\nurl = \"https://mcp.example.com\"\nauth = \"bearer\"\n")
+      .contains("auth")
+  );
+  assert!(
+    refused(
+      "transport = \"remote\"\nurl = \"https://mcp.example.com\"\nauth = \"header\"\nsecret = \"t\"\n"
+    )
+    .contains("header names its header")
+  );
+  assert!(refused("transport = \"pigeon\"\n").contains("no transport"));
+  assert!(
+    refused("transport = \"local\"\ncommand = [\"x\"]\nvalue = \"sk-1\"\n").contains("does not read")
+  );
+}
+
+#[test]
+fn a_bundle_naming_no_kind_or_several_is_refused_and_an_item_keeps_its_kind() {
+  let dir = tempfile::tempdir().unwrap();
+  let service = AccountService::start(false);
+  let kept = Catalogue::of(dir.path(), "3").unwrap();
+  let mut both = bundle("weekly", "weekly_summary", "");
+
+  both.files.extend(skill("name: weekly\ndescription: x\n").files);
+
+  assert!(shared(&kept, &service, &share_of("v1", both)).unwrap_err().contains("more than one"));
+
+  let none = Bundle {
+    files: BTreeMap::from([("readme.md".to_owned(), "hi".to_owned())]),
+  };
+
+  assert!(shared(&kept, &service, &share_of("v1", none)).unwrap_err().contains("holds none"));
+
+  shared(
+    &kept,
+    &service,
+    &share_of("v1", mcp("transport = \"local\"\ncommand = [\"./s\"]\n", "")),
+  )
+  .unwrap();
+
+  let tool = bundle("tracker", "tracker_read", "");
+
+  assert!(
+    shared(&kept, &service, &share_of("v2", tool))
+      .unwrap_err()
+      .contains("shared as mcp, never as app")
+  );
+}
+
+#[test]
+fn text_stands_by_locale_a_plain_string_in_the_makers_language_and_one_locale_is_set_and_cleared() {
+  let dir = tempfile::tempdir().unwrap();
+  let service = AccountService::start(false);
+  let kept = Catalogue::of(dir.path(), "3").unwrap();
+  let mut asked = share_of("v1", bundle("weekly", "weekly_summary", ""));
+
+  asked.language = Some("ko");
+
+  let record = shared(&kept, &service, &asked).unwrap();
+
+  assert_eq!(record.language.as_deref(), Some("ko"));
+  assert_eq!(record.titles, BTreeMap::from([("ko".to_owned(), "Weekly summary".to_owned())]));
+
+  // An item naming several locales keeps each; none is required beside the one it holds.
+  let several = bundle(
+    "weekly",
+    "weekly_summary",
+    "\n[app]\nkey = \"w\"\nlanguage = \"en\"\nname = { en = \"Weekly\", ja = \"週報\" }\ndescription = { en = \"Sums up the week.\", ja = \"週をまとめる。\" }\n",
+  );
+  let record = shared(&kept, &service, &share_of("v2", several)).unwrap();
+
+  assert_eq!(record.language.as_deref(), Some("en"));
+  assert_eq!(record.title, "Weekly");
+  assert_eq!(record.titles.len(), 3);
+  assert_eq!(record.titles["ja"], "週報");
+
+  let record =
+    catalogue::set_text(&kept, "17-weekly", "zh-CN", Some(("周报", "总结一周。")), true).unwrap();
+
+  assert!(record.machine.contains("zh-CN"));
+
+  let record =
+    catalogue::set_text(&kept, "17-weekly", "zh-CN", Some(("周报", "汇总本周。")), false).unwrap();
+
+  assert!(!record.machine.contains("zh-CN"));
+  assert_eq!(record.descriptions["zh-CN"], "汇总本周。");
+  assert!(catalogue::set_text(&kept, "17-weekly", "fr", Some(("x", "y")), false).is_err());
+  assert!(catalogue::set_text(&kept, "17-weekly", "ko", Some(("", "y")), false).is_err());
+
+  let record = catalogue::set_text(&kept, "17-weekly", "zh-CN", None, false).unwrap();
+
+  assert!(!record.titles.contains_key("zh-CN"));
+
+  for locale in ["ko", "ja"] {
+    catalogue::set_text(&kept, "17-weekly", locale, None, false).unwrap();
+  }
+
+  assert!(
+    catalogue::set_text(&kept, "17-weekly", "en", None, false)
+      .unwrap_err()
+      .contains("stays")
+  );
+
+  // A record kept before kinds and locales stood reads as an app's with no text by locale.
+  let file = dir.path().join("tool-host/catalogue/3/apps/17-weekly.json");
+  let mut old: Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+
+  for field in ["kind", "language", "titles", "descriptions", "machine"] {
+    old.as_object_mut().unwrap().remove(field);
+  }
+
+  fs::write(&file, old.to_string()).unwrap();
+
+  let read = kept.get("17-weekly").unwrap();
+
+  assert_eq!(read.kind, "app");
+  assert!(read.titles.is_empty());
+}
+
+#[test]
+fn the_cli_sets_a_locales_text() {
+  let dir = tempfile::tempdir().unwrap();
+  let service = AccountService::start(false);
+  let kept = Catalogue::of(dir.path(), "3").unwrap();
+
+  shared(&kept, &service, &share_of("v1", bundle("weekly", "weekly_summary", ""))).unwrap();
+
+  let pocket = |words: &[&str]| {
+    Command::new(env!("CARGO_BIN_EXE_bmo-pocket"))
+      .arg("--data-root")
+      .arg(dir.path())
+      .args(words)
+      .output()
+      .unwrap()
+  };
+  let set = pocket(&[
+    "catalogue",
+    "text",
+    "--company",
+    "3",
+    "17-weekly",
+    "--locale",
+    "ko",
+    "--title",
+    "Weekly in ko",
+    "--description",
+    "Sums up the week, in ko.",
+    "--machine",
+  ]);
+
+  assert_eq!(set.status.code(), Some(0), "{}", String::from_utf8_lossy(&set.stderr));
+
+  let record: Value = serde_json::from_slice(&set.stdout).unwrap();
+
+  assert_eq!(record["titles"]["ko"], "Weekly in ko");
+  assert_eq!(record["machine"], json!(["ko"]));
+  assert_eq!(
+    pocket(&["catalogue", "text", "--company", "3", "17-weekly", "--locale", "ko", "--clear"])
+      .status
+      .code(),
+    Some(0)
+  );
+  assert_eq!(
+    pocket(&["catalogue", "text", "--company", "3", "17-weekly", "--locale", "ko"])
+      .status
+      .code(),
+    Some(2)
+  );
 }

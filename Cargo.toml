@@ -36,6 +36,8 @@ rmcp = { version = "3.5.0", default-features = false, features = ["server", "tra
 schemars = "1.0.4"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.138"
+# A skill's front matter, YAML (docs/catalogue.md, 「Kinds」).
+serde_norway = "0.9.42"
 strum = { version = "0.28.0", features = ["derive"] }
 sha2 = "0.10.9"
 tempfile = "3.20.0"

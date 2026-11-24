@@ -2,10 +2,11 @@
 
 ## What it is
 
-- **The catalogue is where a person's personal app stands once they share it with their company,** one catalogue a
-  company, kept at home beside the registry, so a receiver installs it whether or not the maker's PC is on. What is
-  kept is the app's source, never a build: each receiver's PC builds it from that source, and a reader or a head
-  reads the code before anything runs.
+- **The catalogue is where a person's item stands once they share it with their company,** one catalogue a
+  company, kept at home beside the registry, so a receiver installs it whether or not the maker's PC is on. An item is
+  one of three kinds (「Kinds」): a personal app, a skill or an MCP server. What is kept is the item's source, never a
+  build: each receiver builds it from that source where it is built at all, and a reader or a head reads it before
+  anything runs. The catalogue calls every item an app in its files and verbs, whatever its kind.
 - **It lives under the data root, in the host's own folder:** `tool-host/catalogue/<company>/`, the company named by
   its unit's id:
   - `apps/<id>.json`, one record an app (「An app's record」);
@@ -21,14 +22,62 @@
   folder alone. An app good for several companies is asked to be made a platform app (「A promotion」), which ships
   as a platform tool through `put`, never as a copy of the record.
 
+## Kinds
+
+- **The kind is read off the bundle's root as it is shared,** by the one file standing there that names it:
+  `tool.toml`, a personal app; `SKILL.md`, a skill; `mcp.toml`, an MCP server. A bundle holding none of them, or more
+  than one, is refused saying so. A version of an item shared as one kind is never shared as another.
+- **A personal app** is as `docs/mcp-host.md`, 「Personal tools」, states: its `tool.toml` read as a personal tool's.
+  Its text is the manifest's `[app]` name and description where it names one, else its first entry's title, or its
+  name, and description. It asks for what its `[permissions]` names.
+- **A skill** is instructions an agent's program reads: `SKILL.md`, opening on front matter, a YAML mapping between
+  two lines of `---`, then its body; every other file of the bundle is a reference file of it. The front matter
+  holds `name`, the item's name — a lower-case letter, then lower-case letters, digits and `-`, at most 64 — and
+  `description`, the one string the program reads to know when to use it; and may hold `title` and `summary`, texts
+  a screen shows it by (「Text in several languages」), and `language`. Its text is `title`, else its name, and
+  `summary`, else its `description`. A skill asks for nothing: no network and no secret.
+- **An MCP server** is a server an agent's program reaches through its receiver's runner: `mcp.toml`, its `[server]`
+  table holding `name`, the item's name in a personal tool's alphabet; `title` and `description`, texts; `language`;
+  and `transport`:
+  - `local`, a server run on the receiver's PC, confined as a personal tool is: `command`, its words, run in its
+    placed folder; and `build`, the shell line its source is built with, where it is built;
+  - `remote`, a server reached at an address: `url`, an `http` or `https` address; `auth`, `none`, `bearer` or
+    `header`; `header`, the header's name where `auth` is `header`; and `secret`, where `auth` is not `none`, the
+    name of the secret each receiver holds in their own secret space. Its value is never in the item, so nothing of
+    it is shared.
+
+  A `[permissions]` table beside it reads as a personal tool's (`docs/api.md`, 「`[permissions]`」). What a version
+  asks for is that table's, and for a remote server its address's host, with its port where it names one, among the
+  network and its `secret` among the secrets. Every other key of either table is refused, naming it.
+
+## Text in several languages
+
+- **An item's text may be written in one language or several, and none is required:** a share is never refused for a
+  locale its text lacks. Each of an item's texts is a plain string or a table of locales out of `ko`, `en`, `ja` and
+  `zh-CN` (`docs/api.md`, 「`[app]`」); a plain string is written in the language the item names, else in the maker's
+  language, which the share names with `--language`, English where it names none.
+- **The record keeps the text by locale:** `titles` and `descriptions` hold each locale the item's title or
+  description is written in, and `title` and `description` the maker's language's, else the first the item holds.
+  Each new version's share writes the locales its own text holds over what stood, taking their translation marks
+  away, and every other locale stays as it stood.
+- **`text` sets one locale's title and description on the record,** or clears it with `--clear`; `--machine` marks it
+  as a translation wrote it, and a text set without it takes that mark away. The last locale an item holds is never
+  cleared, and `title` and `description` follow the maker's language's text where it stands. Whoever issues the sessions decides who
+  may set it and fills a locale by a translation when a person asks it to (agency's `docs/person-nodes.md`, 「Shared
+  apps」); nothing here translates.
+
 ## An app's record
 
 - **One JSON object an app, its keys in camelCase,** written whole beside its place and renamed over the old, under the
   catalogue's lock:
   - `id`, the app's name in the catalogue, `<maker>-<name>`, the maker's account and the app's name;
+  - `kind`, `app`, `skill` or `mcp` (「Kinds」); a record that names none is an app's;
   - `key`, the app's key on the delegation chain (「The app on the delegation chain」);
-  - `name`, the personal tool's name, which a receiver's copy stands under; `title` and `description`, the manifest's
-    `[app]` name and description where it names one, else its first entry's title, or its name, and description;
+  - `name`, the item's name, which a receiver's copy stands under; `title` and `description`, its text in the maker's
+    language (「Text in several languages」);
+  - `language`, the maker's language, the locale `title` and `description` are written in; `titles` and
+    `descriptions`, the text by locale, each locale it holds; and `machine`, the locales whose text a translation
+    wrote rather than a person;
   - `maker`, the account that shared it, and `owner`, the account answering for it now: the maker's until the maker
     leaves (「When the maker leaves」);
   - `unit`, the maker's home unit as they shared it, and `targets`, whom they shared it with, as the issuer judged
@@ -45,8 +94,8 @@
 
 - **Each share places a version of the app's,** named by the version the maker's PC placed the app's build under, so
   the catalogue's version and the PC's are one name. A version shared once is never shared again under that name.
-- **What it keeps:** `version`; `sourceHash` (「The source hash」); `permissions`, what the manifest's
-  `[permissions]` asks for, `network` and `secrets`; `sharedAt`; `review`, the automatic review's report (「The
+- **What it keeps:** `version`; `sourceHash` (「The source hash」); `permissions`, what the version asks for,
+  `network` and `secrets` (「Kinds」); `sharedAt`; `review`, the automatic review's report (「The
   review」); and `approval`: `required`, whether a head must approve it before anybody installs it, as the chain said
   for the maker when it was shared, and `by` and `at` once a head did.
 - **The newest version is the app's:** a share of a new version notifies its receivers, and each copy moves onto it
@@ -59,11 +108,12 @@
   names alone, so none climbs out of the folder it is written into.
 - **What a share checks before anything is kept,** each refusal naming what failed:
   - the bundle reads, and every path is inside its folder;
-  - its `tool.toml` reads as a personal tool's (`docs/mcp-host.md`, 「Personal tools」), every schema it names a
-    JSON Schema, and its tool's name is the app's;
+  - its kind reads (「Kinds」): an app's `tool.toml` as a personal tool's (`docs/mcp-host.md`, 「Personal tools」),
+    every schema it names a JSON Schema; a skill's front matter; an MCP server's `mcp.toml`;
   - the version is not one of the app's already;
   - the app is not another company's, which no verb could name.
-- **Nothing is built or run at home.** The bundle is kept as it came, and a receiver's PC builds it.
+- **Nothing is built or run at home.** The bundle is kept as it came: a receiver's PC builds an app or an MCP server,
+  and a skill is kept as it is by whoever issues the receiver's sessions.
 
 ## The source hash
 
@@ -84,6 +134,8 @@
   withholds any app.
 - **Its key is `shared-<company>-<maker>-<name>`,** the name's `_` written `-`; where that is longer than an app key
   holds, the name is written as the first twelve hex digits of its SHA-256 instead.
+- **Every kind stands on the chain the same way,** so a head turns a skill or an MCP server on and recalls it for a
+  unit as they do an app.
 - **Its defaults:** not offered and off. The issuer offers it to the maker's company alone, by the platform's rule
   naming the company, which it writes in the platform administrator's name as the platform link's one writer
   (agency's `docs/person-nodes.md`, 「Shared apps」), so no other company's people are offered it however their links
@@ -106,7 +158,7 @@
 
 ## The review
 
-- **Every shared version is read by a reviewer** as its issuer has one read (agency's `docs/person-nodes.md`, 「Shared
+- **Every shared version, of every kind, is read by a reviewer** as its issuer has one read (agency's `docs/person-nodes.md`, 「Shared
   apps」), and the report is written onto the version with `review`: `state`, `pending` until written, `written` with
   the report's text, or `failed` with why none was written; and `at`.
 - **The report is shown to the receivers and the heads** beside the permissions the version asks for; it decides
