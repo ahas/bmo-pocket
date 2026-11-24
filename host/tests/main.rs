@@ -8,5 +8,6 @@ mod host;
 mod personal;
 mod plugin;
 mod registry;
+mod removal;
 mod screens;
 mod units;

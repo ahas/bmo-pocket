@@ -383,6 +383,19 @@ impl Catalogue {
     Ok(record)
   }
 
+  /// The reader's seen mark forgotten, as their account is deleted for good; none standing is forgotten already.
+  pub fn forget_seen(&self, account: &str) -> Result<(), String> {
+    if !owner_name(account) {
+      return Err(format!("{account:?} is no account's name"));
+    }
+    match fs::remove_file(self.seen_file(account)) {
+      Err(why) if why.kind() != io::ErrorKind::NotFound => {
+        Err(format!("the seen mark could not be forgotten: {why}"))
+      }
+      _ => Ok(()),
+    }
+  }
+
   /// The moment the reader last looked at what was shared with them, where they did.
   pub fn seen_at(&self, account: &str) -> Option<u64> {
     let text = fs::read_to_string(self.seen_file(account)).ok()?;

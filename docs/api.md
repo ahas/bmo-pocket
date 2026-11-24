@@ -188,9 +188,10 @@ flowchart TD
 - **The host's own choices in the contract:** the screen's role is `administrator`; no route asks for an owner key,
   since what the host holds is the deployment's, not one owner's; the screen reads no event stream, opens no
   WebSocket, raises no notice, calls no other service and names no share read.
-- **The face only reads.** It issues, revokes and calls nothing: beside the manifest and the bundle's files, which
-  the crate answers, its routes are the control socket's reads, answered as the control socket answers them to the
-  issuer token, under the crate's screens' guard.
+- **The face reads, and removes what an account or a company deleted for good kept.** It issues, revokes and calls
+  nothing: beside the manifest and the bundle's files, which the crate answers, its routes are the control socket's
+  reads, answered as the control socket answers them to the issuer token, and the platform administrator's removals
+  below, all under the crate's screens' guard.
 
 | Read | Answer |
 |---|---|
@@ -200,6 +201,18 @@ flowchart TD
 | `GET /servers` | as the control socket answers it to the issuer token (「External servers」) |
 | `GET /uses` | as the control socket answers it to the issuer token (「Asynchronous calls kept」) |
 
+| Removal | Answer |
+|---|---|
+| `GET /accounts/{account}/removal` | `{"counts": {"personal-tools", "installs", "seen-marks"}}`: what the removal below would take now, changing nothing |
+| `DELETE /accounts/{account}` | `{"removed": {...}}`: the account's registry of personal tools taken whole, its pointers first under its lock (`docs/registry.md`, 「Personal tools」); its copy of every app of every company's catalogue uninstalled; and its seen marks forgotten (`docs/catalogue.md`) |
+| `GET /org-units/{unit}/removal?company={company}` | `{"counts": {"catalogue-apps"}}`: for a company, `unit` equal to `company`, the apps of its catalogue; zero for a unit below a company |
+| `DELETE /org-units/{unit}?company={company}` | `{"removed": {...}}`: a company's catalogue folder taken whole; nothing for a unit below one |
+
+- **A removal is the platform administrator's,** the screen's role. An account, a unit and a company are their ids
+  as the account service names them, positive decimal digits; any other is refused 400 `bad-request`. Every kind is
+  always answered, zero where nothing stands, and a second removal takes nothing, so a removal broken half-way is
+  finished by calling again. An app an account made stays in its company's catalogue (`docs/catalogue.md`, 「When the
+  maker leaves」).
 - **A read asked with no token or another one** is refused 401 `unauthorized`, any path or method no route names
   404 `no-route`, each in the common error shape.
 - **The OpenAPI document does not state this face:** its reads are the control socket's routes in the shapes the

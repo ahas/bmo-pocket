@@ -178,6 +178,12 @@
   apps over, its head as the issuer finds them, and every app of the company the leaver owns is the new owner's from
   then. The maker stays the maker.
 
+## When an account or a company is deleted for good
+
+- **An account's removal uninstalls its copies and forgets its seen marks** in every company's catalogue; the apps it
+  made stay, as they stay when it leaves (`docs/api.md`, 「The console face」).
+- **A company's removal takes its catalogue folder whole,** its records, its source bundles and its seen marks.
+
 ## A promotion
 
 - **`promote` records the request to make the app a platform app,** by whom, when and with what note, at most one an

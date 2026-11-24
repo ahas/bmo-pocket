@@ -18,6 +18,7 @@ pub mod placed;
 pub mod records;
 pub mod registry;
 pub mod relay;
+pub mod removal;
 pub mod residency;
 pub mod running;
 pub mod schedule;

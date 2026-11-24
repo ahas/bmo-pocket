@@ -59,6 +59,8 @@
 - **A name is the owner's alone:** two owners' registries may each hold a tool of the same name and the same entries.
 - **Its versions are kept and taken away as every version is** (「Versions」): a call in flight goes on in the
   version it started in, and a version no pointer names is taken away once nothing holds it, and at the host's start.
+- **An account deleted for good takes its registry with it:** the platform administrator's removal unpoints each of
+  its tools under its lock and then takes its folder whole (`docs/api.md`, 「The console face」).
 - **`put --owner <account> <folder>` places a personal tool's description copy** (「Put a personal tool」); every
   other put places a platform tool.
 

@@ -65,6 +65,9 @@ pub enum HostError {
   /// The host could not keep or take back a record on disk.
   #[error("the session record could not be written: {0}")]
   Unwritable(String),
+  /// What an account or a company deleted for good kept could not be taken.
+  #[error("the removal could not be finished: {0}")]
+  Unremoved(String),
   /// A cursor of the event stream older than the window held, or one of an earlier run.
   #[error(
     "the event {after} is no longer held: the events held follow {floor}; read the namespaces again and subscribe \
@@ -95,7 +98,7 @@ impl HostError {
       Self::MalformedRecord(_) | Self::MalformedRequest(_) => ErrorCode::BadRequest,
       Self::ArgumentsMisfit(_) => ErrorCode::ArgumentsMisfit,
       Self::ToolFailed(_) => ErrorCode::ToolFailed,
-      Self::Unwritable(_) => ErrorCode::Failed,
+      Self::Unwritable(_) | Self::Unremoved(_) => ErrorCode::Failed,
       Self::UnknownRoute(_) | Self::MethodNotAllowed => ErrorCode::NoRoute,
       Self::Gone { .. } => ErrorCode::Gone,
     }

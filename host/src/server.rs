@@ -1026,6 +1026,71 @@ async fn authorise_console(State(token): State<Arc<str>>, mut request: Request, 
   next.run(request).await
 }
 
+/// The company a unit's removal names.
+#[derive(serde::Deserialize)]
+struct UnitRemovalQuery {
+  company: Option<String>,
+}
+
+// The data root the registry stands under, and the id the path names (docs/api.md, 「The console face」).
+fn removal_ground<'a>(
+  control: &Control,
+  given: &'a str,
+) -> Result<(std::path::PathBuf, &'a str), HostError> {
+  let id = crate::removal::id(given).ok_or_else(|| {
+    HostError::MalformedRequest(format!("{given:?} is no account's, unit's or company's id"))
+  })?;
+  let root = control
+    .host
+    .placed
+    .registry
+    .as_ref()
+    .and_then(|registry| registry.data_root())
+    .ok_or_else(|| HostError::Unremoved("the host serves no registry".to_owned()))?;
+  Ok((root.to_path_buf(), id))
+}
+
+async fn account_removal(
+  State(control): State<Control>,
+  Path(account): Path<String>,
+) -> Result<Json<Value>, HostError> {
+  let (root, account) = removal_ground(&control, &account)?;
+  Ok(Json(serde_json::json!({ "counts": crate::removal::account_held(&root, account) })))
+}
+
+async fn remove_account(
+  State(control): State<Control>,
+  Path(account): Path<String>,
+) -> Result<Json<Value>, HostError> {
+  let (root, account) = removal_ground(&control, &account)?;
+  let removed = crate::removal::remove_account(&root, account).map_err(HostError::Unremoved)?;
+  Ok(Json(serde_json::json!({ "removed": removed })))
+}
+
+async fn unit_removal(
+  State(control): State<Control>,
+  Path(unit): Path<String>,
+  asked: Result<Query<UnitRemovalQuery>, QueryRejection>,
+) -> Result<Json<Value>, HostError> {
+  let Query(asked) = asked.map_err(malformed)?;
+  let (root, unit) = removal_ground(&control, &unit)?;
+  let counts =
+    crate::removal::unit_held(&root, unit, asked.company.as_deref()).map_err(HostError::Unremoved)?;
+  Ok(Json(serde_json::json!({ "counts": counts })))
+}
+
+async fn remove_unit(
+  State(control): State<Control>,
+  Path(unit): Path<String>,
+  asked: Result<Query<UnitRemovalQuery>, QueryRejection>,
+) -> Result<Json<Value>, HostError> {
+  let Query(asked) = asked.map_err(malformed)?;
+  let (root, unit) = removal_ground(&control, &unit)?;
+  let removed =
+    crate::removal::remove_unit(&root, unit, asked.company.as_deref()).map_err(HostError::Unremoved)?;
+  Ok(Json(serde_json::json!({ "removed": removed })))
+}
+
 /// The console face: the manifest and the bundle's files as the crate answers them, and the control socket's reads,
 /// as the issuer is answered them, under the crate's screens' guard and the console token. Any other path or method
 /// is refused in the common error shape.
@@ -1050,7 +1115,11 @@ pub fn console(
     .route("/schedules", get(schedule_page))
     .route("/tool-sessions", get(tool_session_page))
     .route("/servers", get(server_page))
-    .route("/uses", get(use_page));
+    .route("/uses", get(use_page))
+    .route("/accounts/{account}/removal", get(account_removal))
+    .route("/accounts/{account}", axum::routing::delete(remove_account))
+    .route("/org-units/{unit}/removal", get(unit_removal))
+    .route("/org-units/{unit}", axum::routing::delete(remove_unit));
 
   screen
     .face

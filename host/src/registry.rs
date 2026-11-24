@@ -73,6 +73,11 @@ impl Registry {
     }
   }
 
+  /// The data root the registry stands under.
+  pub fn data_root(&self) -> Option<&Path> {
+    self.root.parent()
+  }
+
   /// The folder every owner's registry of personal tools stands in.
   pub fn owners_root(&self) -> PathBuf {
     self.root.join(OWNERS)
