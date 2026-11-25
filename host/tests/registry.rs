@@ -792,9 +792,9 @@ impl AccountService {
 }
 
 // "An app on the delegation chain" (docs/api.md): a put of a tool naming an app declares its two settings, offered
-// narrowing at the platform and the units and on nearest down to the person, each with the manifest's default, and
-// places the tool; a put of a tool naming none declares nothing; and one whose account service refuses, or names
-// none, places nothing.
+// narrowing at the platform and the units and on nearest down to the person, that kind raising-only for a person
+// (`personRaises`), each with the manifest's default, and places the tool; a put of a tool naming none declares
+// nothing; and one whose account service refuses, or names none, places nothing.
 #[test]
 fn a_put_of_an_apps_tool_declares_its_two_settings_on_the_delegation_chain_first() {
   let scratch = Scratch::new();
@@ -829,12 +829,14 @@ fn a_put_of_an_apps_tool_declares_its_two_settings_on_the_delegation_chain_first
   assert_eq!(offered.2["mode"], "narrowing");
   assert_eq!(offered.2["default"], false);
   assert_eq!(offered.2["levels"], json!(["platform", "unit"]));
+  assert!(offered.2.get("personRaises").is_none());
   assert!(offered.2["description"].as_str().unwrap().contains("Almanac: Says when to sow."));
   assert_eq!(on.0, "/chain/kinds/app.almanac.on");
   assert_eq!(on.2["mode"], "nearest");
   assert_eq!(on.2["default"], true);
   assert_eq!(on.2["levels"], json!(["platform", "unit", "person"]));
   assert_eq!(on.2["personWriter"], "both");
+  assert_eq!(on.2["personRaises"], true);
 
   // A tool naming no app declares nothing.
   put(
@@ -921,6 +923,7 @@ fn the_app_verb_declares_a_screen_only_apps_two_settings_and_places_nothing() {
   assert_eq!(kept[1].0, "/chain/kinds/app.ledger.on");
   assert_eq!(kept[1].2["mode"], "nearest");
   assert_eq!(kept[1].2["default"], false);
+  assert_eq!(kept[1].2["personRaises"], true);
   assert!(scratch.registry().entries().0.is_empty());
 
   // The same declarations a put of a tool naming the same app makes.

@@ -127,6 +127,7 @@ fn a_share_declares_the_app_neither_offered_nor_on_and_keeps_its_version_and_sou
   assert_eq!(declared[0].2["default"], false);
   assert_eq!(declared[1].0, "/chain/kinds/app.shared-3-17-weekly.on");
   assert_eq!(declared[1].2["default"], false);
+  assert_eq!(declared[1].2["personRaises"], true);
 
   let source = kept.source("17-weekly", None).unwrap();
 

@@ -1,7 +1,7 @@
 //! An app's two settings declared on the account service's delegation chain as its tool is put, or from its unit's
 //! declaration file where the app is a screen alone (docs/api.md, 「An app on the delegation chain」): whether the
-//! app is offered, which a link below only narrows, and whether it is on, which the nearest link decides. The host
-//! reads neither; a session's issuer resolves them.
+//! app is offered, which a link below only narrows, and whether it is on, which the nearest link decides and a
+//! person's own link only raises. The host reads neither; a session's issuer resolves them.
 
 use std::path::Path;
 
@@ -37,7 +37,8 @@ pub fn kind_key(app: &str, setting: &str) -> String {
 
 /// The two kinds an app declares, each by its key: offered, a flag that narrows, at the platform and the units;
 /// and on, a flag the nearest link decides, at the platform, the units and the person, written by the person and
-/// their heads.
+/// their heads, where a person's own link raises the flag and never lowers what a link above it said
+/// (`personRaises`).
 pub fn kinds(app: &AppPart) -> Vec<(String, Value)> {
   let said = format!("{}: {}", app.name.one().trim(), app.description.one().trim());
   let offered = kind_key(&app.key, "offered");
@@ -74,6 +75,7 @@ pub fn kinds(app: &AppPart) -> Vec<(String, Value)> {
         "levels": ["platform", "unit", "person"],
         "unitPermission": "manage",
         "personWriter": "both",
+        "personRaises": true,
       }),
     ),
   ]

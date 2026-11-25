@@ -129,9 +129,9 @@
 ## The app on the delegation chain
 
 - **A shared app is an app as any other** (`docs/api.md`, 「An app on the delegation chain」): two kinds,
-  `app.<key>.offered` and `app.<key>.on`, declared by `share` with `declaredBy` `pocket`, so a head's switch, a
-  person's switch and a lock reach it as they reach a platform app, and a session's issuer withholds it as it
-  withholds any app.
+  `app.<key>.offered` and `app.<key>.on` carrying `personRaises`, declared by `share` with `declaredBy` `pocket`,
+  so a head's switch, a person's switch and a lock reach it as they reach a platform app, and a session's issuer
+  withholds it as it withholds any app.
 - **Its key is `shared-<company>-<maker>-<name>`,** the name's `_` written `-`; where that is longer than an app key
   holds, the name is written as the first twelve hex digits of its SHA-256 instead.
 - **Every kind stands on the chain the same way,** so a head turns a skill or an MCP server on and recalls it for a
@@ -141,7 +141,9 @@
   (agency's `docs/person-nodes.md`, 「Shared apps」), so no other company's people are offered it however their links
   stand; and the console shows a company's people and heads no other company's shared app, reading the company off
   the key; and it is on for a
-  person only where a link says so — the person's own as they install it, or a unit's as its head turns it on there.
+  person only where a link says so — the person's own as they install it, or a unit's as its head turns it on there;
+  and where a link above a person switched it on, their own link raises the flag and never lowers it
+  (`personRaises`).
 - **A receiver's copy names the key:** it is put as the receiver's personal tool with `put --owner --app <key>`, its
   pointer naming the app (`docs/registry.md`, 「Put a personal tool」), so the host withholds it as the chain says for
   the receiver. The maker's own app is the maker's personal tool and names no shared key.

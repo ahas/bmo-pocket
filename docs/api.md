@@ -829,7 +829,7 @@ system and is never withheld.
 | Kind | Shape and mode | Default | Rules | Levels and writers |
 |---|---|---|---|---|
 | `app.<key>.offered` | a flag, `narrowing`: no link below widens what a link above offers | the manifest's `offered` | yes | the platform and units; `manage` |
-| `app.<key>.on` | a flag, `nearest`: the nearest link that says decides, a lock above holding | the manifest's `on` | yes | the platform, units and people; `manage`, written by the person and their heads (`both`) |
+| `app.<key>.on` | a flag, `nearest`, with `personRaises`: the nearest link that says decides, a lock above holding, and a person's own link raises the flag and never lowers what a link above it said | the manifest's `on` | yes | the platform, units and people; `manage`, written by the person and their heads (`both`) |
 
 - **A screen-only app is declared by `app`:** an app whose unit ships a console screen and no tool is published
   by that unit's deployment with `bmo pocket app <file>`, a TOML file holding the `[app]` table alone, under the
