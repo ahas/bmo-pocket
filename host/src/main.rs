@@ -281,6 +281,15 @@ fn bind_control(socket: &Path) -> io::Result<UnixListener> {
     fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
   }
 
+  // A socket another host still answers on is that host's: taking its place would cut every session it serves off
+  // their tools. Only a socket nothing answers on, one a host that ended left behind, is taken away.
+  if std::os::unix::net::UnixStream::connect(socket).is_ok() {
+    return Err(io::Error::new(
+      io::ErrorKind::AddrInUse,
+      format!("{}: another tool host answers on this socket", socket.display()),
+    ));
+  }
+
   match fs::remove_file(socket) {
     Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
     _ => {}

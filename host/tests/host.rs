@@ -2908,3 +2908,47 @@ async fn an_app_a_record_withholds_is_out_of_its_listings_and_refused_on_every_r
   assert!(text(&called(&host, &token, "garden", "sow_when", json!({})).await).contains(off));
   assert!(text(&called(&host, &token, "garden", "plant_get", json!({})).await).starts_with("plot/"));
 }
+
+// "a second host on the same control socket refuses to start and leaves the first one answering"
+#[test]
+fn a_second_host_on_the_same_control_socket_refuses_to_start_and_leaves_the_first_one_answering() {
+  let scratch = Scratch::new();
+  let first = scratch.start();
+  let control = scratch.sockets.path().join("control.sock");
+
+  let second = Command::new(env!("CARGO_BIN_EXE_mcp-host"))
+    .args(["serve", "--port", "0"])
+    .arg("--data-root")
+    .arg(scratch.data.path())
+    .arg("--control")
+    .arg(&control)
+    .arg("--tools")
+    .arg(scratch.tools())
+    .output()
+    .unwrap();
+
+  assert!(!second.status.success(), "a second host took the socket");
+  assert!(
+    String::from_utf8_lossy(&second.stderr).contains("another tool host answers on this socket"),
+    "{}",
+    String::from_utf8_lossy(&second.stderr)
+  );
+  assert!(
+    std::os::unix::net::UnixStream::connect(&first.control).is_ok(),
+    "the first host lost its socket"
+  );
+}
+
+// "a socket a host that ended left behind is taken by the next host"
+#[test]
+fn a_socket_a_host_that_ended_left_behind_is_taken_by_the_next_host() {
+  let scratch = Scratch::new();
+  let control = scratch.sockets.path().join("control.sock");
+
+  drop(std::os::unix::net::UnixListener::bind(&control).unwrap());
+  assert!(control.exists(), "the left-behind socket stands");
+
+  let running = scratch.start();
+
+  assert!(std::os::unix::net::UnixStream::connect(&running.control).is_ok());
+}

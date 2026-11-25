@@ -282,7 +282,8 @@ among them, does so on the control socket as the holder of a held session (「A 
 ## The control socket
 
 - **HTTP/1.1 over a Unix socket,** at the path `--control` names, or `bmo/mcp-host.sock` under the user's runtime
-  directory; a client finds it at `BMO_MCP_HOST_SOCKET` where it stands elsewhere. Bodies are JSON both ways,
+  directory; a client finds it at `BMO_MCP_HOST_SOCKET` where it stands elsewhere. A host refuses to start where another host
+  still answers on that path, and takes it only where the socket left there answers nothing. Bodies are JSON both ways,
   but for `GET /discipline`, which answers text (「Discipline」), and `GET /events`, which streams server-sent
   events unless a page is asked for (「Events」).
 - **Every route takes a bearer token** in `Authorization: Bearer <token>`, of one of two kinds:
