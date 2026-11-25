@@ -50,5 +50,5 @@ cargo fmt --all --check
 
 ## Version
 
-One version for every crate and package, `0.1.0` plus a revision, `0.1.0-rev.<n>`, until the first release, as
-`docs/api.md` states in 「Version」.
+The version is the set's, read off the git tags when a build is made; the version fields of the crates and
+packages are placeholders that never move, as `docs/api.md` states in 「Version」.

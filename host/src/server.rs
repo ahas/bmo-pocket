@@ -376,7 +376,7 @@ async fn health(State(state): State<Control>) -> Json<Health> {
   Json(Health {
     ready: true,
     reason: None,
-    version: env!("CARGO_PKG_VERSION").to_owned(),
+    version: bmo_pocket_plugin::VERSION.to_owned(),
     calls_in_hand: in_hand.len() as u64,
     in_hand,
   })

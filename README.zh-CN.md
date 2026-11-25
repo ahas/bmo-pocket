@@ -48,5 +48,5 @@ cargo fmt --all --check
 
 ## 版本
 
-所有 crate 和包共用一个版本：在首次发布之前为 `0.1.0` 加修订号，即 `0.1.0-rev.<n>`，如 `docs/api.md` 的
+版本是整个套件的版本，在构建时从 git 标签读取；crate 和包的版本字段是从不变动的占位值，如 `docs/api.md` 的
 「Version」 所述。

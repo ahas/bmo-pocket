@@ -232,7 +232,7 @@ impl ServerHandler for Toolbook {
     let mut server = Implementation::default();
 
     server.name = TOOLBOOK.to_owned();
-    server.version = env!("CARGO_PKG_VERSION").to_owned();
+    server.version = bmo_pocket_plugin::VERSION.to_owned();
     info.server_info = server;
     info
   }

@@ -1,6 +1,6 @@
 # The boundary
 
-**Fixed API, version 0.1.0-rev.9.** This document is the tool host's fixed API: every contract it exposes to another
+**Fixed API.** This document is the tool host's fixed API: every contract it exposes to another
 unit, grouped by the resource each acts on. It is fixed before any caller is connected to it, and every caller is
 served the same routes in the same shapes. Another unit reaches the host only across it: never by its code, its
 tables, its files or its process. The host calls no other unit; a console reaches it on the console face alone
@@ -10,11 +10,12 @@ CLI」, 「An app on the delegation chain」). How the host behaves behind these
 
 ## Version
 
-- **The repository has one version,** numbered as bmo-chat's `docs/conventions.md` states in 「Versions」: before
-  the first release it is `0.1.0` and counts revisions, `0.1.0-rev.<n>`, and major, minor and patch do not move.
-- **Every crate and package the repository publishes carries it,** and so do `GET /health`, the OpenAPI document's
-  `info.version` and the harness plugin: `bmo-tool`, `mcp-host`, `bmo-pocket-client`, `bmo-pocket-plugin`,
-  `@bmo/pocket-client`, the console bundle `bmo-pocket-console` and the TypeScript and Python tool kits.
+- **The version is the set's,** read off the git tags when a build is made, as bmo-chat's `docs/conventions.md`
+  states in 「Versions」: the testbed hands it to the build as `BMO_VERSION`, and `GET /health`, the host's MCP
+  servers and the harness plugin answer it. The fixed API is the one of the release its commit is tagged with.
+- **The manifests' version fields are placeholders that never move,** the OpenAPI document's `info.version` among
+  them: those of `bmo-tool`, `mcp-host`, `bmo-pocket-client`, `bmo-pocket-plugin`, `@bmo/pocket-client`, the
+  console bundle `bmo-pocket-console` and the TypeScript and Python tool kits.
 - **The call protocol has a version of its own, 1,** which every manifest and every handed object names; a
   manifest speaking another is left out rather than misread.
 
@@ -300,7 +301,7 @@ among them, does so on the control socket as the holder of a held session (「A 
 
 | Route | Token | Answer |
 |---|---|---|
-| `GET /health` | either | 200 `{ready, reason, version, callsInHand, inHand}`: `ready` true and `reason` null once the catalogue is read, `version` the repository's, `callsInHand` how many calls a stop of the host would wait on, and `inHand` each of them, oldest first, as `{entry, holder, startedAt}`: the entry's full name, or the tool's name for a resource listing or read, the `holderName` of the record it runs under, and when it started, in epoch milliseconds (`docs/mcp-host.md`, 「The host's stop」) |
+| `GET /health` | either | 200 `{ready, reason, version, callsInHand, inHand}`: `ready` true and `reason` null once the catalogue is read, `version` the set's (「Version」), `callsInHand` how many calls a stop of the host would wait on, and `inHand` each of them, oldest first, as `{entry, holder, startedAt}`: the entry's full name, or the tool's name for a resource listing or read, the `holderName` of the record it runs under, and when it started, in epoch milliseconds (`docs/mcp-host.md`, 「The host's stop」) |
 
 ### Discipline
 

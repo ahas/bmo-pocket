@@ -816,7 +816,7 @@ impl ServerHandler for Handler {
     let mut server = Implementation::default();
 
     server.name = self.namespace.clone();
-    server.version = env!("CARGO_PKG_VERSION").to_owned();
+    server.version = bmo_pocket_plugin::VERSION.to_owned();
     info.server_info = server;
     info
   }

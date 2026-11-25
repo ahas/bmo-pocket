@@ -157,7 +157,7 @@ async fn the_plugin_started_with_a_session_token_lists_and_calls_the_hosts_tools
   )
   .await;
 
-  assert_eq!(info["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+  assert_eq!(info["serverInfo"]["version"], bmo_pocket_plugin::VERSION);
 
   let listed = ask(2, "tools/list", json!({})).await;
   let names: Vec<&str> = listed["tools"]

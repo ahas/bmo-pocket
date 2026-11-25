@@ -127,11 +127,13 @@ async function refusal(call: Promise<unknown>): Promise<PocketError> {
 }
 
 describe("the TypeScript client", () => {
-  test("answers health with the repository's version", async () => {
+  test("answers health with the build's version", async () => {
     const health = await issuer.health();
+    // The host answers the version its build was handed, else its manifest's placeholder (docs/api.md, 「Version」).
+    const placeholder = JSON.parse(readFileSync(resolve(import.meta.dir, "../package.json"), "utf8")).version;
 
     expect(health.ready).toBe(true);
-    expect(health.version).toBe(JSON.parse(readFileSync(resolve(import.meta.dir, "../package.json"), "utf8")).version);
+    expect(health.version).toBe(process.env.BMO_VERSION ?? placeholder);
   });
 
   test("answers the discipline as text to either token", async () => {

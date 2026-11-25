@@ -10,3 +10,10 @@ mod tools;
 
 pub use server::{PocketServer, serve_stdio};
 pub use tools::{hosted_names, refusal};
+
+/// The version this build answers with, as the host and this plugin name it: the set's, which the testbed hands the build as `BMO_VERSION`, else
+/// the manifest's placeholder (bmo-chat's `docs/conventions.md`, 「Versions」).
+pub const VERSION: &str = match option_env!("BMO_VERSION") {
+  Some(version) => version,
+  None => env!("CARGO_PKG_VERSION"),
+};

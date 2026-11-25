@@ -44,5 +44,5 @@ A change moves through three stages in order:
    The host-contract test runs only where `BMO_LIVE_CLAUDE` names an installed Claude Code CLI, and skips
    elsewhere.
 
-The version is the workspace's, `0.1.0-rev.<n>` until the first release, as `docs/api.md` states in 「Version」. `testbed.toml` is the testbed's declaration: how it tests, checks,
+The version is the set's, read off the git tags at build time, as `docs/api.md` states in 「Version」. `testbed.toml` is the testbed's declaration: how it tests, checks,
 builds and deploys the repository.

@@ -169,7 +169,7 @@ impl Harness {
       .await;
 
     assert_eq!(info["serverInfo"]["name"], "bmo-pocket");
-    assert_eq!(info["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(info["serverInfo"]["version"], bmo_pocket_plugin::VERSION);
     harness.send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })).await;
     harness
   }

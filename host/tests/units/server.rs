@@ -78,7 +78,7 @@ async fn the_issuer_token_alone_issues_and_revokes_and_every_route_takes_a_token
   let health = issuer.health().await.unwrap();
 
   assert!(health.ready && health.reason.is_none());
-  assert_eq!(health.version, env!("CARGO_PKG_VERSION"));
+  assert_eq!(health.version, bmo_pocket_plugin::VERSION);
 
   let bare = request(&socket, Method::GET, "/health", None, None).await.unwrap();
 
