@@ -1,6 +1,6 @@
 /* The bundle's stylesheet (bmo-ui's `docs/console-bundles.md`, "What a bundle is"): the utility classes the
    screen's own sources use, on the layer's tokens, which the console's own stylesheet carries. The layer's
-   stylesheet is read for its theme, variants and utilities alone (`vite.config.ts`). */
+   stylesheet is read for its theme, variants and utilities alone (bmo-ui's `consoleTheme`). */
 @layer theme, base, components, utilities;
 
 @reference "#console-theme";
