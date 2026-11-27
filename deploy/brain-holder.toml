@@ -1,0 +1,9 @@
+# This service's standing line in every agent's brain: when to reach for it. How its tools are called is
+# their manuals', handed with a tool's first call in a session.
+held_by = "pocket"
+
+[[memory]]
+key = "when"
+type = "tip"
+recall_condition = "a tool that is missing, or a task repeated by hand"
+text = "Check pocket_tools first; otherwise make a tool as the bmo-pocket authoring skill says."
