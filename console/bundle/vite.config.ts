@@ -11,6 +11,8 @@ import { defineConfig } from "vite";
 
 import type { Plugin } from "vite";
 
+import { quoted, themeStylesheet } from "./theme.ts";
+
 // The tool host's screen as the browser module a console loads (docs/api.md, 「The bundle」), built with bmo-ui's
 // bundle build: what a console shares stays an import of the package's own path, which the console resolves to
 // its copy, everything else is carried in the module, and the layer the bundle is built on is written beside it.
@@ -130,27 +132,22 @@ function sharedOnly(): Plugin {
 // utilities of the screen's own sources alone; the console's stylesheet carries the rest.
 const THEME = join(generated, "console-theme");
 
-function withoutSources(text: string): string {
-  return text.replace(/@source[^;]*;/g, "");
-}
-
 function writeTheme(): void {
   const ui = join(packages, "@nuxt", "ui", "dist", "runtime");
   const layer = join(packages, "bmo-ui", "app", "assets", "css", "main.css");
 
   mkdirSync(THEME, { recursive: true });
-  writeFileSync(join(THEME, "ui.css"), withoutSources(readFileSync(join(generated, "ui.css"), "utf8")));
+  writeFileSync(join(THEME, "ui.css"), themeStylesheet(join(generated, "ui.css")));
   writeFileSync(
     join(THEME, "nuxt-ui.css"),
-    withoutSources(readFileSync(join(ui, "index.css"), "utf8"))
-      .replace('@import "#build/ui.css"', `@import "${join(THEME, "ui.css")}"`)
-      .replace('@import "./keyframes.css"', `@import "${join(ui, "keyframes.css")}"`)
+    themeStylesheet(join(ui, "index.css"), { "#build/ui.css": quoted(join(THEME, "ui.css")) })
   );
   writeFileSync(
     join(THEME, "layer.css"),
-    withoutSources(readFileSync(layer, "utf8"))
-      .replace('@import "tailwindcss";', '@import "tailwindcss" source(none);')
-      .replace('@import "@nuxt/ui";', `@import "${join(THEME, "nuxt-ui.css")}";`)
+    themeStylesheet(layer, {
+      tailwindcss: `${quoted("tailwindcss")} source(none)`,
+      "@nuxt/ui": quoted(join(THEME, "nuxt-ui.css"))
+    })
   );
 }
 

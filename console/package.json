@@ -25,6 +25,8 @@
     "bmo-ui": "file:vendor/bmo-ui-1.1.0-0.nightly.20261128.tgz",
     "nuxt": "^4.5.2",
     "playwright-core": "1.62.1",
+    "postcss": "8.5.31",
+    "postcss-value-parser": "4.2.0",
     "tailwindcss": "4.3.3",
     "typescript": "^5.9.3",
     "unplugin-auto-import": "21.1.0",
