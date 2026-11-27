@@ -3,7 +3,7 @@
 held_by = "pocket"
 
 [[memory]]
-key = "when"
+key = "pocket.when"
 type = "tip"
 recall_condition = "a tool that is missing, or a task repeated by hand"
 text = "Check pocket_tools first; otherwise make a tool as the bmo-pocket authoring skill says."
