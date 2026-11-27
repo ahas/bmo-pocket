@@ -248,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-console-face"
-version = "0.1.0-rev.10"
+version = "0.0.0"
 dependencies = [
  "axum",
  "headers",
@@ -261,7 +261,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-pocket"
-version = "0.1.0-rev.9"
+version = "0.0.0"
 dependencies = [
  "bmo-tool",
  "mcp-host",
@@ -273,7 +273,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-pocket-client"
-version = "0.1.0-rev.9"
+version = "0.0.0"
 dependencies = [
  "bmo-tool",
  "http",
@@ -291,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-pocket-plugin"
-version = "0.1.0-rev.9"
+version = "0.0.0"
 dependencies = [
  "axum",
  "bmo-pocket-client",
@@ -304,7 +304,7 @@ dependencies = [
 
 [[package]]
 name = "bmo-tool"
-version = "0.1.0-rev.9"
+version = "0.0.0"
 dependencies = [
  "croner",
  "schemars",
@@ -486,7 +486,7 @@ checksum = "7f8f80099a98041a3d1622845c271458a2d73e688351bf3cb999266764b81d48"
 
 [[package]]
 name = "count-words-rust"
-version = "0.1.0-rev.9"
+version = "0.0.0"
 dependencies = [
  "serde_json",
 ]
@@ -1432,7 +1432,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mcp-host"
-version = "0.1.0-rev.9"
+version = "0.0.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
