@@ -70,6 +70,9 @@ pub struct Version {
   pub version: String,
   pub source_hash: String,
   pub permissions: Permissions,
+  /// The lessons its memory pack leaves with whoever has it, none where it carries no pack.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub memories: Vec<PackedMemory>,
   pub shared_at: u64,
   pub review: Review,
   pub approval: Approval,
@@ -102,6 +105,122 @@ pub const SKILL: &str = "SKILL.md";
 
 /// An MCP server's declaration.
 pub const MCP: &str = "mcp.toml";
+
+/// The memory pack any kind may carry beside its kind file (docs/catalogue.md, 「Kinds」).
+pub const MEMORY_PACK: &str = "memory.toml";
+
+// The bounds a memory pack keeps.
+const PACK_MOST: usize = 20;
+const PACK_KEY_MOST: usize = 48;
+const PACK_TEXT_MOST: usize = 600;
+const PACK_CONDITION_MOST: usize = 200;
+
+/// One lesson of a memory pack, as the version keeps it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackedMemory {
+  pub key: String,
+  #[serde(rename = "type")]
+  pub kind: String,
+  pub text: String,
+  pub recall_condition: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub importance: Option<u8>,
+}
+
+// The pack as its file writes it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PackFile {
+  #[serde(default)]
+  memory: Vec<PackRow>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PackRow {
+  key: String,
+  #[serde(rename = "type")]
+  kind: String,
+  text: String,
+  recall_condition: String,
+  importance: Option<u8>,
+}
+
+/// The bundle's memory pack read and checked, none where it carries none (docs/catalogue.md, 「Kinds」).
+pub fn read_memory_pack(bundle: &Bundle) -> Result<Vec<PackedMemory>, String> {
+  let Some(text) = bundle.files.get(MEMORY_PACK) else {
+    return Ok(vec![]);
+  };
+  let file: PackFile =
+    toml::from_str(text).map_err(|why| format!("its {MEMORY_PACK} does not read: {why}"))?;
+
+  if file.memory.is_empty() || file.memory.len() > PACK_MOST {
+    return Err(format!(
+      "its {MEMORY_PACK} holds {} lessons; it holds 1 to {PACK_MOST}",
+      file.memory.len()
+    ));
+  }
+
+  let mut seen = BTreeSet::new();
+  let mut kept = Vec::new();
+
+  for row in file.memory {
+    let key_reads = row.key.len() <= PACK_KEY_MOST
+      && row
+        .key
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_lowercase() || first.is_ascii_digit())
+      && row
+        .key
+        .chars()
+        .all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == '-');
+
+    if !key_reads {
+      return Err(format!("its {MEMORY_PACK} names a lesson {:?}, which is no key", row.key));
+    }
+
+    if !seen.insert(row.key.clone()) {
+      return Err(format!("its {MEMORY_PACK} names the lesson {:?} twice", row.key));
+    }
+
+    if row.kind != "tip" && row.kind != "check" {
+      return Err(format!(
+        "its {MEMORY_PACK} gives the lesson {:?} the type {:?}; it is tip or check",
+        row.key, row.kind
+      ));
+    }
+
+    let text = row.text.trim();
+    let condition = row.recall_condition.trim();
+
+    if text.is_empty() || text.chars().count() > PACK_TEXT_MOST {
+      return Err(format!("the lesson {:?} holds 1 to {PACK_TEXT_MOST} characters of text", row.key));
+    }
+
+    if condition.is_empty() || condition.chars().count() > PACK_CONDITION_MOST {
+      return Err(format!(
+        "the lesson {:?} holds a recall condition of 1 to {PACK_CONDITION_MOST} characters",
+        row.key
+      ));
+    }
+
+    if row.importance.is_some_and(|importance| !(1..=10).contains(&importance)) {
+      return Err(format!("the lesson {:?} has an importance of 1 to 10", row.key));
+    }
+
+    kept.push(PackedMemory {
+      key: row.key,
+      kind: row.kind,
+      text: text.to_owned(),
+      recall_condition: condition.to_owned(),
+      importance: row.importance,
+    });
+  }
+
+  Ok(kept)
+}
 
 /// The language a plain text is read in where neither the item nor its share names one.
 const FALLBACK_LANGUAGE: &str = "en";
@@ -800,6 +919,7 @@ pub fn share(
 
   let scratch = catalogue.root.join(".reading").join(format!("{}-{}", now_ms(), std::process::id()));
   let read = read_bundle(&scratch, &asked.bundle)?;
+  let memories = read_memory_pack(&asked.bundle)?;
   let name = read.name.clone();
   let language = read
     .language
@@ -897,6 +1017,7 @@ pub fn share(
     version: asked.version.to_owned(),
     source_hash: hash.clone(),
     permissions: read.permissions.clone(),
+    memories,
     shared_at: now,
     review: Review {
       state: "pending".to_owned(),

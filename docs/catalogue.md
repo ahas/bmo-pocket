@@ -49,6 +49,15 @@
   A `[permissions]` table beside it reads as a personal tool's (`docs/api.md`, 「`[permissions]`」). What a version
   asks for is that table's, and for a remote server its address's host, with its port where it names one, among the
   network and its `secret` among the secrets. Every other key of either table is refused, naming it.
+- **Any kind may carry a memory pack:** `memory.toml` at the bundle's root beside its kind file, which names no kind
+  of its own. It holds one `[[memory]]` table a lesson the item leaves with whoever has it — 1 to 20, each `key`, a
+  lower-case letter or digit, then lower-case letters, digits and `-`, at most 48, unique in the pack; `type`, `tip`
+  or `check`; `text`, the instruction, 1 to 600 characters; `recall_condition`, the situation that calls for it, 1 to
+  200 characters; and `importance`, 1 to 10, where it is given. Every other key is refused, naming it. The pack is
+  instructions for agents written by the maker, so it is read in the review and shown to the receivers and the heads
+  beside the permissions, and kept under the source hash like every file. Who issues the receivers' sessions leaves
+  it in the brains of whoever holds a copy and takes it away when the copy goes (agency's `docs/person-nodes.md`,
+  「Shared apps」).
 
 ## Text in several languages
 
@@ -95,7 +104,8 @@
 - **Each share places a version of the app's,** named by the version the maker's PC placed the app's build under, so
   the catalogue's version and the PC's are one name. A version shared once is never shared again under that name.
 - **What it keeps:** `version`; `sourceHash` (「The source hash」); `permissions`, what the version asks for,
-  `network` and `secrets` (「Kinds」); `sharedAt`; `review`, the automatic review's report (「The
+  `network` and `secrets` (「Kinds」); `memories`, its memory pack's lessons as shared, each `key`, `type`, `text`,
+  `recallCondition` and `importance`, none where it carries no pack; `sharedAt`; `review`, the automatic review's report (「The
   review」); and `approval`: `required`, whether a head must approve it before anybody installs it, as the chain said
   for the maker when it was shared, and `by` and `at` once a head did.
 - **The newest version is the app's:** a share of a new version notifies its receivers, and each copy moves onto it
@@ -110,6 +120,7 @@
   - the bundle reads, and every path is inside its folder;
   - its kind reads (「Kinds」): an app's `tool.toml` as a personal tool's (`docs/mcp-host.md`, 「Personal tools」),
     every schema it names a JSON Schema; a skill's front matter; an MCP server's `mcp.toml`;
+  - its memory pack reads, where it carries one (「Kinds」);
   - the version is not one of the app's already;
   - the app is not another company's, which no verb could name.
 - **Nothing is built or run at home.** The bundle is kept as it came: a receiver's PC builds an app or an MCP server,

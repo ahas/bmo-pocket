@@ -559,3 +559,59 @@ fn the_cli_sets_a_locales_text() {
     Some(2)
   );
 }
+
+#[test]
+fn a_memory_pack_beside_the_kind_file_is_kept_on_the_version_and_a_pack_out_of_shape_is_refused() {
+  let dir = tempfile::tempdir().unwrap();
+  let service = AccountService::start(false);
+  let kept = Catalogue::of(dir.path(), "3").unwrap();
+  let with_pack = |pack: &str| {
+    let mut one = skill("name: week-notes\ndescription: Reads the week's notes.\n");
+
+    one.files.insert("memory.toml".to_owned(), pack.to_owned());
+    one
+  };
+  let record = shared(
+    &kept,
+    &service,
+    &share_of(
+      "v1",
+      with_pack(
+        "[[memory]]\nkey = \"notes-first\"\ntype = \"tip\"\ntext = \"Read the notes before the calendar.\"\nrecall_condition = \"the person asks about their week\"\nimportance = 6\n",
+      ),
+    ),
+  )
+  .unwrap();
+
+  assert_eq!(record.kind, "skill", "the pack names no kind of its own");
+  assert_eq!(
+    record.versions[0].memories,
+    vec![catalogue::PackedMemory {
+      key: "notes-first".to_owned(),
+      kind: "tip".to_owned(),
+      text: "Read the notes before the calendar.".to_owned(),
+      recall_condition: "the person asks about their week".to_owned(),
+      importance: Some(6),
+    }]
+  );
+
+  let refused =
+    |version: &str, pack: &str| shared(&kept, &service, &share_of(version, with_pack(pack))).unwrap_err();
+  let row = |key: &str, kind: &str| {
+    format!(
+      "[[memory]]\nkey = \"{key}\"\ntype = \"{kind}\"\ntext = \"Do it.\"\nrecall_condition = \"when asked\"\n"
+    )
+  };
+
+  assert!(refused("v2", &row("x", "fact")).contains("tip or check"));
+  assert!(refused("v3", &row("Bad Key", "tip")).contains("no key"));
+  assert!(refused("v4", &format!("{}{}", row("a", "tip"), row("a", "check"))).contains("twice"));
+  assert!(
+    refused(
+      "v5",
+      "[[memory]]\nkey = \"a\"\ntype = \"tip\"\ntext = \"x\"\nrecall_condition = \"y\"\nsubjects = []\n"
+    )
+    .contains("does not read")
+  );
+  assert!(refused("v6", "").contains("1 to 20"));
+}
