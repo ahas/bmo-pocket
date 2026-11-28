@@ -615,3 +615,142 @@ fn a_memory_pack_beside_the_kind_file_is_kept_on_the_version_and_a_pack_out_of_s
   );
   assert!(refused("v6", "").contains("1 to 20"));
 }
+
+// An item's bundle with `bmo-extension.toml` at its root beside its kind file, holding `manifest`.
+fn extended(mut one: Bundle, manifest: &str) -> Bundle {
+  one.files.insert("bmo-extension.toml".to_owned(), manifest.to_owned());
+  one
+}
+
+#[test]
+fn an_extension_manifest_wraps_each_kind_and_its_texts_stand_over_the_kind_files() {
+  let dir = tempfile::tempdir().unwrap();
+  let service = AccountService::start(false);
+  let kept = Catalogue::of(dir.path(), "3").unwrap();
+  let mut app = extended(
+    bundle("weekly", "summary", ""),
+    "name = \"weekly\"\ndisplay_name = \"Weekly digest\"\ndescription = \"The week in one page.\"\npublisher = \"team-tools\"\nversion = \"1.2.0\"\nicon = \"icon.svg\"\ncategories = [\"app\"]\nrepository = \"https://example.com/weekly\"\nengines = { bmo = \">=1.0\" }\ndependencies = [\"team-tools.calendar\"]\n\n[contributes]\napps = [\"tool.toml\"]\n",
+  );
+
+  app
+    .files
+    .insert("icon.svg".to_owned(), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".to_owned());
+
+  let record = shared(&kept, &service, &share_of("v1", app)).unwrap();
+  let extension = record.versions[0].extension.clone().expect("the manifest is kept on the version");
+
+  assert_eq!((record.kind.as_str(), record.title.as_str()), ("app", "Weekly digest"));
+  assert_eq!(record.description, "The week in one page.");
+  assert_eq!(extension.publisher.as_deref(), Some("team-tools"));
+  assert_eq!(extension.icon_svg.as_deref(), Some("<svg xmlns=\"http://www.w3.org/2000/svg\"/>"));
+  assert_eq!(extension.contributes.apps, vec!["tool.toml".to_owned()]);
+
+  let mut skill_one = extended(
+    skill("name: week-notes\ndescription: Reads the week's notes.\n"),
+    "name = \"week-notes\"\n[contributes]\nskills = [\"SKILL.md\"]\nmemory_packs = [\"memory.toml\"]\n",
+  );
+
+  skill_one.files.insert(
+    "memory.toml".to_owned(),
+    "[[memory]]\nkey = \"a\"\ntype = \"tip\"\ntext = \"Do it.\"\nrecall_condition = \"when asked\"\n"
+      .to_owned(),
+  );
+
+  let skill_record = shared(&kept, &service, &share_of("v1", skill_one)).unwrap();
+
+  assert_eq!(skill_record.kind, "skill");
+  assert_eq!(skill_record.title, "week-notes", "a manifest giving no text leaves the kind file's");
+  assert_eq!(skill_record.versions[0].memories.len(), 1);
+
+  let server = extended(
+    mcp("transport = \"remote\"\nurl = \"https://tracker.example.com/mcp\"\nauth = \"none\"", ""),
+    "name = \"tracker\"\n[contributes]\nmcp_servers = [\"mcp.toml\"]\n",
+  );
+
+  assert_eq!(shared(&kept, &service, &share_of("v1", server)).unwrap().kind, "mcp");
+}
+
+#[test]
+fn an_extension_manifest_out_of_shape_or_contributing_what_the_bundle_does_not_carry_is_refused() {
+  let dir = tempfile::tempdir().unwrap();
+  let service = AccountService::start(false);
+  let kept = Catalogue::of(dir.path(), "3").unwrap();
+  let refused = |version: &str, manifest: &str| {
+    shared(
+      &kept,
+      &service,
+      &share_of(version, extended(skill("name: week-notes\ndescription: Notes.\n"), manifest)),
+    )
+    .unwrap_err()
+  };
+  let named = "name = \"week-notes\"\n";
+
+  assert!(refused("v1", "name = [\n").contains("does not read"));
+  assert!(
+    refused("v2", &format!("{named}colour = \"red\"\n")).contains("does not read"),
+    "an unknown key"
+  );
+  assert!(
+    refused("v3", "name = \"other\"\n[contributes]\nskills = [\"SKILL.md\"]\n").contains("the item is")
+  );
+  assert!(
+    refused("v4", &format!("{named}[contributes]\nskills = [\"SKILL.md\"]\npersonas = [\"p.md\"]\n"))
+      .contains("nothing receives yet")
+  );
+  assert!(
+    refused(
+      "v5",
+      &format!("{named}[contributes]\nskills = [\"SKILL.md\"]\nsystem_prompts = [\"p.md\"]\n")
+    )
+    .contains("nothing receives yet")
+  );
+  assert!(
+    refused("v6", &format!("{named}[contributes]\nskills = [\"reference/notes.md\"]\n"))
+      .contains("one item")
+  );
+  assert!(
+    refused("v7", &format!("{named}[contributes]\napps = [\"tool.toml\"]\n")).contains("one item"),
+    "another kind's point"
+  );
+  assert!(
+    refused("v8", &format!("{named}[contributes]\nmemory_packs = [\"memory.toml\"]\n"))
+      .contains("does not hold")
+  );
+  assert!(refused("v9", named).contains("does not contribute the item's own"));
+  assert!(
+    refused(
+      "v10",
+      &format!("{named}publisher = \"Big Co\"\n[contributes]\nskills = [\"SKILL.md\"]\n")
+    )
+    .contains("no publisher's name")
+  );
+  assert!(
+    refused("v11", &format!("{named}icon = \"icon.png\"\n[contributes]\nskills = [\"SKILL.md\"]\n"))
+      .contains("no SVG")
+  );
+  assert!(
+    refused("v12", &format!("{named}icon = \"icon.svg\"\n[contributes]\nskills = [\"SKILL.md\"]\n"))
+      .contains("does not hold")
+  );
+  assert!(
+    refused(
+      "v13",
+      &format!("{named}categories = [\"widget\"]\n[contributes]\nskills = [\"SKILL.md\"]\n")
+    )
+    .contains("category")
+  );
+  assert!(
+    refused(
+      "v14",
+      &format!("{named}repository = \"http://x\"\n[contributes]\nskills = [\"SKILL.md\"]\n")
+    )
+    .contains("https")
+  );
+  assert!(
+    refused(
+      "v15",
+      &format!("{named}dependencies = [\"calendar\"]\n[contributes]\nskills = [\"SKILL.md\"]\n")
+    )
+    .contains("<publisher>.<name>")
+  );
+}

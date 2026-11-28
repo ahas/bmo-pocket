@@ -73,6 +73,9 @@ pub struct Version {
   /// The lessons its memory pack leaves with whoever has it, none where it carries no pack.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
   pub memories: Vec<PackedMemory>,
+  /// Its extension manifest as read, none where it carries none (docs/catalogue.md, 「The extension manifest」).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub extension: Option<crate::extension::Extension>,
   pub shared_at: u64,
   pub review: Review,
   pub approval: Approval,
@@ -98,7 +101,7 @@ pub struct Promotion {
 }
 
 /// The file at a bundle's root that names its kind, by kind (docs/catalogue.md, 「Kinds」).
-const KIND_FILES: [(&str, &str); 3] = [("app", MANIFEST), ("skill", SKILL), ("mcp", MCP)];
+pub const KIND_FILES: [(&str, &str); 3] = [("app", MANIFEST), ("skill", SKILL), ("mcp", MCP)];
 
 /// A skill's file, its front matter and its body.
 pub const SKILL: &str = "SKILL.md";
@@ -918,8 +921,20 @@ pub fn share(
   }
 
   let scratch = catalogue.root.join(".reading").join(format!("{}-{}", now_ms(), std::process::id()));
-  let read = read_bundle(&scratch, &asked.bundle)?;
+  let mut read = read_bundle(&scratch, &asked.bundle)?;
   let memories = read_memory_pack(&asked.bundle)?;
+  let extension = crate::extension::read(&asked.bundle, read.kind, &read.name)?;
+
+  // The manifest's texts stand as the item's over its kind file's where it gives them.
+  if let Some(extension) = &extension {
+    if let Some(title) = &extension.display_name {
+      read.title = title.clone();
+    }
+
+    if let Some(description) = &extension.description {
+      read.description = description.clone();
+    }
+  }
   let name = read.name.clone();
   let language = read
     .language
@@ -1018,6 +1033,7 @@ pub fn share(
     source_hash: hash.clone(),
     permissions: read.permissions.clone(),
     memories,
+    extension,
     shared_at: now,
     review: Review {
       state: "pending".to_owned(),

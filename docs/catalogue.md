@@ -59,6 +59,35 @@
   it in the brains of whoever holds a copy and takes it away when the copy goes (agency's `docs/person-nodes.md`,
   「Shared apps」).
 
+## The extension manifest
+
+- **A bundle may carry `bmo-extension.toml` at its root,** beside its kind file: the item described as an extension,
+  read as it is shared and checked with the rest, each refusal naming what failed. A bundle without it is shared as
+  ever. It holds:
+  - `name`, the item's name, which must be the one its kind file names;
+  - `display_name` and `description`, texts (「Text in several languages」), which stand as the item's title and
+    description over its kind file's where given;
+  - `publisher`, who the maker publishes as, a lower-case letter, then lower-case letters, digits and `-`, at most 64:
+    a name a screen shows, never the account the record answers to, which stays the maker's;
+  - `version`, the extension's own version label, at most 64 characters, shown beside the version the share places;
+  - `icon`, the path of an SVG file the bundle holds, which a screen shows the item by;
+  - `categories`, each one of `persona`, `memory-pack`, `system-prompt`, `tool`, `app`, `skill` and `mcp`;
+  - `repository`, an `https` address the source is kept at;
+  - `engines`, a table of what the extension needs by name, `bmo` the platform's version range, kept as written;
+  - `dependencies`, other extensions it needs, each `<publisher>.<name>`, kept as written;
+  - `[contributes]`, what it puts into the platform, each a list of the bundle's paths by contribution point:
+    `tools` or `apps`, a personal app's `tool.toml`; `skills`, a skill's `SKILL.md`; `mcp_servers`, an MCP server's
+    `mcp.toml`; `memory_packs`, the bundle's `memory.toml`; `personas`; and `system_prompts`.
+
+  Every other key is refused, naming it.
+- **A bundle carries one item, so its contributions name the files at its root alone:** the kind file under the
+  point its kind is put through, and `memory.toml` under `memory_packs` where the bundle holds one. A contribution
+  naming any other file, a kind file under another kind's point, or the kind file left unnamed is refused saying so.
+  `personas` and `system_prompts` have no receiver yet, and a manifest naming either is refused saying it is not
+  received.
+- **What it describes is kept with the version** (「A version」): the manifest as read, so a screen shows the item
+  by its publisher, its icon, its categories and what it contributes.
+
 ## Text in several languages
 
 - **An item's text may be written in one language or several, and none is required:** a share is never refused for a
@@ -105,7 +134,8 @@
   the catalogue's version and the PC's are one name. A version shared once is never shared again under that name.
 - **What it keeps:** `version`; `sourceHash` (「The source hash」); `permissions`, what the version asks for,
   `network` and `secrets` (「Kinds」); `memories`, its memory pack's lessons as shared, each `key`, `type`, `text`,
-  `recallCondition` and `importance`, none where it carries no pack; `sharedAt`; `review`, the automatic review's report (「The
+  `recallCondition` and `importance`, none where it carries no pack; `extension`, its extension manifest as read, with the
+  icon's SVG text as `iconSvg`, none where it carries none (「The extension manifest」); `sharedAt`; `review`, the automatic review's report (「The
   review」); and `approval`: `required`, whether a head must approve it before anybody installs it, as the chain said
   for the maker when it was shared, and `by` and `at` once a head did.
 - **The newest version is the app's:** a share of a new version notifies its receivers, and each copy moves onto it

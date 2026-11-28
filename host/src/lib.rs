@@ -10,6 +10,7 @@ pub mod console;
 pub mod drain;
 pub mod error;
 pub mod events;
+pub mod extension;
 pub mod external;
 pub mod handler;
 pub mod held_sessions;
